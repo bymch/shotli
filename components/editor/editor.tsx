@@ -349,7 +349,7 @@ export function Editor() {
       {sidebarOpen ? (
         <button
           type="button"
-          className="absolute inset-0 z-10 bg-black/10 min-[960px]:hidden"
+          className="absolute top-12 right-0 bottom-0 left-0 z-10 bg-black/10 min-[960px]:hidden"
           aria-label="Close properties"
           onClick={() => setSidebarOpen(false)}
         />
@@ -370,6 +370,7 @@ export function Editor() {
         onDeleteSelected={deleteSelected}
         onRemoveRedactions={removeRedactions}
         onResetCrop={resetCrop}
+        onClose={() => setSidebarOpen(false)}
       />
     </div>
   );

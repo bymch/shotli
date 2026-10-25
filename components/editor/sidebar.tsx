@@ -35,6 +35,7 @@ export function Sidebar({
   onDeleteSelected,
   onRemoveRedactions,
   onResetCrop,
+  onClose,
 }: {
   open: boolean;
   doc: Doc;
@@ -51,6 +52,7 @@ export function Sidebar({
   onDeleteSelected: () => void;
   onRemoveRedactions: () => void;
   onResetCrop: () => void;
+  onClose: () => void;
 }) {
   if (!open) return null;
   const selected = doc.annotations.find((annotation) => annotation.id === doc.selectedId) ?? null;
@@ -61,9 +63,17 @@ export function Sidebar({
   const showTextSize = tool === "text" || selected?.type === "text";
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-20 flex w-[min(100%,340px)] shrink-0 flex-col border-l border-line bg-panel shadow-[-8px_0_24px_rgba(0,0,0,0.04)] min-[960px]:static min-[960px]:shadow-none">
+    <aside className="absolute top-12 right-0 bottom-0 z-20 flex w-[min(100%,340px)] shrink-0 flex-col border-l border-line bg-panel shadow-[-8px_0_24px_rgba(0,0,0,0.04)] min-[960px]:static min-[960px]:top-auto min-[960px]:right-auto min-[960px]:bottom-auto min-[960px]:z-auto min-[960px]:shadow-none">
       <div className="flex h-12 shrink-0 items-center border-b border-line px-4 text-[12px] font-medium text-ink">
         Properties
+        <button
+          type="button"
+          className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-ink min-[960px]:hidden"
+          aria-label="Close properties"
+          onClick={onClose}
+        >
+          ×
+        </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <Section title="Presets">
