@@ -1,7 +1,9 @@
 "use client";
 
-import { backgroundCss, COLORS, FONT_SIZES, GRADIENTS, INK_COLORS, PRESETS, STROKE_WIDTHS, stylesMatch, WALLPAPERS } from "@/lib/presets";
-import type { Annotation, Brush, Doc, FrameStyle, Style, Tool } from "@/lib/types";
+import { useEffect, useRef } from "react";
+import { backgroundCss, COLORS, FONT_SIZES, GRADIENTS, INK_COLORS, PRESETS, SCENES, STROKE_WIDTHS, stylesMatch, WALLPAPERS } from "@/lib/presets";
+import { drawScene, isScene, type SceneId } from "@/lib/scenes";
+import type { Annotation, Brush, Doc, FrameStyle, Style, Tool, WallpaperId } from "@/lib/types";
 import { Segmented, SliderField, Swatches } from "./ui";
 
 export function Sidebar({
@@ -87,6 +89,7 @@ export function Sidebar({
           value={doc.style.background.kind === "color" ? doc.style.background.color : undefined}
           onChange={(color) => onBackground({ kind: "color", color })}
         />
+        <FillGrid title="Scenes" items={SCENES} doc={doc} onBackground={onBackground} tall />
         <div className="mt-3 mb-1 text-[11px] text-muted">Gradient</div>
         <div className="grid grid-cols-6 gap-1.5">
           {GRADIENTS.map((gradient) => {
@@ -108,27 +111,7 @@ export function Sidebar({
             );
           })}
         </div>
-        <div className="mt-3 mb-1 text-[11px] text-muted">Pattern</div>
-        <div className="grid grid-cols-3 gap-1.5">
-          {WALLPAPERS.map((wallpaper) => {
-            const active = doc.style.background.kind === "wallpaper" && doc.style.background.id === wallpaper.id;
-            return (
-              <button
-                key={wallpaper.id}
-                type="button"
-                aria-pressed={active}
-                className={`h-12 rounded-md border text-[10px] text-ink ${active ? "border-accent" : "border-black/10"}`}
-                style={{
-                  background: backgroundCss({ kind: "wallpaper", id: wallpaper.id }),
-                  backgroundSize: "8px 8px",
-                }}
-                onClick={() => onBackground({ kind: "wallpaper", id: wallpaper.id })}
-              >
-                <span className="rounded bg-white/85 px-1 py-0.5">{wallpaper.name}</span>
-              </button>
-            );
-          })}
-        </div>
+        <FillGrid title="Pattern" items={WALLPAPERS} doc={doc} onBackground={onBackground} />
 
         <div className="mt-4 mb-1.5 text-[12px] text-ink">Frame</div>
         <Segmented
@@ -287,4 +270,62 @@ export function Sidebar({
       </div>
     </aside>
   );
+}
+
+function FillGrid({
+  title,
+  items,
+  doc,
+  onBackground,
+  tall = false,
+}: {
+  title: string;
+  items: { id: WallpaperId; name: string }[];
+  doc: Doc;
+  onBackground: (background: Style["background"]) => void;
+  tall?: boolean;
+}) {
+  return (
+    <>
+      <div className="mt-3 mb-1 text-[11px] text-muted">{title}</div>
+      <div className="grid grid-cols-3 gap-1.5">
+        {items.map((item) => {
+          const active = doc.style.background.kind === "wallpaper" && doc.style.background.id === item.id;
+          const scene = isScene(item.id);
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={active}
+              className={`relative flex items-end justify-center overflow-hidden rounded-md border text-[10px] text-ink ${tall ? "h-16" : "h-12"} ${active ? "border-accent" : "border-black/10"}`}
+              style={
+                scene
+                  ? undefined
+                  : {
+                      background: backgroundCss({ kind: "wallpaper", id: item.id }),
+                      backgroundSize: "8px 8px",
+                    }
+              }
+              onClick={() => onBackground({ kind: "wallpaper", id: item.id })}
+            >
+              {isScene(item.id) ? <SceneThumb id={item.id} /> : null}
+              <span className="relative mb-1 rounded bg-white/90 px-1 py-0.5">{item.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function SceneThumb({ id }: { id: SceneId }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    drawScene(ctx, id, canvas.width, canvas.height);
+  }, [id]);
+  return <canvas ref={ref} width={240} height={144} className="absolute inset-0 h-full w-full" aria-hidden />;
 }

@@ -215,7 +215,226 @@ private struct Painter {
                 x += 18
             }
             context.strokePath()
+        case .dusk, .night, .harbour, .hills, .aurora, .sorbet:
+            drawScene(id, size)
         }
+    }
+
+    func drawScene(_ id: WallpaperID, _ size: CGSize) {
+        switch id {
+        case .dusk:
+            vertical(size, [(0, "#FF8A5B"), (0.42, "#F6B7C5"), (0.72, "#7C6BD4"), (1, "#2A2148")])
+            glow(size, 0.22, 0.62, 0.42, "#FFB088", 0.95)
+            disc(size, 0.22, 0.6, 0.055, "#FFE1C4")
+            skyline(size, size.height, "#1C1430", "#2C2144", "#F8E2A0", 3, 1)
+        case .night:
+            vertical(size, [(0, "#070B18"), (0.55, "#1A2744"), (1, "#0A0E1A")])
+            stars(size)
+            glow(size, 0.8, 0.16, 0.22, "#D7E2FF", 0.45)
+            disc(size, 0.8, 0.16, 0.04, "#F7F3E8")
+            skyline(size, size.height, "#070910", "#141A28", "#FFE08A", 4, 2)
+        case .harbour:
+            drawHarbour(size)
+        case .hills:
+            vertical(size, [(0, "#FFD7C2"), (0.45, "#F7A58A"), (1, "#E7C4EE")])
+            glow(size, 0.72, 0.3, 0.28, "#FFE7C2", 0.9)
+            disc(size, 0.72, 0.3, 0.05, "#FFF6E8")
+            hill(size, 0.58, 0.06, 1.4, 0.4, "#C47B9B")
+            hill(size, 0.7, 0.05, 1.8, 1.7, "#8E5A78")
+            hill(size, 0.84, 0.045, 1.2, 0.2, "#3D2A3E")
+        case .aurora:
+            vertical(size, [(0, "#07111F"), (0.6, "#10243A"), (1, "#071018")])
+            stars(size)
+            glow(size, 0.28, 0.42, 0.5, "#5EEAD4", 0.55)
+            glow(size, 0.72, 0.36, 0.48, "#A78BFA", 0.5)
+            glow(size, 0.5, 0.55, 0.36, "#34D399", 0.35)
+            band(size, 0.34, 0.07, 1.6, 0.4, "#5EEAD4", 0.16, 0.55)
+            band(size, 0.46, 0.08, 1.3, 2.1, "#67E8F9", 0.14, 0.4)
+            band(size, 0.4, 0.06, 2.1, 1.1, "#C4B5FD", 0.12, 0.45)
+            hill(size, 0.86, 0.035, 1.5, 0.6, "#071018")
+        case .sorbet:
+            vertical(size, [(0, "#FFE4E6"), (0.5, "#FFF6E8"), (1, "#E0F2FE")])
+            glow(size, 0.16, 0.22, 0.55, "#FB7185", 0.9)
+            glow(size, 0.8, 0.16, 0.5, "#C4B5FD", 0.92)
+            glow(size, 0.58, 0.78, 0.55, "#6EE7B7", 0.85)
+            glow(size, 0.18, 0.76, 0.42, "#FDE68A", 0.8)
+            glow(size, 0.86, 0.62, 0.4, "#7DD3FC", 0.75)
+            glow(size, 0.46, 0.4, 0.32, "#F9A8D4", 0.7)
+        default:
+            break
+        }
+    }
+
+    func drawHarbour(_ size: CGSize) {
+        let ground = size.height * 0.58
+        vertical(size, [(0, "#F3C7A2"), (0.4, "#8EADD4"), (1, "#1B3A5C")])
+        context.saveGState()
+        context.clip(to: cg(CGRect(x: 0, y: ground, width: size.width, height: size.height - ground)))
+        let colors = [paint("#245074"), paint("#0E2438")] as CFArray
+        if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
+            context.drawLinearGradient(gradient, start: CGPoint(x: 0, y: height - ground), end: CGPoint(x: 0, y: 0), options: [])
+        }
+        context.restoreGState()
+        glow(size, 0.7, 0.42, 0.24, "#F8D7B0", 0.8)
+        disc(size, 0.7, 0.4, 0.035, "#FFF1DE")
+        skyline(size, ground, "#101820", "#1C2A3A", "#F6E7B2", 4, 3)
+        context.saveGState()
+        context.setAlpha(0.32)
+        reflectSkyline(size, ground, "#101820", "#1C2A3A")
+        context.restoreGState()
+        context.setFillColor(paint("#0E2438", alpha: 0.28))
+        var y = ground + 6
+        var index = 0
+        while y < size.height {
+            context.fill(cg(CGRect(x: 0, y: y, width: size.width, height: index % 2 == 0 ? 2 : 5)))
+            y += 12
+            index += 1
+        }
+        context.setFillColor(paint("#FFECD6", alpha: 0.55))
+        context.fill(cg(CGRect(x: 0, y: ground - 1, width: size.width, height: 1.5)))
+    }
+
+    func vertical(_ size: CGSize, _ stops: [(CGFloat, String)]) {
+        let colors = stops.map { paint($0.1) } as CFArray
+        let locations = stops.map { $0.0 }
+        locations.withUnsafeBufferPointer { buffer in
+            guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: buffer.baseAddress) else { return }
+            context.drawLinearGradient(
+                gradient,
+                start: CGPoint(x: size.width / 2, y: size.height),
+                end: CGPoint(x: size.width / 2, y: 0),
+                options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+            )
+        }
+    }
+
+    func glow(_ size: CGSize, _ x: CGFloat, _ y: CGFloat, _ radius: CGFloat, _ hex: String, _ alpha: CGFloat) {
+        let center = cg(CGPoint(x: size.width * x, y: size.height * y))
+        let r = max(size.width, size.height) * radius
+        let colors = [paint(hex, alpha: alpha), paint(hex, alpha: 0)] as CFArray
+        guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) else { return }
+        context.drawRadialGradient(gradient, startCenter: center, startRadius: 0, endCenter: center, endRadius: r, options: [])
+    }
+
+    func disc(_ size: CGSize, _ x: CGFloat, _ y: CGFloat, _ radius: CGFloat, _ hex: String) {
+        let r = min(size.width, size.height) * radius
+        let center = CGPoint(x: size.width * x, y: size.height * y)
+        context.setFillColor(paint(hex))
+        context.fillEllipse(in: cg(CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)))
+    }
+
+    func stars(_ size: CGSize) {
+        let points: [(CGFloat, CGFloat, CGFloat)] = [
+            (0.06, 0.08, 1.1), (0.14, 0.16, 0.7), (0.22, 0.05, 1.3), (0.31, 0.12, 0.6),
+            (0.4, 0.07, 0.9), (0.48, 0.18, 0.5), (0.57, 0.06, 1.2), (0.66, 0.14, 0.7),
+            (0.74, 0.04, 0.8), (0.83, 0.11, 1.4), (0.91, 0.07, 0.6), (0.18, 0.28, 0.5),
+            (0.35, 0.22, 0.4), (0.62, 0.24, 0.6), (0.88, 0.22, 0.5),
+        ]
+        context.setFillColor(paint("#FFFFFF", alpha: 0.88))
+        for star in points {
+            let r = star.2 * min(size.width, size.height) / 420
+            let center = CGPoint(x: size.width * star.0, y: size.height * star.1)
+            context.fillEllipse(in: cg(CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)))
+        }
+    }
+
+    func towers() -> [(CGFloat, CGFloat, CGFloat)] {
+        [
+            (0, 0.07, 0.28), (0.07, 0.045, 0.18), (0.115, 0.1, 0.46), (0.215, 0.06, 0.26),
+            (0.275, 0.05, 0.16), (0.325, 0.13, 0.38), (0.455, 0.035, 0.56), (0.49, 0.08, 0.3),
+            (0.57, 0.11, 0.42), (0.68, 0.055, 0.22), (0.735, 0.09, 0.36), (0.825, 0.06, 0.2),
+            (0.885, 0.115, 0.32),
+        ]
+    }
+
+    func skyline(_ size: CGSize, _ ground: CGFloat, _ color: String, _ alt: String, _ light: String, _ every: Int, _ seed: Int) {
+        for (index, tower) in towers().enumerated() {
+            let bw = size.width * max(0.02, tower.1 - 0.012)
+            let bh = size.height * tower.2
+            let bx = size.width * tower.0
+            let top = ground - bh
+            context.setFillColor(paint(index % 2 == 0 ? color : alt))
+            context.fill(cg(CGRect(x: bx, y: top, width: bw, height: bh)))
+            if tower.2 > 0.4 {
+                let capW = bw * 0.55
+                let capH = bh * 0.12
+                context.fill(cg(CGRect(x: bx + (bw - capW) / 2, y: top - capH, width: capW, height: capH)))
+                context.fill(cg(CGRect(x: bx + bw / 2 - 1.2, y: top - capH - bh * 0.08, width: 2.4, height: bh * 0.08)))
+            }
+            windows(bx, top, bw, bh, light, every, seed)
+        }
+    }
+
+    func reflectSkyline(_ size: CGSize, _ ground: CGFloat, _ color: String, _ alt: String) {
+        for (index, tower) in towers().enumerated() {
+            let bw = size.width * max(0.02, tower.1 - 0.012)
+            let bh = size.height * tower.2 * 0.7
+            let bx = size.width * tower.0
+            context.setFillColor(paint(index % 2 == 0 ? color : alt))
+            context.fill(cg(CGRect(x: bx, y: ground, width: bw, height: bh)))
+        }
+    }
+
+    func windows(_ bx: CGFloat, _ by: CGFloat, _ bw: CGFloat, _ bh: CGFloat, _ light: String, _ every: Int, _ seed: Int) {
+        let gapX = max(5, bw * 0.16)
+        let gapY = max(6, gapX * 1.15)
+        let winW = max(1.4, gapX * 0.42)
+        let winH = winW * 1.25
+        var row = 0
+        var y = by + bh * 0.08
+        while y + winH < by + bh - 2 {
+            var col = 0
+            var x = bx + bw * 0.16
+            while x + winW < bx + bw * 0.88 {
+                if (col * 3 + row * 5 + seed) % every == 0 {
+                    context.setFillColor(paint(light, alpha: 0.92))
+                    context.fill(cg(CGRect(x: x, y: y, width: winW, height: winH)))
+                }
+                x += gapX
+                col += 1
+            }
+            y += gapY
+            row += 1
+        }
+    }
+
+    func hill(_ size: CGSize, _ base: CGFloat, _ amp: CGFloat, _ waves: CGFloat, _ phase: CGFloat, _ hex: String) {
+        let path = CGMutablePath()
+        let steps = 48
+        for step in 0...steps {
+            let t = CGFloat(step) / CGFloat(steps)
+            let point = cg(CGPoint(
+                x: size.width * t,
+                y: size.height * base + sin(t * waves * .pi * 2 + phase) * size.height * amp
+            ))
+            if step == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        path.addLine(to: cg(CGPoint(x: size.width, y: size.height)))
+        path.addLine(to: cg(CGPoint(x: 0, y: size.height)))
+        path.closeSubpath()
+        context.addPath(path)
+        context.setFillColor(paint(hex))
+        context.fillPath()
+    }
+
+    func band(_ size: CGSize, _ base: CGFloat, _ amp: CGFloat, _ waves: CGFloat, _ phase: CGFloat, _ hex: String, _ thickness: CGFloat, _ alpha: CGFloat) {
+        let path = CGMutablePath()
+        let steps = 48
+        for step in 0...steps {
+            let t = CGFloat(step) / CGFloat(steps)
+            let point = cg(CGPoint(
+                x: size.width * t,
+                y: size.height * base + sin(t * waves * .pi * 2 + phase) * size.height * amp
+            ))
+            if step == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        context.saveGState()
+        context.addPath(path)
+        context.setStrokeColor(paint(hex, alpha: alpha))
+        context.setLineWidth(size.height * thickness)
+        context.setLineCap(.round)
+        context.strokePath()
+        context.restoreGState()
     }
 
     func applyShadow(_ intensity: CGFloat) {
@@ -477,6 +696,20 @@ private struct Painter {
         }
         return value + "…"
     }
+}
+
+func renderSceneThumbnail(_ id: WallpaperID) -> NSImage? {
+    let width = 240
+    let height = 144
+    guard let context = CGContext(
+        data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+    let painter = Painter(context: context, height: CGFloat(height))
+    painter.drawWallpaper(id, CGSize(width: width, height: height))
+    guard let image = context.makeImage() else { return nil }
+    return NSImage(cgImage: image, size: NSSize(width: width, height: height))
 }
 
 private func displayName(_ filename: String) -> String {

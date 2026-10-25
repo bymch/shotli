@@ -41,6 +41,7 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - Import a PNG, JPEG, or WebP file, drop it on the window, or paste an image.
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
 - Presets set the background, padding, corner radius, shadow and frame together.
+- Backgrounds include flat colours, mixed gradients, city scenes (dusk, night, harbour, hills, aurora) and a soft mixed-colour wash, plus the simple patterns.
 - Draw with the tool bar along the bottom of the picture. The panel on the right is the look: background, frame, padding, corners and shadow. **Done** returns to your screenshots.
 - Pixelate and blur paint into the exported image. They are not a separate overlay.
 - Crop from the toolbar, then drag on the screenshot. Reset crop is in Layout.

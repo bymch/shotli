@@ -1,5 +1,6 @@
 import { annotationBounds, handlesFor, normalizeRect } from "./geometry";
 import { activeCrop, compositionOf, displayName } from "./layout";
+import { drawScene, isScene } from "./scenes";
 import type { Annotation, Background, Doc, Rect, ShapeAnnotation, WallpaperId } from "./types";
 
 export type RenderOptions = {
@@ -127,6 +128,10 @@ function drawBackground(ctx: CanvasRenderingContext2D, background: Background, w
   }
   if (background.id === "mesh") {
     drawMesh(ctx, width, height);
+    return;
+  }
+  if (isScene(background.id)) {
+    drawScene(ctx, background.id, width, height);
     return;
   }
   const pattern = wallpaperPattern(ctx, background.id);

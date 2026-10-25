@@ -26,6 +26,20 @@ export const GRADIENTS: { name: string; from: string; to: string; angle: number 
   { name: "Citrus", from: "#FEF3C7", to: "#FBCFE8", angle: 150 },
   { name: "Iris", from: "#3478F6", to: "#C4B5FD", angle: 135 },
   { name: "Ink", from: "#243044", to: "#111827", angle: 180 },
+  { name: "Ember", from: "#FB923C", to: "#7C3AED", angle: 150 },
+  { name: "Lagoon", from: "#22D3EE", to: "#6366F1", angle: 160 },
+  { name: "Flamingo", from: "#FB7185", to: "#FBBF24", angle: 140 },
+  { name: "Grove", from: "#34D399", to: "#0EA5E9", angle: 155 },
+  { name: "Plum", from: "#F472B6", to: "#312E81", angle: 165 },
+];
+
+export const SCENES: { id: WallpaperId; name: string }[] = [
+  { id: "dusk", name: "Dusk" },
+  { id: "night", name: "Night" },
+  { id: "harbour", name: "Harbour" },
+  { id: "hills", name: "Hills" },
+  { id: "aurora", name: "Aurora" },
+  { id: "sorbet", name: "Sorbet" },
 ];
 
 export const WALLPAPERS: { id: WallpaperId; name: string }[] = [
@@ -125,5 +139,17 @@ export function backgroundCss(background: Background) {
       return "radial-gradient(circle at 20% 20%, #fde2e4, transparent 45%), radial-gradient(circle at 80% 30%, #dbeafe, transparent 42%), radial-gradient(circle at 50% 80%, #d1fae5, transparent 40%), #f7f7f7";
     case "cross":
       return "linear-gradient(#dbe3f0 1px, transparent 1px), linear-gradient(90deg, #dbe3f0 1px, transparent 1px), #f4f7fb";
+    case "dusk":
+      return "linear-gradient(#ff8a5b, #f6b7c5 42%, #7c6bd4 72%, #1c1430)";
+    case "night":
+      return "linear-gradient(#070b18, #1a2744 55%, #070910)";
+    case "harbour":
+      return "linear-gradient(#f3c7a2, #8eadd4 40%, #245074 58%, #0e2438)";
+    case "hills":
+      return "linear-gradient(#ffd7c2, #f7a58a 40%, #8e5a78 70%, #3d2a3e)";
+    case "aurora":
+      return "linear-gradient(#07111f, #5eead4 40%, #a78bfa 62%, #071018)";
+    case "sorbet":
+      return "radial-gradient(circle at 16% 22%, #fb7185, transparent 42%), radial-gradient(circle at 80% 16%, #c4b5fd, transparent 40%), radial-gradient(circle at 58% 78%, #6ee7b7, transparent 42%), #fff6e8";
   }
 }
