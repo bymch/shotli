@@ -28,7 +28,7 @@ You can also open a PNG, JPEG, or WebP from Finder with Shotli, or drop it on th
 
 ## Updates
 
-From 0.2.2 onwards, **Check for Updates** in the menu bar downloads the new version and replaces the Shotli you already have. You don't delete the old app or drag a new disk image over it. Shotli quits, puts the new copy in place, and opens again.
+From 0.2.2 onwards, **Check for Updates…** downloads the new version and replaces the Shotli you already have. It is in the Shotli menu, next to About, and in the menu bar. You don't delete the old app or drag a new disk image over it. Shotli quits, puts the new copy in place, and opens again.
 
 0.2.2 is the last version you install by hand from the disk image. The copy you have before that doesn't know how to replace itself.
 
