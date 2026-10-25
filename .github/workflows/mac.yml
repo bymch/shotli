@@ -15,38 +15,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install
-        run: npm ci
-
-      - name: Build the Mac app
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npm run desktop:dist
-
-      - name: Name the download Shotli.dmg
-        run: |
-          dmg="$(find dist -name '*.dmg' -print -quit)"
-          zip="$(find dist -name '*.zip' -print -quit)"
-          test -n "$dmg"
-          cp "$dmg" dist/Shotli.dmg
-          if [ -n "$zip" ]; then cp "$zip" dist/Shotli-mac.zip; fi
+      - name: Build the native Mac app
+        run: bash scripts/build-mac.sh
 
       - name: Publish the download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="$(node -p "require('./package.json').version")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' macos/Info.plist)"
           tag="v${version}"
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then tag="${GITHUB_REF_NAME}"; version="${tag#v}"; fi
           notes=$(cat <<EOF
           Shotli ${version} for Mac.
 
-          Open the disk image and drag Shotli into Applications. The first time you launch it, macOS may say the developer cannot be verified. Control-click Shotli, choose Open, then choose Open again.
+          Open the disk image. Drag Shotli onto the Applications folder, then open it from Applications.
+
+          The first time you launch it, macOS may say the developer cannot be verified. Control-click Shotli, choose Open, then choose Open again.
 
           Images stay on your Mac.
           EOF
@@ -54,6 +38,4 @@ jobs:
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --title "Shotli ${version}" --notes "$notes" --latest
           fi
-          assets=(dist/Shotli.dmg)
-          if [ -f dist/Shotli-mac.zip ]; then assets+=(dist/Shotli-mac.zip); fi
-          gh release upload "$tag" "${assets[@]}" --clobber
+          gh release upload "$tag" dist/Shotli.dmg dist/Shotli-mac.zip --clobber
