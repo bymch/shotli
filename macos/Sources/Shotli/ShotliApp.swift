@@ -37,6 +37,8 @@ struct ShotliCommands: Commands {
                     ),
                 ])
             }
+            Divider()
+            Button("Check for Updates…") { AppUpdate.shared.check(interactive: true) }
         }
         CommandGroup(replacing: .newItem) {
             Button("Capture Full Screen") { ScreenCapture.shared.capture(.full) }
@@ -50,8 +52,6 @@ struct ShotliCommands: Commands {
                 .disabled(model.picture == nil)
             Divider()
             Button("Use Sample Screenshot") { model.useSample() }
-            Divider()
-            Button("Check for Updates…") { AppUpdate.shared.check(interactive: true) }
         }
         CommandGroup(replacing: .undoRedo) {
             Button("Undo") { model.undo() }
