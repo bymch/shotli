@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { backgroundCss, COLORS, FONT_SIZES, GRADIENTS, INK_COLORS, PRESETS, STROKE_WIDTHS, stylesMatch, WALLPAPERS } from "@/lib/presets";
 import type { Annotation, Brush, Doc, FrameStyle, Style, Tool } from "@/lib/types";
 import { Segmented, SliderField, Swatches } from "./ui";
@@ -40,7 +39,6 @@ export function Sidebar({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [backgroundOpen, setBackgroundOpen] = useState(false);
   if (!open) return null;
   const selected = doc.annotations.find((annotation) => annotation.id === doc.selectedId) ?? null;
   const redactionCount = doc.annotations.filter(
@@ -81,94 +79,55 @@ export function Sidebar({
           })}
         </div>
 
-        <div className="relative mt-4">
-          <button
-            type="button"
-            className="flex h-9 w-full items-center justify-between rounded-lg border border-line px-2.5 text-[13px] text-ink hover:bg-surface"
-            aria-expanded={backgroundOpen}
-            onClick={() => setBackgroundOpen((value) => !value)}
-          >
-            <span>Background</span>
-            <span className="flex items-center gap-2 text-[12px] text-muted">
-              <span
-                className="h-4 w-4 rounded border border-black/10"
-                style={{
-                  background: backgroundCss(doc.style.background),
-                  backgroundSize: doc.style.background.kind === "wallpaper" ? "6px 6px" : undefined,
-                }}
+        <div className="mt-4 text-[13px] font-semibold text-ink">Background</div>
+        <div className="mt-2 mb-1 text-[11px] text-muted">Colour</div>
+        <Swatches
+          label="Background colour"
+          colors={COLORS}
+          value={doc.style.background.kind === "color" ? doc.style.background.color : undefined}
+          onChange={(color) => onBackground({ kind: "color", color })}
+        />
+        <div className="mt-3 mb-1 text-[11px] text-muted">Gradient</div>
+        <div className="grid grid-cols-6 gap-1.5">
+          {GRADIENTS.map((gradient) => {
+            const active =
+              doc.style.background.kind === "gradient" &&
+              doc.style.background.from === gradient.from &&
+              doc.style.background.to === gradient.to;
+            return (
+              <button
+                key={gradient.name}
+                type="button"
+                aria-label={gradient.name}
+                aria-pressed={active}
+                title={gradient.name}
+                className={`h-8 rounded-md border ${active ? "border-accent" : "border-black/10"}`}
+                style={{ background: `linear-gradient(${gradient.angle}deg, ${gradient.from}, ${gradient.to})` }}
+                onClick={() => onBackground({ kind: "gradient", from: gradient.from, to: gradient.to, angle: gradient.angle })}
               />
-              {backgroundName(doc.style.background)}
-            </span>
-          </button>
-          {backgroundOpen ? (
-            <>
-              <button type="button" className="fixed inset-0 z-20 cursor-default" aria-label="Close background" onClick={() => setBackgroundOpen(false)} />
-              <div className="absolute right-0 bottom-[calc(100%+8px)] z-30 w-[280px] rounded-xl border border-black/10 bg-white p-3 shadow-[0_16px_40px_rgba(0,0,0,0.16)] min-[960px]:top-0 min-[960px]:right-[calc(100%+12px)] min-[960px]:bottom-auto">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[13px] font-semibold text-ink">Background</span>
-                  <button
-                    type="button"
-                    className="text-[12px] text-muted hover:text-ink"
-                    onClick={() => {
-                      onBackground({ kind: "color", color: "transparent" });
-                      setBackgroundOpen(false);
-                    }}
-                  >
-                    None
-                  </button>
-                </div>
-                <div className="mb-1 text-[11px] text-muted">Colour</div>
-                <Swatches
-                  label="Background colour"
-                  colors={COLORS}
-                  value={doc.style.background.kind === "color" ? doc.style.background.color : undefined}
-                  onChange={(color) => onBackground({ kind: "color", color })}
-                />
-                <div className="mt-3 mb-1 text-[11px] text-muted">Gradient</div>
-                <div className="grid grid-cols-6 gap-1.5">
-                  {GRADIENTS.map((gradient) => {
-                    const active =
-                      doc.style.background.kind === "gradient" &&
-                      doc.style.background.from === gradient.from &&
-                      doc.style.background.to === gradient.to;
-                    return (
-                      <button
-                        key={gradient.name}
-                        type="button"
-                        aria-label={gradient.name}
-                        aria-pressed={active}
-                        title={gradient.name}
-                        className={`h-8 rounded-md border ${active ? "border-accent" : "border-black/10"}`}
-                        style={{ background: `linear-gradient(${gradient.angle}deg, ${gradient.from}, ${gradient.to})` }}
-                        onClick={() => onBackground({ kind: "gradient", from: gradient.from, to: gradient.to, angle: gradient.angle })}
-                      />
-                    );
-                  })}
-                </div>
-                <div className="mt-3 mb-1 text-[11px] text-muted">Pattern</div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {WALLPAPERS.map((wallpaper) => {
-                    const active = doc.style.background.kind === "wallpaper" && doc.style.background.id === wallpaper.id;
-                    return (
-                      <button
-                        key={wallpaper.id}
-                        type="button"
-                        aria-pressed={active}
-                        className={`h-12 rounded-md border text-[10px] text-ink ${active ? "border-accent" : "border-black/10"}`}
-                        style={{
-                          background: backgroundCss({ kind: "wallpaper", id: wallpaper.id }),
-                          backgroundSize: "8px 8px",
-                        }}
-                        onClick={() => onBackground({ kind: "wallpaper", id: wallpaper.id })}
-                      >
-                        <span className="rounded bg-white/85 px-1 py-0.5">{wallpaper.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          ) : null}
+            );
+          })}
+        </div>
+        <div className="mt-3 mb-1 text-[11px] text-muted">Pattern</div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {WALLPAPERS.map((wallpaper) => {
+            const active = doc.style.background.kind === "wallpaper" && doc.style.background.id === wallpaper.id;
+            return (
+              <button
+                key={wallpaper.id}
+                type="button"
+                aria-pressed={active}
+                className={`h-12 rounded-md border text-[10px] text-ink ${active ? "border-accent" : "border-black/10"}`}
+                style={{
+                  background: backgroundCss({ kind: "wallpaper", id: wallpaper.id }),
+                  backgroundSize: "8px 8px",
+                }}
+                onClick={() => onBackground({ kind: "wallpaper", id: wallpaper.id })}
+              >
+                <span className="rounded bg-white/85 px-1 py-0.5">{wallpaper.name}</span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="mt-4 mb-1.5 text-[12px] text-ink">Frame</div>
@@ -328,12 +287,4 @@ export function Sidebar({
       </div>
     </aside>
   );
-}
-
-function backgroundName(background: Style["background"]) {
-  if (background.kind === "color") return background.color === "transparent" ? "None" : "Colour";
-  if (background.kind === "gradient") {
-    return GRADIENTS.find((item) => item.from === background.from && item.to === background.to)?.name ?? "Gradient";
-  }
-  return WALLPAPERS.find((item) => item.id === background.id)?.name ?? "Pattern";
 }
