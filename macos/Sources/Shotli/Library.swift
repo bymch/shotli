@@ -1,0 +1,315 @@
+import AppKit
+import Combine
+import ImageIO
+import SwiftUI
+
+enum LibrarySource: String, CaseIterable, Identifiable {
+    case recent, screenshots, desktop, pictures, shotli
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .recent: return "Recent"
+        case .screenshots: return "Screenshots"
+        case .desktop: return "Desktop"
+        case .pictures: return "Pictures"
+        case .shotli: return "Shotli"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .recent: return "clock"
+        case .screenshots: return "camera.viewfinder"
+        case .desktop: return "menubar.dock.rectangle"
+        case .pictures: return "photo.on.rectangle"
+        case .shotli: return "square.grid.2x2"
+        }
+    }
+}
+
+struct LibraryShot: Identifiable, Equatable {
+    var id: String
+    var url: URL
+    var name: String
+    var modified: Date
+}
+
+final class LibraryModel: ObservableObject {
+    static let shared = LibraryModel()
+    @Published var source: LibrarySource = .recent
+    @Published var shots: [LibraryShot] = []
+    @Published var thumbs: [String: NSImage] = [:]
+    @Published var message: String?
+
+    private var refreshToken = 0
+    private init() {}
+
+    func select(_ source: LibrarySource) {
+        self.source = source
+        refresh()
+    }
+
+    func refresh() {
+        refreshToken += 1
+        let token = refreshToken
+        let source = self.source
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = LibraryScan.collect(source)
+            DispatchQueue.main.async {
+                guard token == self.refreshToken else { return }
+                self.shots = result.shots
+                self.message = result.message
+                self.thumbs = self.thumbs.filter { key, _ in result.shots.contains { $0.id == key } }
+                self.loadThumbs(result.shots, token: token)
+            }
+        }
+    }
+
+    private func loadThumbs(_ shots: [LibraryShot], token: Int) {
+        DispatchQueue.global(qos: .utility).async {
+            for shot in shots {
+                guard token == self.refreshToken else { return }
+                let already = DispatchQueue.main.sync { self.thumbs[shot.id] != nil }
+                if already { continue }
+                guard let image = LibraryScan.thumbnail(shot.url) else { continue }
+                DispatchQueue.main.async {
+                    guard token == self.refreshToken else { return }
+                    self.thumbs[shot.id] = image
+                }
+            }
+        }
+    }
+}
+
+enum LibraryFolders {
+    static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
+    static var desktop: URL { home.appendingPathComponent("Desktop") }
+    static var pictures: URL { home.appendingPathComponent("Pictures") }
+    static var shotli: URL { pictures.appendingPathComponent("Shotli") }
+
+    static var screenshots: URL {
+        if let value = CFPreferencesCopyAppValue("location" as CFString, "com.apple.screencapture" as CFString) as? String,
+           !value.trimmingCharacters(in: .whitespaces).isEmpty {
+            return URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
+        }
+        let dedicated = pictures.appendingPathComponent("Screenshots")
+        if FileManager.default.fileExists(atPath: dedicated.path) { return dedicated }
+        return desktop
+    }
+
+    static func archive(_ url: URL) -> URL {
+        let folder = shotli
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        var dest = folder.appendingPathComponent("Shotli \(stamp).png")
+        var extra = 2
+        while FileManager.default.fileExists(atPath: dest.path) {
+            dest = folder.appendingPathComponent("Shotli \(stamp)-\(extra).png")
+            extra += 1
+        }
+        do {
+            try FileManager.default.copyItem(at: url, to: dest)
+            return dest
+        } catch {
+            return url
+        }
+    }
+}
+
+private enum LibraryScan {
+    struct Result {
+        var shots: [LibraryShot]
+        var message: String?
+    }
+
+    static func collect(_ source: LibrarySource) -> Result {
+        switch source {
+        case .recent:
+            let merged = (images(in: LibraryFolders.shotli) + images(in: LibraryFolders.screenshots) + images(in: LibraryFolders.desktop) + images(in: LibraryFolders.pictures))
+                .uniqued()
+                .filter { Date().timeIntervalSince($0.modified) < 60 * 60 * 24 * 30 }
+                .sorted { $0.modified > $1.modified }
+            return Result(shots: Array(merged.prefix(80)), message: merged.isEmpty ? "Nothing from the last 30 days. Captures you make from the menu bar land in Shotli." : nil)
+        case .screenshots:
+            return listed(LibraryFolders.screenshots, empty: "No screenshots in \(LibraryFolders.screenshots.lastPathComponent) yet.")
+        case .desktop:
+            return listed(LibraryFolders.desktop, empty: "No pictures on the Desktop.")
+        case .pictures:
+            return listed(LibraryFolders.pictures, empty: "No pictures in Pictures.")
+        case .shotli:
+            return listed(LibraryFolders.shotli, empty: "Captures from the Shotli menu are saved here.")
+        }
+    }
+
+    static func thumbnail(_ url: URL) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 360,
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+    }
+
+    private static func listed(_ folder: URL, empty: String) -> Result {
+        let shots = images(in: folder).sorted { $0.modified > $1.modified }
+        if shots.isEmpty, !FileManager.default.isReadableFile(atPath: folder.path), FileManager.default.fileExists(atPath: folder.path) {
+            return Result(shots: [], message: "Shotli can't read \(folder.lastPathComponent). Allow it in System Settings → Privacy & Security.")
+        }
+        return Result(shots: Array(shots.prefix(200)), message: shots.isEmpty ? empty : nil)
+    }
+
+    private static func images(in folder: URL) -> [LibraryShot] {
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .isRegularFileKey, .isHiddenKey]
+        guard let items = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else {
+            return []
+        }
+        let allowed: Set<String> = ["png", "jpg", "jpeg", "webp", "tif", "tiff", "heic"]
+        return items.compactMap { url in
+            guard allowed.contains(url.pathExtension.lowercased()) else { return nil }
+            let values = try? url.resourceValues(forKeys: Set(keys))
+            guard values?.isRegularFile == true, values?.isHidden != true else { return nil }
+            return LibraryShot(id: url.path, url: url, name: url.lastPathComponent, modified: values?.contentModificationDate ?? .distantPast)
+        }
+    }
+}
+
+private extension Array where Element == LibraryShot {
+    func uniqued() -> [LibraryShot] {
+        var seen = Set<String>()
+        return filter { seen.insert($0.id).inserted }
+    }
+}
+
+struct LibraryHome: View {
+    @ObservedObject private var library = LibraryModel.shared
+    var onOpen: () -> Void
+
+    private let columns = [GridItem(.adaptive(minimum: 168, maximum: 240), spacing: 14)]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            sidebar
+            Divider()
+            content
+        }
+        .onAppear { library.refresh() }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Library")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.top, 16)
+                .padding(.bottom, 6)
+            ForEach(LibrarySource.allCases) { source in
+                Button(action: { library.select(source) }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: source.symbol)
+                            .frame(width: 16)
+                        Text(source.title)
+                            .font(.system(size: 13))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .foregroundColor(library.source == source ? .white : Color(nsColor: NSColor(hex: "#222222")!))
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(library.source == source ? Color(nsColor: NSColor(hex: "#3478F6")!) : Color.clear)
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 8)
+            }
+            Spacer()
+            Button(action: onOpen) {
+                Label("Open a screenshot…", systemImage: "folder")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.plain)
+            .padding(14)
+        }
+        .frame(width: 220)
+        .background(Color.white)
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(library.source.title)
+                    .font(.system(size: 18, weight: .semibold))
+                Spacer()
+                Text(library.shots.isEmpty ? "" : "\(library.shots.count)")
+                    .foregroundColor(.secondary)
+                    .font(.system(size: 12))
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 18)
+            .padding(.bottom, 12)
+            ScrollView {
+                if library.shots.isEmpty {
+                    empty
+                        .padding(.horizontal, 22)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 14) {
+                        ForEach(library.shots) { shot in
+                            shotButton(shot)
+                        }
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 24)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)))
+    }
+
+    private func shotButton(_ shot: LibraryShot) -> some View {
+        Button(action: { EditorModel.shared.load(url: shot.url) }) {
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.white)
+                    if let image = library.thumbs[shot.id] {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .padding(8)
+                    }
+                }
+                .frame(height: 128)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.black.opacity(0.06), lineWidth: 1))
+                Text(shot.name)
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(nsColor: NSColor(hex: "#222222")!))
+                    .lineLimit(1)
+                Text(shot.modified, style: .relative)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.001)))
+        }
+        .buttonStyle(.plain)
+        .help(shot.name)
+    }
+
+    private var empty: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(library.message ?? "Nothing here yet.")
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+            Text("You can also drop a PNG, JPEG, or WebP onto this window.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.06), lineWidth: 1))
+    }
+}

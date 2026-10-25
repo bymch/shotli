@@ -17,6 +17,7 @@ import {
   type Style,
   type Tool,
 } from "@/lib/types";
+import { LibraryHome, type LibrarySourceId, type RecentShot } from "./library-home";
 import { Sidebar } from "./sidebar";
 import { Toolbar } from "./toolbar";
 import { Workspace } from "./workspace";
@@ -64,6 +65,8 @@ export function Editor() {
   const [fileDrag, setFileDrag] = useState(false);
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
   const [imageKey, setImageKey] = useState(0);
+  const [librarySource, setLibrarySource] = useState<LibrarySourceId>("recent");
+  const [recents, setRecents] = useState<RecentShot[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const history = useRef<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
   const gesture = useRef<Snapshot | null>(null);
@@ -143,6 +146,45 @@ export function Editor() {
         ? "Scaled to 4096px on the long edge so editing stays responsive. Export uses this size."
         : null,
     );
+    remember(file);
+  }
+
+  function remember(file: File) {
+    if (file.name === "sample-screenshot.png") return;
+    const previewUrl = URL.createObjectURL(file);
+    setRecents((current) => {
+      const duplicate = current.find((shot) => shot.name === file.name && shot.file.size === file.size && shot.file.lastModified === file.lastModified);
+      if (duplicate) URL.revokeObjectURL(previewUrl);
+      const kept = duplicate ? current.filter((shot) => shot.id !== duplicate.id) : current;
+      const next = [
+        {
+          id: `${file.name}-${file.size}-${file.lastModified}-${Date.now()}`,
+          name: file.name,
+          file: duplicate?.file ?? file,
+          previewUrl: duplicate?.previewUrl ?? previewUrl,
+          added: Date.now(),
+        },
+        ...kept,
+      ];
+      return next.slice(0, 24);
+    });
+  }
+
+  function showLibrary() {
+    docRef.current.image?.bitmap.close();
+    history.current = { past: [], future: [] };
+    gesture.current = null;
+    setImageKey((key) => key + 1);
+    syncHistory();
+    setDocument({
+      image: null,
+      crop: null,
+      style: docRef.current.style,
+      annotations: [],
+      selectedId: null,
+    });
+    setNotice(null);
+    setLibrarySource("recent");
   }
 
   useEffect(() => {
@@ -378,26 +420,37 @@ export function Editor() {
           onRedo={redo}
           onExport={() => void exportPng()}
           onToggleSidebar={() => setSidebarOpen((open) => !open)}
+          onLibrary={showLibrary}
           fileRef={fileRef}
         />
-        <Workspace
-          key={imageKey}
-          doc={doc}
-          tool={tool}
-          brush={brush}
-          notice={notice}
-          fileDrag={fileDrag}
-          onNotice={setNotice}
-          onCommit={(next, before) => {
-            setDocument(next);
-            if (pictureChanged(before, snapshot(next))) pushHistory(before);
-          }}
-          onLive={setDocument}
-          onSample={() => void loadSample()}
-          onOpenFile={() => fileRef.current?.click()}
-        />
+        {doc.image ? (
+          <Workspace
+            key={imageKey}
+            doc={doc}
+            tool={tool}
+            brush={brush}
+            notice={notice}
+            fileDrag={fileDrag}
+            onNotice={setNotice}
+            onCommit={(next, before) => {
+              setDocument(next);
+              if (pictureChanged(before, snapshot(next))) pushHistory(before);
+            }}
+            onLive={setDocument}
+          />
+        ) : (
+          <LibraryHome
+            source={librarySource}
+            recents={recents}
+            fileDrag={fileDrag}
+            onSource={setLibrarySource}
+            onOpen={() => fileRef.current?.click()}
+            onOpenRecent={(shot) => void importFile(shot.file)}
+            onSample={() => void loadSample()}
+          />
+        )}
       </div>
-      {sidebarOpen ? (
+      {sidebarOpen && doc.image ? (
         <button
           type="button"
           className="absolute top-12 right-0 bottom-0 left-0 z-10 bg-black/10 min-[960px]:hidden"
@@ -405,6 +458,7 @@ export function Editor() {
           onClick={() => setSidebarOpen(false)}
         />
       ) : null}
+      {doc.image ? (
       <Sidebar
         open={sidebarOpen}
         doc={doc}
@@ -423,6 +477,7 @@ export function Editor() {
         onResetCrop={resetCrop}
         onClose={() => setSidebarOpen(false)}
       />
+      ) : null}
     </div>
   );
 }

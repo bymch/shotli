@@ -50,6 +50,8 @@ struct ShotliCommands: Commands {
                 .disabled(model.picture == nil)
             Divider()
             Button("Use Sample Screenshot") { model.useSample() }
+            Divider()
+            Button("Check for Updates…") { AppUpdate.shared.check(interactive: true) }
         }
         CommandGroup(replacing: .undoRedo) {
             Button("Undo") { model.undo() }
@@ -77,6 +79,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         installStatusItem()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            AppUpdate.shared.checkOnLaunch()
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             for window in NSApp.windows where window.canBecomeMain {
                 window.isReleasedWhenClosed = false
@@ -140,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem("Open Screenshot…", #selector(openScreenshot)))
         menu.addItem(menuItem("Open Screenshots Folder", #selector(openScreenshotsFolder)))
         menu.addItem(.separator())
+        menu.addItem(menuItem("Check for Updates…", #selector(checkForUpdates)))
         menu.addItem(menuItem("Quit Shotli", #selector(quit)))
         item.menu = menu
         statusItem = item
@@ -165,8 +171,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openScreenshotsFolder() {
-        guard let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first else { return }
-        NSWorkspace.shared.open(pictures)
+        let folder = LibraryFolders.screenshots
+        try? FileManager.default.createDirectory(at: LibraryFolders.shotli, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(FileManager.default.fileExists(atPath: folder.path) ? folder : LibraryFolders.shotli)
+    }
+
+    @objc private func checkForUpdates() {
+        AppUpdate.shared.check(interactive: true)
     }
 
     @objc private func quit() {

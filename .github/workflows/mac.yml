@@ -28,9 +28,11 @@ jobs:
           notes=$(cat <<EOF
           Shotli ${version} for Mac.
 
-          Open the disk image. Drag Shotli onto the Applications folder, then open it from Applications.
+          If you already have Shotli 0.2.2 or newer, choose Check for Updates in the menu bar. Shotli downloads the new version and replaces itself.
 
-          The first time you launch it, macOS may say the developer cannot be verified. Control-click Shotli, choose Open, then choose Open again.
+          Otherwise, open the disk image, drag Shotli onto the Applications folder, then open it from Applications. This is the last version you need to install that way.
+
+          The first time you launch it, macOS may say the developer cannot be verified. Control-click Shotli, choose Open, then choose Open again. An update can ask for that again.
 
           Images stay on your Mac.
           EOF

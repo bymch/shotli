@@ -25,6 +25,7 @@ export function Toolbar({
   onRedo,
   onExport,
   onToggleSidebar,
+  onLibrary,
   fileRef,
 }: {
   toolIsCrop: boolean;
@@ -40,6 +41,7 @@ export function Toolbar({
   onRedo: () => void;
   onExport: () => void;
   onToggleSidebar: () => void;
+  onLibrary: () => void;
   fileRef: RefObject<HTMLInputElement | null>;
 }) {
   const macApp = useSyncExternalStore(
@@ -77,9 +79,19 @@ export function Toolbar({
         onSample={onSample}
       />
 
+      {canExport ? (
+        <>
+          <Divider />
+          <ToolButton label="Library" title="Back to your screenshots" onClick={onLibrary}>
+            <IconLibrary />
+            <span className="hidden sm:inline">Library</span>
+          </ToolButton>
+        </>
+      ) : null}
+
       <Divider />
 
-      <ToolButton label="Crop" title="Crop the screenshot" pressed={toolIsCrop} onClick={onCrop}>
+      <ToolButton label="Crop" title="Crop the screenshot" pressed={toolIsCrop} disabled={!canExport} onClick={onCrop}>
         <IconCrop />
         <span className="hidden sm:inline">Crop</span>
       </ToolButton>
@@ -109,6 +121,7 @@ export function Toolbar({
         label={sidebarOpen ? "Hide properties" : "Show properties"}
         title={sidebarOpen ? "Hide properties" : "Show properties"}
         pressed={sidebarOpen}
+        disabled={!canExport}
         onClick={onToggleSidebar}
       >
         <IconSidebar />
@@ -144,6 +157,17 @@ function ToolButton({
     >
       {children}
     </button>
+  );
+}
+
+function IconLibrary() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.4" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.4" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.4" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.4" />
+    </svg>
   );
 }
 

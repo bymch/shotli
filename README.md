@@ -24,10 +24,19 @@ The first time you capture, macOS asks for Screen Recording permission. Allow Sh
 
 The first time you open it, macOS may say the developer cannot be verified. Control-click Shotli, choose **Open**, then choose **Open** again. I don't have an Apple developer account yet, so the app isn't notarized.
 
-You can also open a PNG, JPEG, or WebP from Finder with Shotli, or drop it on the window. If you just want to try the tools, choose **Use a sample**.
+You can also open a PNG, JPEG, or WebP from Finder with Shotli, or drop it on the window. The home screen lists recent pictures from the Desktop, Pictures, the Screenshots folder, and `Pictures/Shotli`. Captures from the menu bar are saved into `Pictures/Shotli`. If you just want to try the tools, open **Sample**.
+
+## Updates
+
+From 0.2.2 onwards, **Check for Updates** in the menu bar downloads the new version and replaces the Shotli you already have. You don't delete the old app or drag a new disk image over it. Shotli quits, puts the new copy in place, and opens again.
+
+0.2.2 is the last version you install by hand from the disk image. The copy you have before that doesn't know how to replace itself.
+
+macOS may ask you to Control-click and Open again after an update, because the app still isn't notarized. If Shotli is running from the disk image rather than Applications, the update is installed into Applications.
 
 ## What you can do
 
+- Browse Recent, Screenshots, Desktop, Pictures, and Shotli from the library on the left. **Library** in the toolbar comes back to that list.
 - Capture the full screen, one window, or a dragged area from the menu bar.
 - Import a PNG, JPEG, or WebP file, drop it on the window, or paste an image.
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
