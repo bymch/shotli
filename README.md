@@ -36,7 +36,7 @@ macOS may ask you to Control-click and Open again after an update, because the a
 
 ## What you can do
 
-- Browse Recent, Screenshots, Desktop, Pictures, and Shotli from the library on the left. **Library** in the toolbar comes back to that list.
+- Browse Recent, Screenshots, Desktop, Pictures, and Shotli from the library on the left. **Library** at the top of Properties, in the toolbar, or in the View menu (⌘L) comes back to that list.
 - Capture the full screen, one window, or a dragged area from the menu bar.
 - Import a PNG, JPEG, or WebP file, drop it on the window, or paste an image.
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
@@ -56,6 +56,7 @@ Images larger than 25 MB are refused. Images longer than 4096px on the long edge
 | Redo | ⌘ Shift Z, or ⌘ Y |
 | Export | ⌘ E or ⌘ S |
 | Import | ⌘ O |
+| Library | ⌘ L |
 | Paste image | ⌘ V |
 | Fit | ⌘ 0 |
 | Zoom | Pinch, or ⌘ scroll |

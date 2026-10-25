@@ -476,6 +476,7 @@ export function Editor() {
         onRemoveRedactions={removeRedactions}
         onResetCrop={resetCrop}
         onClose={() => setSidebarOpen(false)}
+        onLibrary={showLibrary}
       />
       ) : null}
     </div>
