@@ -25,16 +25,25 @@ struct ShotliCommands: Commands {
         CommandGroup(replacing: .appInfo) {
             Button("About Shotli") {
                 let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.1"
+                let credits = NSMutableAttributedString(
+                    string: "Make every screenshot look better.\n© 2026 ",
+                    attributes: [
+                        .font: NSFont.systemFont(ofSize: 11),
+                        .foregroundColor: NSColor.secondaryLabelColor,
+                    ]
+                )
+                credits.append(NSAttributedString(
+                    string: "BM.studio",
+                    attributes: [
+                        .font: NSFont.systemFont(ofSize: 11),
+                        .link: URL(string: "https://bm.studio")!,
+                        .foregroundColor: NSColor.linkColor,
+                    ]
+                ))
                 NSApp.orderFrontStandardAboutPanel(options: [
                     .applicationName: "Shotli",
                     .applicationVersion: version,
-                    .credits: NSAttributedString(
-                        string: "Make every screenshot look better.\n© 2026 Michael",
-                        attributes: [
-                            .font: NSFont.systemFont(ofSize: 11),
-                            .foregroundColor: NSColor.secondaryLabelColor,
-                        ]
-                    ),
+                    .credits: credits,
                 ])
             }
             Divider()
