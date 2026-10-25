@@ -43,7 +43,6 @@ final class EditorCanvas: NSView {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
-    override var focusRingType: NSFocusRingType { .none }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -52,6 +51,7 @@ final class EditorCanvas: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        focusRingType = .none
         registerForDraggedTypes([.fileURL])
     }
 
@@ -95,7 +95,7 @@ final class EditorCanvas: NSView {
             if let selected = model.selected, let handle = hitHandle(selected, imagePoint, slop: slop) {
                 model.beginGesture()
                 drag = .resize(selected, handle, imagePoint)
-            } else if let hit = hitTest(model.annotations, imagePoint, slop: slop) {
+            } else if let hit = hitAnnotation(model.annotations, imagePoint, slop: slop) {
                 model.selectedID = hit.id
                 model.beginGesture()
                 drag = .move(hit, imagePoint)
