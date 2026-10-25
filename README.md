@@ -4,11 +4,23 @@ Make every screenshot look better.
 
 Hi, I'm Michael. Shotli is my first open source project.
 
-I take a lot of screenshots, and I kept wanting the same few things before I shared one: a calmer background, a frame, a shadow, a mark or two, then a PNG. The tools I already had were either a full design app or a site that uploaded the picture. I built Shotli so that work can happen in the browser, on the machine the screenshot is already on.
+I take a lot of screenshots, and I kept wanting the same few things before I shared one: a calmer background, a frame, a shadow, a mark or two, then a PNG. Shotli is the Mac app I wanted for that. You download it, open it, and the picture stays on your Mac.
 
-It is a small editor on purpose. Import an image, place it on a canvas, adjust the background, padding, frame and shadow, annotate or redact it, and export a PNG. Nothing is uploaded. There is no account.
+This is the first project I have put out in public, so the rough edges are mine. Issues and pull requests are welcome.
 
-This is the first project I have put out in public, so the rough edges are mine. Issues and pull requests are welcome. If something feels confusing, that is useful to hear.
+## Download
+
+**[Download Shotli for Mac](https://github.com/bymch/shotli/releases/latest/download/Shotli.dmg)**
+
+Requires macOS 12 or newer. One download works on Apple silicon and Intel.
+
+1. Open `Shotli.dmg`.
+2. Drag **Shotli** into your Applications folder.
+3. Launch Shotli.
+
+The first time you open it, macOS may say the developer cannot be verified. Control-click Shotli, choose **Open**, then choose **Open** again. I don't have an Apple developer account yet, so the app isn't notarized.
+
+You can also open a PNG, JPEG, or WebP from Finder with Shotli, or drop it on the window.
 
 ## What you can do
 
@@ -18,7 +30,7 @@ This is the first project I have put out in public, so the rough edges are mine.
 - Draw with the tools in the properties sidebar. Select an object to move, resize or delete it.
 - Pixelate and blur paint into the exported image. They are not a separate overlay.
 - Crop from the toolbar, then drag on the screenshot. Reset crop is in Layout.
-- Export PNG downloads the composition only: background, frame, shadow, annotations and redactions. The editor grid is not included.
+- **Export PNG** asks where to save. The file is the composition only: background, frame, shadow, annotations and redactions. The editor grid is not included.
 
 Images larger than 25 MB are refused. Images longer than 4096px on the long edge are scaled down before editing, and export uses that scaled size.
 
@@ -26,12 +38,12 @@ Images larger than 25 MB are refused. Images longer than 4096px on the long edge
 
 | Action | Shortcut |
 | --- | --- |
-| Undo | Ctrl/⌘ Z |
-| Redo | Ctrl/⌘ Shift Z, or Ctrl/⌘ Y |
-| Export | Ctrl/⌘ E or Ctrl/⌘ S |
-| Import | Ctrl/⌘ O |
-| Fit | Ctrl/⌘ 0 |
-| Zoom | Ctrl/⌘ + or −, or pinch/ctrl-scroll |
+| Undo | ⌘ Z |
+| Redo | ⌘ Shift Z, or ⌘ Y |
+| Export | ⌘ E or ⌘ S |
+| Import | ⌘ O |
+| Fit | ⌘ 0 |
+| Zoom | ⌘ + or −, or pinch |
 | Pan | Space-drag, middle-drag, or scroll |
 | Delete | Delete or Backspace |
 | Tools | V select, R rectangle, F fill, C circle, L line, A arrow, D draw, T text, N number, P pixelate, B blur, K crop |
@@ -47,18 +59,26 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000) while working on the editor.
+
+To open the desktop shell locally:
+
+```bash
+npm run desktop:export
+npm run desktop
+```
+
+A Mac disk image is built on GitHub when a release runs. See `.github/workflows/mac.yml`.
 
 ```bash
 npm run lint
 npm run typecheck
 npm run build
-npm start
 ```
 
 ## Stack
 
-Next.js, React, TypeScript and Tailwind CSS. The canvas is drawn with the browser Canvas 2D API. There is no database or API key.
+The window is an Electron app. The editor is Next.js, React, TypeScript and Tailwind CSS, drawn with the browser Canvas 2D API. There is no account, database or API key.
 
 ## Licence
 
