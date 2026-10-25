@@ -233,17 +233,18 @@ export function Editor() {
       const key = event.key.toLowerCase();
       if (meta && key === "s") {
         event.preventDefault();
-        if (!isTyping(event.target)) void exportPng();
+        if (window.shotli || isTyping(event.target)) return;
+        void exportPng();
         return;
       }
       if (meta && key === "e") {
         event.preventDefault();
-        void exportPng();
+        if (!window.shotli) void exportPng();
         return;
       }
       if (meta && key === "o") {
         event.preventDefault();
-        fileRef.current?.click();
+        if (!window.shotli) fileRef.current?.click();
         return;
       }
       if (isTyping(event.target)) return;
@@ -273,6 +274,23 @@ export function Editor() {
     return () => window.removeEventListener("keydown", onKeyDown);
     // Handlers read the latest document through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const desktop = window.shotli;
+    if (!desktop) return;
+    const stopOpen = desktop.onOpenFiles((files) => {
+      const opened = files[0];
+      if (!opened) return;
+      importRef.current(new File([opened.bytes], opened.name, { type: opened.type }));
+    });
+    const stopExport = desktop.onExport(() => {
+      void exportPng();
+    });
+    return () => {
+      stopOpen();
+      stopExport();
+    };
   }, []);
 
   useEffect(() => {

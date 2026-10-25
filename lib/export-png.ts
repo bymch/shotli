@@ -1,3 +1,4 @@
+import { desktopApi } from "./desktop";
 import { compositionOf } from "./layout";
 import { renderComposition } from "./render";
 import type { Doc } from "./types";
@@ -21,6 +22,12 @@ export async function exportCompositionPng(doc: Doc, fontFamily: string) {
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "") || "screenshot";
   const filename = `shotli-${base}.png`;
+  const desktop = desktopApi();
+  if (desktop) {
+    const bytes = await blob.arrayBuffer();
+    await desktop.savePng(bytes, filename);
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

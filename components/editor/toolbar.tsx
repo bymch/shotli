@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode, RefObject } from "react";
+import { useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import {
   IconCrop,
   IconDownload,
@@ -38,8 +38,16 @@ export function Toolbar({
   onToggleSidebar: () => void;
   fileRef: RefObject<HTMLInputElement | null>;
 }) {
+  const macApp = useSyncExternalStore(
+    () => () => {},
+    () => window.shotli?.platform === "darwin",
+    () => false,
+  );
+
   return (
-    <header className="relative z-30 flex h-12 shrink-0 items-center gap-1 border-b border-line bg-panel px-2.5">
+    <header
+      className={`relative z-30 flex h-12 shrink-0 items-center gap-1 border-b border-line bg-panel px-2.5 ${macApp ? "pl-[88px]" : ""}`}
+    >
       <div className="flex min-w-0 items-center gap-2 pr-2">
         <ShotliMark />
         <div className="min-w-0 leading-tight">

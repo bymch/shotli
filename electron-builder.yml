@@ -1,0 +1,49 @@
+appId: co.uk.bymichael.shotli
+productName: Shotli
+copyright: Copyright © 2026 Michael
+asar: false
+directories:
+  output: dist
+files:
+  - package.json
+  - desktop/**/*
+  - out/**/*
+mac:
+  category: public.app-category.graphics
+  icon: desktop/icon.png
+  minimumSystemVersion: "12.0"
+  identity: null
+  target:
+    - target: dmg
+      arch:
+        - universal
+    - target: zip
+      arch:
+        - universal
+dmg:
+  title: Shotli
+  contents:
+    - x: 180
+      y: 170
+      type: file
+    - x: 420
+      y: 170
+      type: link
+      path: /Applications
+fileAssociations:
+  - ext: png
+    name: PNG image
+    role: Editor
+    mimeType: image/png
+  - ext: jpg
+    name: JPEG image
+    role: Editor
+    mimeType: image/jpeg
+  - ext: jpeg
+    name: JPEG image
+    role: Editor
+    mimeType: image/jpeg
+  - ext: webp
+    name: WebP image
+    role: Editor
+    mimeType: image/webp
