@@ -12,15 +12,15 @@ This is the first project I have put out in public, so the rough edges are mine.
 
 **[Download Shotli for Mac](https://github.com/bymch/shotli/releases/latest/download/Shotli.dmg)**
 
-Requires macOS 12 or newer. One download works on Apple silicon and Intel.
+Requires macOS 12 or newer. One download works on Apple silicon and Intel. The app is native Swift, so the disk image is the app itself rather than a bundled browser.
 
 1. Open `Shotli.dmg`.
-2. Drag **Shotli** into your Applications folder.
-3. Launch Shotli.
+2. Drag **Shotli** onto the Applications folder in that window.
+3. Open Shotli from Applications.
 
 The first time you open it, macOS may say the developer cannot be verified. Control-click Shotli, choose **Open**, then choose **Open** again. I don't have an Apple developer account yet, so the app isn't notarized.
 
-You can also open a PNG, JPEG, or WebP from Finder with Shotli, or drop it on the window.
+You can also open a PNG, JPEG, or WebP from Finder with Shotli, or drop it on the window. If you just want to try the tools, choose **Use a sample**.
 
 ## What you can do
 
@@ -42,8 +42,9 @@ Images larger than 25 MB are refused. Images longer than 4096px on the long edge
 | Redo | ⌘ Shift Z, or ⌘ Y |
 | Export | ⌘ E or ⌘ S |
 | Import | ⌘ O |
+| Paste image | ⌘ V |
 | Fit | ⌘ 0 |
-| Zoom | ⌘ + or −, or pinch |
+| Zoom | Pinch, or ⌘ scroll |
 | Pan | Space-drag, middle-drag, or scroll |
 | Delete | Delete or Backspace |
 | Tools | V select, R rectangle, F fill, C circle, L line, A arrow, D draw, T text, N number, P pixelate, B blur, K crop |
@@ -52,23 +53,23 @@ Hold Shift while drawing a line, arrow, rectangle or circle to constrain it.
 
 ## Develop
 
-Requires Node.js 20 or newer.
+The Mac app is in `macos/Sources/Shotli`. On a Mac with Xcode:
+
+```bash
+bash scripts/build-mac.sh
+open dist/Shotli.dmg
+```
+
+That compiles a universal binary, signs it just enough for Apple silicon to launch it, and builds the disk image. There is no Apple notarization step.
+
+The browser editor is still in this repo. It is useful for trying the layout without Xcode:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) while working on the editor.
-
-To open the desktop shell locally:
-
-```bash
-npm run desktop:export
-npm run desktop
-```
-
-A Mac disk image is built on GitHub when a release runs. See `.github/workflows/mac.yml`.
+Open [http://localhost:3000](http://localhost:3000). The downloadable app is the Swift one.
 
 ```bash
 npm run lint
@@ -76,9 +77,11 @@ npm run typecheck
 npm run build
 ```
 
+A Mac disk image is built on GitHub when a release runs. See `.github/workflows/mac.yml`.
+
 ## Stack
 
-The window is an Electron app. The editor is Next.js, React, TypeScript and Tailwind CSS, drawn with the browser Canvas 2D API. There is no account, database or API key.
+The Mac app is Swift and SwiftUI, drawn with Core Graphics. The browser editor is Next.js, React, TypeScript and Tailwind CSS. There is no account, database or API key.
 
 ## Licence
 
