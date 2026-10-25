@@ -18,12 +18,17 @@ Requires macOS 12 or newer. One download works on Apple silicon and Intel. The a
 2. Drag **Shotli** onto the Applications folder in that window.
 3. Open Shotli from Applications.
 
+Shotli stays in the menu bar. Click the viewfinder and choose **Capture Full Screen**, **Capture Window**, or **Capture Area**. The picture opens in Shotli. Closing the window leaves the menu bar item in place. Quit is in that menu.
+
+The first time you capture, macOS asks for Screen Recording permission. Allow Shotli in System Settings, then capture again.
+
 The first time you open it, macOS may say the developer cannot be verified. Control-click Shotli, choose **Open**, then choose **Open** again. I don't have an Apple developer account yet, so the app isn't notarized.
 
 You can also open a PNG, JPEG, or WebP from Finder with Shotli, or drop it on the window. If you just want to try the tools, choose **Use a sample**.
 
 ## What you can do
 
+- Capture the full screen, one window, or a dragged area from the menu bar.
 - Import a PNG, JPEG, or WebP file, drop it on the window, or paste an image.
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
 - Presets set the background, padding, corner radius, shadow and frame together.

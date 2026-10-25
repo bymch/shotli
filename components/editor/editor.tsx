@@ -151,6 +151,37 @@ export function Editor() {
     };
   });
 
+  async function captureScreen() {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      video.muted = true;
+      await video.play();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext("2d");
+      if (!context || canvas.width < 2 || canvas.height < 2) {
+        stream.getTracks().forEach((track) => track.stop());
+        setNotice("Couldn't capture the screen.");
+        return;
+      }
+      context.drawImage(video, 0, 0);
+      stream.getTracks().forEach((track) => track.stop());
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) {
+        setNotice("Couldn't capture the screen.");
+        return;
+      }
+      await importFile(new File([blob], "Screenshot.png", { type: "image/png" }));
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotAllowedError") return;
+      setNotice("Couldn't capture the screen.");
+    }
+  }
+
   async function loadSample() {
     try {
       replaceImage(await createSampleImage(), null);
@@ -340,6 +371,8 @@ export function Editor() {
           canExport={Boolean(doc.image)}
           sidebarOpen={sidebarOpen}
           onFile={(file) => void importFile(file)}
+          onCapture={() => void captureScreen()}
+          onSample={() => void loadSample()}
           onCrop={() => setTool((current) => (current === "crop" ? "select" : "crop"))}
           onUndo={undo}
           onRedo={redo}

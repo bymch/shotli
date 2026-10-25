@@ -24,9 +24,10 @@ struct ShotliCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("About Shotli") {
+                let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.1"
                 NSApp.orderFrontStandardAboutPanel(options: [
                     .applicationName: "Shotli",
-                    .applicationVersion: "0.2.0",
+                    .applicationVersion: version,
                     .credits: NSAttributedString(
                         string: "Make every screenshot look better.\n© 2026 Michael",
                         attributes: [
@@ -38,6 +39,10 @@ struct ShotliCommands: Commands {
             }
         }
         CommandGroup(replacing: .newItem) {
+            Button("Capture Full Screen") { ScreenCapture.shared.capture(.full) }
+            Button("Capture Window") { ScreenCapture.shared.capture(.window) }
+            Button("Capture Area") { ScreenCapture.shared.capture(.area) }
+            Divider()
             Button("Open…") { model.openPanel() }
                 .keyboardShortcut("o", modifiers: .command)
             Button("Export PNG") { model.exportPNG() }
@@ -67,9 +72,17 @@ struct ShotliCommands: Commands {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: Any?
+    private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        installStatusItem()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            for window in NSApp.windows where window.canBecomeMain {
+                window.isReleasedWhenClosed = false
+                window.delegate = WindowKeeper.shared
+            }
+        }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard event.modifierFlags.contains(.command) else { return event }
             if event.modifierFlags.contains(.shift) || event.modifierFlags.contains(.option) { return event }
@@ -102,7 +115,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        ScreenCapture.shared.revealEditor()
+        return true
+    }
+
+    private func installStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = item.button {
+            let image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Shotli")
+            image?.isTemplate = true
+            image?.size = NSSize(width: 16, height: 16)
+            button.image = image
+            button.toolTip = "Shotli"
+        }
+        let menu = NSMenu()
+        menu.addItem(menuItem("Capture Full Screen", #selector(captureFull)))
+        menu.addItem(menuItem("Capture Window", #selector(captureWindow)))
+        menu.addItem(menuItem("Capture Area", #selector(captureArea)))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Open Shotli", #selector(openEditor)))
+        menu.addItem(menuItem("Open Screenshot…", #selector(openScreenshot)))
+        menu.addItem(menuItem("Open Screenshots Folder", #selector(openScreenshotsFolder)))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Quit Shotli", #selector(quit)))
+        item.menu = menu
+        statusItem = item
+    }
+
+    private func menuItem(_ title: String, _ action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        return item
+    }
+
+    @objc private func captureFull() { ScreenCapture.shared.capture(.full) }
+    @objc private func captureWindow() { ScreenCapture.shared.capture(.window) }
+    @objc private func captureArea() { ScreenCapture.shared.capture(.area) }
+
+    @objc private func openEditor() {
+        ScreenCapture.shared.revealEditor()
+    }
+
+    @objc private func openScreenshot() {
+        ScreenCapture.shared.revealEditor()
+        EditorModel.shared.openPanel()
+    }
+
+    @objc private func openScreenshotsFolder() {
+        guard let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first else { return }
+        NSWorkspace.shared.open(pictures)
+    }
+
+    @objc private func quit() {
+        NSApp.terminate(nil)
+    }
 }
 
 private func showShortcuts() {

@@ -19,6 +19,7 @@ import { activeCrop, compositionOf } from "@/lib/layout";
 import { renderComposition } from "@/lib/render";
 import type { Annotation, Brush, Doc, Handle, Rect, Tool } from "@/lib/types";
 import { pictureChanged, snapshot, type Snapshot } from "@/lib/types";
+import { ShotliMark } from "./icons";
 
 type View = { mode: "fit" | "manual"; zoom: number; panX: number; panY: number };
 
@@ -591,30 +592,44 @@ export function Workspace({
 
       {!doc.image ? (
         <div className="flex h-full items-center justify-center px-6">
-          <div className="w-full max-w-md text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-line bg-panel shadow-sm">
-              <span className="text-[22px] leading-none text-muted">+</span>
+          <div className="w-[340px] rounded-2xl border border-black/5 bg-white px-6 py-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.08)]">
+            <div className="mx-auto mb-3 flex justify-center">
+              <ShotliMark size={44} />
             </div>
             <h2 className="text-[15px] font-semibold text-ink">Drop a screenshot</h2>
-            <p className="mx-auto mt-1.5 max-w-sm text-[13px] leading-5 text-muted">
-              PNG, JPEG, or WebP. Paste from the clipboard, or choose a file. Nothing is uploaded.
+            <p className="mx-auto mt-1 max-w-[260px] text-[12px] leading-5 text-muted">
+              PNG, JPEG, or WebP. The picture stays on this Mac.
             </p>
             <div className="mt-4 flex items-center justify-center gap-2">
               <button
                 type="button"
-                className="h-8 rounded-md bg-accent px-3 text-[13px] font-medium text-white hover:bg-[#2d6ae0]"
+                className="h-7 rounded-md border border-line bg-white px-2.5 text-[12px] text-ink hover:bg-surface"
                 onClick={onOpenFile}
               >
-                Import screenshot
+                Open a screenshot
               </button>
               <button
                 type="button"
-                className="h-8 rounded-md border border-line bg-panel px-3 text-[13px] text-ink hover:bg-surface"
+                className="h-7 rounded-md border border-line bg-white px-2.5 text-[12px] text-ink hover:bg-surface"
                 onClick={onSample}
               >
                 Use a sample
               </button>
             </div>
+            <ol className="mt-5 space-y-2 text-left text-[12px] leading-5 text-ink">
+              <li className="flex gap-2">
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#3478F6]/10 text-[10px] font-semibold text-accent">1</span>
+                Use Capture at the top, or the Shotli menu in the menu bar.
+              </li>
+              <li className="flex gap-2">
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#3478F6]/10 text-[10px] font-semibold text-accent">2</span>
+                Capture the full screen, a window, or an area.
+              </li>
+              <li className="flex gap-2">
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#3478F6]/10 text-[10px] font-semibold text-accent">3</span>
+                Style it, then export a PNG.
+              </li>
+            </ol>
           </div>
         </div>
       ) : (

@@ -102,44 +102,41 @@ struct EditorView: View {
     private var emptyState: some View {
         VStack(spacing: 22) {
             ZStack {
-                RoundedRectangle(cornerRadius: 22)
+                RoundedRectangle(cornerRadius: 14)
                     .fill(accent)
-                    .frame(width: 72, height: 72)
-                    .shadow(color: accent.opacity(0.25), radius: 16, y: 8)
+                    .frame(width: 44, height: 44)
                 Image(systemName: "macwindow")
-                    .font(.system(size: 30, weight: .medium))
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundColor(.white)
             }
             VStack(spacing: 6) {
                 Text("Drop a screenshot")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(ink)
                 Text("PNG, JPEG, or WebP. The picture stays on this Mac.")
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
             }
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Button(action: { model.openPanel() }) {
-                    Text("Open a screenshot").frame(minWidth: 150)
+                    Text("Open a screenshot")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(accent)
-                .controlSize(.large)
                 Button(action: { model.useSample() }) {
-                    Text("Use a sample").frame(minWidth: 110)
+                    Text("Use a sample")
                 }
-                .controlSize(.large)
             }
-            VStack(alignment: .leading, spacing: 10) {
-                step("1", "Open, paste, or drop a picture.")
-                step("2", "Choose a preset, then crop, draw, or redact.")
-                step("3", "Export a PNG of the finished screenshot.")
+            .controlSize(.small)
+            VStack(alignment: .leading, spacing: 8) {
+                step("1", "Use the Shotli menu at the top of the screen.")
+                step("2", "Capture the full screen, a window, or an area.")
+                step("3", "Style it, then export a PNG.")
             }
             .padding(.top, 2)
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 26)
-        .frame(width: 460)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 22)
+        .frame(width: 340)
         .background(
             RoundedRectangle(cornerRadius: 18)
                 .fill(Color.white)
@@ -638,6 +635,8 @@ struct EditorView: View {
         DispatchQueue.main.async {
             guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
             window.title = "Shotli"
+            window.isReleasedWhenClosed = false
+            window.delegate = WindowKeeper.shared
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
