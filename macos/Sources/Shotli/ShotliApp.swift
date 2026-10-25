@@ -62,6 +62,9 @@ struct ShotliCommands: Commands {
                 .disabled(!model.canRedo)
         }
         CommandGroup(after: .toolbar) {
+            Button("Library") { model.showLibrary() }
+                .keyboardShortcut("l", modifiers: .command)
+                .disabled(model.picture == nil)
             Button("Fit to Window") { model.fit() }
                 .keyboardShortcut("0", modifiers: .command)
                 .disabled(model.picture == nil)
@@ -192,6 +195,7 @@ private func showShortcuts() {
     Undo ⌘Z
     Redo ⌘⇧Z, or ⌘Y
     Open ⌘O
+    Library ⌘L
     Export ⌘S, or ⌘E
     Paste an image ⌘V
     Fit ⌘0
