@@ -79,6 +79,7 @@ export function Workspace({
   const [cropDraft, setCropDraft] = useState<Rect | null>(null);
   const [session, setSession] = useState<TextSession | null>(null);
   const sessionRef = useRef<TextSession | null>(null);
+  const textOpenedAt = useRef(0);
 
   const composition = compositionOf(doc);
   const scale = computeScale(view, size, composition.compW, composition.compH);
@@ -390,6 +391,7 @@ export function Workspace({
         fontSize: brushRef.current.fontSize,
         before: null,
       };
+      textOpenedAt.current = performance.now();
       sessionRef.current = next;
       setSession(next);
       return;
@@ -543,6 +545,7 @@ export function Workspace({
       fontSize: hit.fontSize,
       before: snapshot(docRef.current),
     };
+    textOpenedAt.current = performance.now();
     sessionRef.current = next;
     setSession(next);
   }
@@ -671,7 +674,13 @@ export function Workspace({
                   commitText();
                 }
               }}
-              onBlur={() => commitText()}
+              onBlur={() => {
+                if (performance.now() - textOpenedAt.current < 300) {
+                  requestAnimationFrame(() => textRef.current?.focus());
+                  return;
+                }
+                commitText();
+              }}
             />
           ) : null}
         </div>

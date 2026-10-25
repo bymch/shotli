@@ -39,7 +39,7 @@ export function Toolbar({
   fileRef: RefObject<HTMLInputElement | null>;
 }) {
   return (
-    <header className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-panel px-2.5">
+    <header className="relative z-30 flex h-12 shrink-0 items-center gap-1 border-b border-line bg-panel px-2.5">
       <div className="flex min-w-0 items-center gap-2 pr-2">
         <ShotliMark />
         <div className="min-w-0 leading-tight">

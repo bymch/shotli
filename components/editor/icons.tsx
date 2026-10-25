@@ -48,8 +48,8 @@ export function IconCrop(props: IconProps) {
 export function IconUndo(props: IconProps) {
   return (
     <Svg {...props}>
-      <path d="M8 8H4v4" />
-      <path d="M4 8a8 8 0 1 1-1 6" />
+      <path d="M9 14 4 9l5-5" />
+      <path d="M20 20a8 8 0 0 0-8-8H4" />
     </Svg>
   );
 }
@@ -57,8 +57,8 @@ export function IconUndo(props: IconProps) {
 export function IconRedo(props: IconProps) {
   return (
     <Svg {...props}>
-      <path d="M16 8h4v4" />
-      <path d="M20 8a8 8 0 1 0 1 6" />
+      <path d="m15 14 5-5-5-5" />
+      <path d="M4 20a8 8 0 0 1 8-8h8" />
     </Svg>
   );
 }
