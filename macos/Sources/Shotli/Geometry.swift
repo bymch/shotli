@@ -143,7 +143,7 @@ func hit(_ annotation: Annotation, _ point: CGPoint, slop: CGFloat) -> Bool {
     }
 }
 
-func hitTest(_ annotations: [Annotation], _ point: CGPoint, slop: CGFloat) -> Annotation? {
+func hitAnnotation(_ annotations: [Annotation], _ point: CGPoint, slop: CGFloat) -> Annotation? {
     for annotation in annotations.reversed() where hit(annotation, point, slop: slop) {
         return annotation
     }
