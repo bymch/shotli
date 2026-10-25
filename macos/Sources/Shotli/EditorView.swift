@@ -7,24 +7,10 @@ private let ink = Color(nsColor: NSColor(hex: "#222222")!)
 private let line = Color(nsColor: NSColor(hex: "#DADADA")!)
 private let workspace = Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1))
 
-private enum BackgroundKind: String, CaseIterable, Identifiable {
-    case color, gradient, wallpaper
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .color: return "Colour"
-        case .gradient: return "Gradient"
-        case .wallpaper: return "Wallpaper"
-        }
-    }
-}
-
 struct EditorView: View {
     @ObservedObject var model: EditorModel
     @State private var dropTarget = false
     @State private var didConfigure = false
-    @State private var showBackground = false
-
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
@@ -40,6 +26,27 @@ struct EditorView: View {
                 HStack(spacing: 0) {
                     stage {
                         CanvasView(model: model)
+                    }
+                    .overlay(alignment: .topLeading) {
+                        Button(action: { model.showLibrary() }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("Library")
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                            .foregroundColor(ink)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule().fill(Color.white)
+                                    .shadow(color: Color.black.opacity(0.14), radius: 10, y: 3)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Back to your screenshots (⌘L)")
+                        .padding(.top, 14)
+                        .padding(.leading, 16)
                     }
                     .overlay(alignment: .bottom) {
                         toolDock
@@ -124,7 +131,7 @@ struct EditorView: View {
                         .padding(.top, 16)
                     lookRow
                         .padding(.top, 8)
-                    backgroundRow
+                    section("Background") { backgroundControls }
                     if showsText || showsStroke || showsPixel || showsBlur || model.selected != nil {
                         section("Mark") { markControls }
                     }
@@ -164,48 +171,6 @@ struct EditorView: View {
         }
     }
 
-    private var backgroundRow: some View {
-        Button(action: { showBackground = true }) {
-            HStack(spacing: 8) {
-                Text("Background")
-                    .font(.system(size: 13))
-                    .foregroundColor(ink)
-                Spacer()
-                presetPreview(model.style.background)
-                    .frame(width: 16, height: 16)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.black.opacity(0.1), lineWidth: 1))
-                Text(backgroundTitle)
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 36)
-            .background(RoundedRectangle(cornerRadius: 8).stroke(line))
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $showBackground, arrowEdge: .leading) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Background")
-                        .font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Button("None") {
-                        model.setBackground(.color("transparent"))
-                        showBackground = false
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.secondary)
-                }
-                backgroundControls
-            }
-            .padding(14)
-            .frame(width: 300)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-    }
-
     private var toolDock: some View {
         HStack(spacing: 1) {
             ForEach(Array(dockTools.enumerated()), id: \.element) { index, tool in
@@ -221,17 +186,6 @@ struct EditorView: View {
             Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 16, y: 6)
         )
         .overlay(Capsule().stroke(Color.black.opacity(0.08), lineWidth: 1))
-    }
-
-    private var backgroundTitle: String {
-        switch model.style.background {
-        case .color(let hex):
-            return hex == "transparent" ? "None" : "Colour"
-        case .gradient(let from, let to, _):
-            return Presets.gradients.first(where: { $0.1 == from && $0.2 == to })?.0 ?? "Gradient"
-        case .wallpaper(let id):
-            return id.label
-        }
     }
 
     private var markControls: some View {
@@ -273,60 +227,59 @@ struct EditorView: View {
     }
 
     private var backgroundControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("Background", selection: Binding(
-                get: { backgroundKind },
-                set: { kind in
-                    switch kind {
-                    case .color: model.setBackground(.color("#F1F1F1"))
-                    case .gradient: model.setBackground(.gradient(from: "#F7F7F7", to: "#D9DEE7", angle: 180))
-                    case .wallpaper: model.setBackground(.wallpaper(.dots))
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Colour")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            swatchRow(Presets.colors, selected: {
+                if case .color(let selected) = model.style.background { return selected }
+                return nil
+            }()) { model.setBackground(.color($0)) }
+            Text("Gradient")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                ForEach(Array(Presets.gradients.enumerated()), id: \.offset) { _, gradient in
+                    let active: Bool = {
+                        if case .gradient(let from, let to, _) = model.style.background {
+                            return gradient.1 == from && gradient.2 == to
+                        }
+                        return false
+                    }()
+                    Button(action: { model.setBackground(.gradient(from: gradient.1, to: gradient.2, angle: gradient.3)) }) {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: gradient.1)!), Color(nsColor: NSColor(hex: gradient.2)!)], startPoint: .top, endPoint: .bottom))
+                            .frame(height: 36)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? accent : line, lineWidth: active ? 2 : 1))
                     }
-                }
-            )) {
-                ForEach(BackgroundKind.allCases) { kind in
-                    Text(kind.label).tag(kind)
+                    .buttonStyle(.plain)
+                    .help(gradient.0)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
-            switch model.style.background {
-            case .color(let selected):
-                swatchRow(Presets.colors, selected: selected) { model.setBackground(.color($0)) }
-            case .gradient(let from, let to, _):
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                    ForEach(Array(Presets.gradients.enumerated()), id: \.offset) { _, gradient in
-                        let active = gradient.1 == from && gradient.2 == to
-                        Button(action: { model.setBackground(.gradient(from: gradient.1, to: gradient.2, angle: gradient.3)) }) {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: gradient.1)!), Color(nsColor: NSColor(hex: gradient.2)!)], startPoint: .top, endPoint: .bottom))
-                                .frame(height: 36)
-                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? accent : line, lineWidth: active ? 2 : 1))
+            Text("Pattern")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                ForEach(WallpaperID.allCases) { wallpaper in
+                    let active: Bool = {
+                        if case .wallpaper(let selected) = model.style.background { return selected == wallpaper }
+                        return false
+                    }()
+                    Button(action: { model.setBackground(.wallpaper(wallpaper)) }) {
+                        ZStack {
+                            wallpaperPreview(wallpaper)
+                            Text(wallpaper.label)
+                                .font(.system(size: 10, weight: .medium))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .background(Color.white.opacity(0.86))
+                                .cornerRadius(4)
                         }
-                        .buttonStyle(.plain)
-                        .help(gradient.0)
+                        .frame(height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? accent : line, lineWidth: active ? 2 : 1))
                     }
-                }
-            case .wallpaper(let selected):
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                    ForEach(WallpaperID.allCases) { wallpaper in
-                        Button(action: { model.setBackground(.wallpaper(wallpaper)) }) {
-                            ZStack {
-                                wallpaperPreview(wallpaper)
-                                Text(wallpaper.label)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 2)
-                                    .background(Color.white.opacity(0.86))
-                                    .cornerRadius(4)
-                            }
-                            .frame(height: 36)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(selected == wallpaper ? accent : line, lineWidth: selected == wallpaper ? 2 : 1))
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -508,14 +461,6 @@ struct EditorView: View {
         case .stripes: Color(nsColor: NSColor(hex: "#F4F1EC")!)
         case .mesh: Color(nsColor: NSColor(hex: "#F6F7F8")!)
         case .cross: Color(nsColor: NSColor(hex: "#F4F7FB")!)
-        }
-    }
-
-    private var backgroundKind: BackgroundKind {
-        switch model.style.background {
-        case .color: return .color
-        case .gradient: return .gradient
-        case .wallpaper: return .wallpaper
         }
     }
 
