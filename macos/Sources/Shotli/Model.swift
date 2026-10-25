@@ -54,7 +54,16 @@ enum FrameStyle: String, CaseIterable, Identifiable {
 
 enum WallpaperID: String, CaseIterable, Identifiable {
     case dots, grid, diagonal, stripes, mesh, cross
+    case dusk, night, harbour, hills, aurora, sorbet
+    static let patterns: [WallpaperID] = [.dots, .grid, .diagonal, .stripes, .mesh, .cross]
+    static let scenes: [WallpaperID] = [.dusk, .night, .harbour, .hills, .aurora, .sorbet]
     var id: String { rawValue }
+    var isScene: Bool {
+        switch self {
+        case .dusk, .night, .harbour, .hills, .aurora, .sorbet: return true
+        default: return false
+        }
+    }
     var label: String {
         switch self {
         case .dots: return "Dots"
@@ -63,6 +72,12 @@ enum WallpaperID: String, CaseIterable, Identifiable {
         case .stripes: return "Stripes"
         case .mesh: return "Mesh"
         case .cross: return "Graph"
+        case .dusk: return "Dusk"
+        case .night: return "Night"
+        case .harbour: return "Harbour"
+        case .hills: return "Hills"
+        case .aurora: return "Aurora"
+        case .sorbet: return "Sorbet"
         }
     }
 }
@@ -190,6 +205,11 @@ enum Presets {
         ("Citrus", "#FEF3C7", "#FBCFE8", 150),
         ("Iris", "#3478F6", "#C4B5FD", 135),
         ("Ink", "#243044", "#111827", 180),
+        ("Ember", "#FB923C", "#7C3AED", 150),
+        ("Lagoon", "#22D3EE", "#6366F1", 160),
+        ("Flamingo", "#FB7185", "#FBBF24", 140),
+        ("Grove", "#34D399", "#0EA5E9", 155),
+        ("Plum", "#F472B6", "#312E81", 165),
     ]
 
     static let all: [Preset] = [

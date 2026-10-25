@@ -7,6 +7,16 @@ private let ink = Color(nsColor: NSColor(hex: "#222222")!)
 private let line = Color(nsColor: NSColor(hex: "#DADADA")!)
 private let workspace = Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1))
 
+private enum SceneThumbs {
+    static var cache: [String: NSImage] = [:]
+    static func image(_ id: WallpaperID) -> NSImage? {
+        if let found = cache[id.rawValue] { return found }
+        guard let rendered = renderSceneThumbnail(id) else { return nil }
+        cache[id.rawValue] = rendered
+        return rendered
+    }
+}
+
 struct EditorView: View {
     @ObservedObject var model: EditorModel
     @State private var dropTarget = false
@@ -235,6 +245,7 @@ struct EditorView: View {
                 if case .color(let selected) = model.style.background { return selected }
                 return nil
             }()) { model.setBackground(.color($0)) }
+            wallpaperGrid("Scenes", WallpaperID.scenes, height: 58)
             Text("Gradient")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
@@ -256,26 +267,34 @@ struct EditorView: View {
                     .help(gradient.0)
                 }
             }
-            Text("Pattern")
+            wallpaperGrid("Pattern", WallpaperID.patterns, height: 36)
+        }
+    }
+
+    private func wallpaperGrid(_ title: String, _ items: [WallpaperID], height: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                ForEach(WallpaperID.allCases) { wallpaper in
+                ForEach(items) { wallpaper in
                     let active: Bool = {
                         if case .wallpaper(let selected) = model.style.background { return selected == wallpaper }
                         return false
                     }()
                     Button(action: { model.setBackground(.wallpaper(wallpaper)) }) {
-                        ZStack {
+                        ZStack(alignment: .bottom) {
                             wallpaperPreview(wallpaper)
                             Text(wallpaper.label)
                                 .font(.system(size: 10, weight: .medium))
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
-                                .background(Color.white.opacity(0.86))
+                                .background(Color.white.opacity(0.88))
                                 .cornerRadius(4)
+                                .padding(.bottom, 3)
                         }
-                        .frame(height: 36)
+                        .frame(height: height)
+                        .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? accent : line, lineWidth: active ? 2 : 1))
                     }
@@ -461,6 +480,15 @@ struct EditorView: View {
         case .stripes: Color(nsColor: NSColor(hex: "#F4F1EC")!)
         case .mesh: Color(nsColor: NSColor(hex: "#F6F7F8")!)
         case .cross: Color(nsColor: NSColor(hex: "#F4F7FB")!)
+        case .dusk, .night, .harbour, .hills, .aurora, .sorbet:
+            if let image = SceneThumbs.image(id) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Color(nsColor: NSColor(hex: "#1C1430")!)
+            }
         }
     }
 
