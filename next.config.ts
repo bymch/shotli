@@ -1,9 +1,16 @@
 import type { NextConfig } from "next";
 
+const desktop = process.env.SHOTLI_DESKTOP === "1";
+
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  ...(desktop
+    ? {
+        output: "export",
+        images: { unoptimized: true },
+      }
+    : {}),
+  cacheComponents: !desktop,
+  partialPrefetching: !desktop,
   turbopack: {
     rules: {
       "*.css": {
