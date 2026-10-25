@@ -74,6 +74,20 @@ struct EditorView: View {
         ZStack {
             WindowDrag()
             HStack(spacing: 8) {
+                if model.picture != nil {
+                    Button(action: { model.showLibrary() }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("Library")
+                                .font(.system(size: 13))
+                        }
+                        .foregroundColor(ink)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Back to your screenshots (⌘L)")
+                    headerDivider
+                }
                 Button(action: { model.openPanel() }) {
                     Label("Open", systemImage: "folder")
                 }
@@ -88,12 +102,6 @@ struct EditorView: View {
                     .disabled(!model.canRedo)
                 iconButton("arrow.up.left.and.arrow.down.right", help: "Fit (⌘0)") { model.fit() }
                     .disabled(model.picture == nil)
-                if model.picture != nil {
-                    Button(action: { model.showLibrary() }) {
-                        Label("Library", systemImage: "chevron.left")
-                    }
-                    .help("Back to your screenshots (⌘L)")
-                }
                 Button(action: { model.exportPNG() }) {
                     Text("Export PNG")
                 }
@@ -113,29 +121,11 @@ struct EditorView: View {
     private var inspector: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Button(action: { model.showLibrary() }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("Library")
-                            .font(.system(size: 13, weight: .medium))
-                        Spacer()
-                    }
-                    .foregroundColor(ink)
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 32)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.05)))
-                }
-                .buttonStyle(.plain)
-                .help("Back to your screenshots (⌘L)")
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
                 Text("Properties")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(ink)
                     .padding(.horizontal, 16)
-                    .padding(.top, 16)
+                    .padding(.top, 14)
                     .padding(.bottom, 4)
 
                 section("Presets") { presetGrid }
