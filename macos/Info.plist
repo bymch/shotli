@@ -19,9 +19,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.2.1</string>
+	<string>0.2.2</string>
 	<key>CFBundleVersion</key>
-	<string>3</string>
+	<string>4</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
 	<key>LSApplicationCategoryType</key>
@@ -51,5 +51,11 @@
 	<string>© 2026 Michael</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>Shotli captures the screen when you choose Capture from the menu bar. The picture stays on this Mac.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Shotli lists pictures on your Desktop so you can open a recent screenshot.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Shotli lists pictures in your Documents folder when that is where screenshots are saved.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Shotli lists pictures in Downloads when that is where screenshots are saved.</string>
 </dict>
 </plist>

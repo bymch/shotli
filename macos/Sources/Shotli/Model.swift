@@ -301,6 +301,20 @@ final class EditorModel: ObservableObject {
         replacePicture(LoadedPicture(image: sampleScreenshot(), name: "Sample.png", scaled: false))
     }
 
+    func showLibrary() {
+        picture = nil
+        crop = nil
+        annotations = []
+        selectedID = nil
+        undoStack = []
+        redoStack = []
+        gestureStart = nil
+        textUndoID = nil
+        notice = nil
+        refreshHistory()
+        LibraryModel.shared.refresh()
+    }
+
     func exportPNG() {
         guard picture != nil else { return }
         let base = (picture?.name ?? "screenshot")

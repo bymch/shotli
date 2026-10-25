@@ -60,8 +60,10 @@ final class ScreenCapture {
         defer { revealEditor() }
         let exists = FileManager.default.fileExists(atPath: url.path)
         guard process.terminationStatus == 0, exists else { return }
-        EditorModel.shared.load(url: url)
-        try? FileManager.default.removeItem(at: url)
+        let saved = LibraryFolders.archive(url)
+        EditorModel.shared.load(url: saved)
+        if saved != url { try? FileManager.default.removeItem(at: url) }
+        LibraryModel.shared.refresh()
     }
 }
 

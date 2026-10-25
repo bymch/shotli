@@ -29,37 +29,45 @@ struct EditorView: View {
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                header
-                ZStack {
-                    CanvasView(model: model)
-                    if model.picture == nil {
-                        emptyState
-                    }
-                    if dropTarget {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(accent, lineWidth: 2)
-                            .padding(10)
-                            .allowsHitTesting(false)
-                    }
-                    if let notice = model.notice {
-                        noticeBanner(notice)
-                    }
+        VStack(spacing: 0) {
+            header
+            if model.picture == nil {
+                stage {
+                    LibraryHome(onOpen: { model.openPanel() })
                 }
-                .onDrop(of: [.fileURL, .image, .png, .jpeg, .webP], isTargeted: $dropTarget) { providers in
-                    acceptDrop(providers)
+            } else {
+                HStack(spacing: 0) {
+                    stage {
+                        CanvasView(model: model)
+                    }
+                    Divider()
+                    inspector
+                        .frame(width: 300)
+                        .background(Color.white)
                 }
-            }
-            if model.picture != nil {
-                Divider()
-                inspector
-                    .frame(width: 300)
-                    .background(Color.white)
             }
         }
         .background(workspace)
         .onAppear(perform: configureWindow)
+    }
+
+    private func stage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ZStack {
+            content()
+            if dropTarget {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(accent, lineWidth: 2)
+                    .padding(10)
+                    .allowsHitTesting(false)
+            }
+            if let notice = model.notice {
+                noticeBanner(notice)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onDrop(of: [.fileURL, .image, .png, .jpeg, .webP], isTargeted: $dropTarget) { providers in
+            acceptDrop(providers)
+        }
     }
 
     private var header: some View {
@@ -70,8 +78,11 @@ struct EditorView: View {
                     Label("Open", systemImage: "folder")
                 }
                 .help("Open a screenshot (⌘O)")
-                if model.picture == nil {
-                    Button("Use a sample", action: { model.useSample() })
+                if model.picture != nil {
+                    Button(action: { model.showLibrary() }) {
+                        Label("Library", systemImage: "square.grid.2x2")
+                    }
+                    .help("Back to your screenshots")
                 }
                 headerDivider
                 toolButton(.crop, help: "Crop (K)")
@@ -97,55 +108,6 @@ struct EditorView: View {
         .frame(height: 52)
         .background(Color.white)
         .overlay(Rectangle().frame(height: 1).foregroundColor(line), alignment: .bottom)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 22) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(accent)
-                    .frame(width: 44, height: 44)
-                Image(systemName: "macwindow")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(.white)
-            }
-            VStack(spacing: 6) {
-                Text("Drop a screenshot")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(ink)
-                Text("PNG, JPEG, or WebP. The picture stays on this Mac.")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            HStack(spacing: 8) {
-                Button(action: { model.openPanel() }) {
-                    Text("Open a screenshot")
-                }
-                Button(action: { model.useSample() }) {
-                    Text("Use a sample")
-                }
-            }
-            .controlSize(.small)
-            VStack(alignment: .leading, spacing: 8) {
-                step("1", "Use the Shotli menu at the top of the screen.")
-                step("2", "Capture the full screen, a window, or an area.")
-                step("3", "Style it, then export a PNG.")
-            }
-            .padding(.top, 2)
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 22)
-        .frame(width: 340)
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color.white)
-                .shadow(color: Color.black.opacity(0.08), radius: 28, y: 12)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
-        )
     }
 
     private var inspector: some View {
@@ -339,20 +301,6 @@ struct EditorView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
-    }
-
-    private func step(_ number: String, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(number)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(accent)
-                .frame(width: 18, height: 18)
-                .background(accent.opacity(0.12))
-                .clipShape(Circle())
-            Text(text)
-                .font(.system(size: 13))
-                .foregroundColor(ink)
-        }
     }
 
     private func noticeBanner(_ text: String) -> some View {
