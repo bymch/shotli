@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import {
   IconCrop,
   IconDownload,
@@ -18,6 +18,8 @@ export function Toolbar({
   canExport,
   sidebarOpen,
   onFile,
+  onCapture,
+  onSample,
   onCrop,
   onUndo,
   onRedo,
@@ -31,6 +33,8 @@ export function Toolbar({
   canExport: boolean;
   sidebarOpen: boolean;
   onFile: (file: File) => void;
+  onCapture: () => void;
+  onSample: () => void;
   onCrop: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -67,10 +71,11 @@ export function Toolbar({
         }}
       />
 
-      <ToolButton label="Import" title="Import a screenshot" onClick={() => fileRef.current?.click()}>
-        <IconImport />
-        <span className="hidden sm:inline">Import</span>
-      </ToolButton>
+      <CaptureMenu
+        onCapture={onCapture}
+        onImport={() => fileRef.current?.click()}
+        onSample={onSample}
+      />
 
       <Divider />
 
@@ -144,4 +149,72 @@ function ToolButton({
 
 function Divider() {
   return <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />;
+}
+
+function CaptureMenu({
+  onCapture,
+  onImport,
+  onSample,
+}: {
+  onCapture: () => void;
+  onImport: () => void;
+  onSample: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-ink hover:bg-surface"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <IconImport />
+        <span>Capture</span>
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute top-9 left-0 z-40 w-56 rounded-lg border border-black/10 bg-white py-1 text-left shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
+        >
+          <MenuRow label="Capture screen" onClick={() => { setOpen(false); onCapture(); }} />
+          <MenuRow label="Open a screenshot…" onClick={() => { setOpen(false); onImport(); }} />
+          <div className="my-1 h-px bg-line" />
+          <MenuRow label="Use a sample" onClick={() => { setOpen(false); onSample(); }} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MenuRow({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="block w-full px-3 py-1.5 text-left text-[13px] text-ink hover:bg-surface"
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
 }
