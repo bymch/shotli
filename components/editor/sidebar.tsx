@@ -36,7 +36,6 @@ export function Sidebar({
   onRemoveRedactions,
   onResetCrop,
   onClose,
-  onLibrary,
 }: {
   open: boolean;
   doc: Doc;
@@ -54,7 +53,6 @@ export function Sidebar({
   onRemoveRedactions: () => void;
   onResetCrop: () => void;
   onClose: () => void;
-  onLibrary: () => void;
 }) {
   if (!open) return null;
   const selected = doc.annotations.find((annotation) => annotation.id === doc.selectedId) ?? null;
@@ -66,16 +64,7 @@ export function Sidebar({
 
   return (
     <aside className="absolute top-12 right-0 bottom-0 z-20 flex w-[min(100%,340px)] shrink-0 flex-col border-l border-line bg-panel shadow-[-8px_0_24px_rgba(0,0,0,0.04)] min-[960px]:static min-[960px]:top-auto min-[960px]:right-auto min-[960px]:bottom-auto min-[960px]:z-auto min-[960px]:shadow-none">
-      <div className="flex shrink-0 flex-col gap-2 border-b border-line px-4 py-3">
-        <button
-          type="button"
-          className="flex h-8 items-center gap-1.5 rounded-md bg-black/5 px-2.5 text-[13px] font-medium text-ink hover:bg-black/10"
-          onClick={onLibrary}
-        >
-          <span aria-hidden="true">‹</span>
-          Library
-        </button>
-        <div className="flex items-center text-[12px] font-medium text-ink">
+      <div className="flex h-12 shrink-0 items-center border-b border-line px-4 text-[12px] font-medium text-ink">
         Properties
         <button
           type="button"
@@ -85,7 +74,6 @@ export function Sidebar({
         >
           ×
         </button>
-        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <Section title="Presets">

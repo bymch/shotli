@@ -54,6 +54,16 @@ export function Toolbar({
     <header
       className={`relative z-30 flex h-12 shrink-0 items-center gap-1 border-b border-line bg-panel px-2.5 ${macApp ? "pl-[88px]" : ""}`}
     >
+      {canExport ? (
+        <button
+          type="button"
+          className="mr-1 inline-flex h-8 items-center gap-1 rounded-md px-1.5 text-[13px] text-ink hover:bg-surface"
+          onClick={onLibrary}
+        >
+          <span aria-hidden="true" className="text-[15px] leading-none">‹</span>
+          Library
+        </button>
+      ) : null}
       <div className="flex min-w-0 items-center gap-2 pr-2">
         <ShotliMark />
         <div className="min-w-0 leading-tight">
@@ -78,16 +88,6 @@ export function Toolbar({
         onImport={() => fileRef.current?.click()}
         onSample={onSample}
       />
-
-      {canExport ? (
-        <>
-          <Divider />
-          <ToolButton label="Library" title="Back to your screenshots" onClick={onLibrary}>
-            <IconLibrary />
-            <span className="hidden sm:inline">Library</span>
-          </ToolButton>
-        </>
-      ) : null}
 
       <Divider />
 
@@ -157,17 +157,6 @@ function ToolButton({
     >
       {children}
     </button>
-  );
-}
-
-function IconLibrary() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-      <rect x="3.5" y="3.5" width="7" height="7" rx="1.4" />
-      <rect x="13.5" y="3.5" width="7" height="7" rx="1.4" />
-      <rect x="3.5" y="13.5" width="7" height="7" rx="1.4" />
-      <rect x="13.5" y="13.5" width="7" height="7" rx="1.4" />
-    </svg>
   );
 }
 
