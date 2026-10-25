@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import {
-  IconCrop,
   IconDownload,
   IconImport,
   IconRedo,
@@ -12,7 +11,6 @@ import {
 } from "./icons";
 
 export function Toolbar({
-  toolIsCrop,
   canUndo,
   canRedo,
   canExport,
@@ -20,7 +18,6 @@ export function Toolbar({
   onFile,
   onCapture,
   onSample,
-  onCrop,
   onUndo,
   onRedo,
   onExport,
@@ -28,7 +25,6 @@ export function Toolbar({
   onLibrary,
   fileRef,
 }: {
-  toolIsCrop: boolean;
   canUndo: boolean;
   canRedo: boolean;
   canExport: boolean;
@@ -36,7 +32,6 @@ export function Toolbar({
   onFile: (file: File) => void;
   onCapture: () => void;
   onSample: () => void;
-  onCrop: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onExport: () => void;
@@ -57,19 +52,21 @@ export function Toolbar({
       {canExport ? (
         <button
           type="button"
-          className="mr-1 inline-flex h-8 items-center gap-1 rounded-md px-1.5 text-[13px] text-ink hover:bg-surface"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[18px] leading-none text-ink hover:bg-surface"
+          aria-label="Back"
+          title="Back to your screenshots"
           onClick={onLibrary}
         >
-          <span aria-hidden="true" className="text-[15px] leading-none">‹</span>
-          Library
+          ‹
         </button>
-      ) : null}
-      <div className="flex min-w-0 items-center gap-2 pr-2">
-        <ShotliMark />
-        <div className="min-w-0 leading-tight">
-          <div className="text-[13px] font-semibold tracking-tight text-ink">Shotli</div>
+      ) : (
+        <div className="flex min-w-0 items-center gap-2 pr-2">
+          <ShotliMark />
+          <div className="min-w-0 leading-tight">
+            <div className="text-[13px] font-semibold tracking-tight text-ink">Shotli</div>
+          </div>
         </div>
-      </div>
+      )}
 
       <input
         ref={fileRef}
@@ -83,20 +80,15 @@ export function Toolbar({
         }}
       />
 
-      <CaptureMenu
-        onCapture={onCapture}
-        onImport={() => fileRef.current?.click()}
-        onSample={onSample}
-      />
+      {canExport ? null : (
+        <CaptureMenu
+          onCapture={onCapture}
+          onImport={() => fileRef.current?.click()}
+          onSample={onSample}
+        />
+      )}
 
-      <Divider />
-
-      <ToolButton label="Crop" title="Crop the screenshot" pressed={toolIsCrop} disabled={!canExport} onClick={onCrop}>
-        <IconCrop />
-        <span className="hidden sm:inline">Crop</span>
-      </ToolButton>
-
-      <Divider />
+      {canExport ? <div className="flex-1" /> : <Divider />}
 
       <ToolButton label="Undo" title="Undo" disabled={!canUndo} onClick={onUndo}>
         <IconUndo />
@@ -105,11 +97,11 @@ export function Toolbar({
         <IconRedo />
       </ToolButton>
 
-      <div className="flex-1" />
+      {canExport ? null : <div className="flex-1" />}
 
       <button
         type="button"
-        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-2.5 text-[12px] font-medium text-white hover:bg-[#2d6ae0] disabled:cursor-not-allowed disabled:opacity-40"
+        className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-40 ${canExport ? "border border-line bg-white text-ink hover:bg-surface" : "bg-accent text-white hover:bg-[#2d6ae0]"}`}
         disabled={!canExport}
         onClick={onExport}
       >
