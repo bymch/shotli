@@ -622,7 +622,7 @@ struct EditorView: View {
             }
             return true
         }
-        if let provider = providers.first(where: { $0.canLoadObject(ofClass: NSImage.self) }) {
+        if #available(macOS 13, *), let provider = providers.first(where: { $0.canLoadObject(ofClass: NSImage.self) }) {
             provider.loadObject(ofClass: NSImage.self) { object, _ in
                 guard let image = object as? NSImage, let tiff = image.tiffRepresentation else { return }
                 DispatchQueue.main.async { model.loadImageData(tiff, name: "Dropped image.png") }
