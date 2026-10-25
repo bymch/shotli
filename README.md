@@ -2,27 +2,15 @@
 
 Make every screenshot look better.
 
-Shotli is a browser-based screenshot editor. Import an image, place it on a canvas, adjust the background, padding, frame and shadow, annotate or redact it, and export a PNG. Processing stays in the browser. Images are not uploaded.
+Hi, I'm Michael. Shotli is my first open source project.
 
-## Develop
+I take a lot of screenshots, and I kept wanting the same few things before I shared one: a calmer background, a frame, a shadow, a mark or two, then a PNG. The tools I already had were either a full design app or a site that uploaded the picture. I built Shotli so that work can happen in the browser, on the machine the screenshot is already on.
 
-Requires Node.js 20 or newer.
+It is a small editor on purpose. Import an image, place it on a canvas, adjust the background, padding, frame and shadow, annotate or redact it, and export a PNG. Nothing is uploaded. There is no account.
 
-```bash
-npm install
-npm run dev
-```
+This is the first project I have put out in public, so the rough edges are mine. Issues and pull requests are welcome. If something feels confusing, that is useful to hear.
 
-Open [http://localhost:3000](http://localhost:3000).
-
-```bash
-npm run lint
-npm run typecheck
-npm run build
-npm start
-```
-
-## Use
+## What you can do
 
 - Import a PNG, JPEG, or WebP file, drop it on the window, or paste an image.
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
@@ -50,9 +38,27 @@ Images larger than 25 MB are refused. Images longer than 4096px on the long edge
 
 Hold Shift while drawing a line, arrow, rectangle or circle to constrain it.
 
+## Develop
+
+Requires Node.js 20 or newer.
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+npm start
+```
+
 ## Stack
 
-Next.js, React, TypeScript and Tailwind CSS. The canvas is drawn with the browser Canvas 2D API. There is no account, database or API key.
+Next.js, React, TypeScript and Tailwind CSS. The canvas is drawn with the browser Canvas 2D API. There is no database or API key.
 
 ## Licence
 
