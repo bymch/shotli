@@ -14,7 +14,19 @@ export type Tool =
 
 export type FrameStyle = "none" | "browser" | "desktop";
 
-export type WallpaperId = "dots" | "grid" | "diagonal" | "stripes" | "mesh" | "cross";
+export type WallpaperId =
+  | "dots"
+  | "grid"
+  | "diagonal"
+  | "stripes"
+  | "mesh"
+  | "cross"
+  | "dusk"
+  | "night"
+  | "harbour"
+  | "hills"
+  | "aurora"
+  | "sorbet";
 
 export type Background =
   | { kind: "color"; color: string }
