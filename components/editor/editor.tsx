@@ -407,7 +407,6 @@ export function Editor() {
     >
       <div className="flex min-w-0 flex-1 flex-col">
         <Toolbar
-          toolIsCrop={tool === "crop"}
           canUndo={historyState.undo}
           canRedo={historyState.redo}
           canExport={Boolean(doc.image)}
@@ -415,7 +414,6 @@ export function Editor() {
           onFile={(file) => void importFile(file)}
           onCapture={() => void captureScreen()}
           onSample={() => void loadSample()}
-          onCrop={() => setTool((current) => (current === "crop" ? "select" : "crop"))}
           onUndo={undo}
           onRedo={redo}
           onExport={() => void exportPng()}
@@ -437,6 +435,7 @@ export function Editor() {
               if (pictureChanged(before, snapshot(next))) pushHistory(before);
             }}
             onLive={setDocument}
+            onTool={setTool}
           />
         ) : (
           <LibraryHome
@@ -464,7 +463,6 @@ export function Editor() {
         doc={doc}
         tool={tool}
         brush={brush}
-        onTool={setTool}
         onPreset={applyPreset}
         onStyleLive={updateStyle}
         onGestureStart={beginGesture}
@@ -476,6 +474,7 @@ export function Editor() {
         onRemoveRedactions={removeRedactions}
         onResetCrop={resetCrop}
         onClose={() => setSidebarOpen(false)}
+        onDone={showLibrary}
       />
       ) : null}
     </div>

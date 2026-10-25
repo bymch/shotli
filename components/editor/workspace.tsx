@@ -19,6 +19,7 @@ import { activeCrop, compositionOf } from "@/lib/layout";
 import { renderComposition } from "@/lib/render";
 import type { Annotation, Brush, Doc, Handle, Rect, Tool } from "@/lib/types";
 import { pictureChanged, snapshot, type Snapshot } from "@/lib/types";
+import { ToolIcon } from "./icons";
 
 type View = { mode: "fit" | "manual"; zoom: number; panX: number; panY: number };
 
@@ -49,6 +50,7 @@ export function Workspace({
   onNotice,
   onCommit,
   onLive,
+  onTool,
 }: {
   doc: Doc;
   tool: Tool;
@@ -58,6 +60,7 @@ export function Workspace({
   onNotice: (message: string | null) => void;
   onCommit: (next: Doc, before: Snapshot) => void;
   onLive: (next: Doc) => void;
+  onTool: (tool: Tool) => void;
 }) {
   const workspaceRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -655,26 +658,64 @@ export function Workspace({
       ) : null}
 
       {doc.image ? (
-        <div className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-line bg-panel px-1 py-1 shadow-sm">
-          <button type="button" className="h-7 w-7 rounded-full text-[14px] text-ink hover:bg-surface" aria-label="Zoom out" onClick={() => zoomAt(1 / 1.1, size.w / 2, size.h / 2)}>
-            −
-          </button>
-          <button
-            type="button"
-            className="h-7 min-w-14 rounded-full px-2 text-[12px] text-ink tabular-nums hover:bg-surface"
-            aria-label="Fit to workspace"
-            onClick={fit}
+        <>
+          <div className="absolute bottom-3 left-3 z-10 flex items-center rounded-full border border-line bg-panel px-1 py-1 shadow-sm">
+            <button type="button" className="h-7 w-7 rounded-full text-[14px] text-ink hover:bg-surface" aria-label="Zoom out" onClick={() => zoomAt(1 / 1.1, size.w / 2, size.h / 2)}>
+              −
+            </button>
+            <button
+              type="button"
+              className="h-7 min-w-12 rounded-full px-1.5 text-[12px] text-ink tabular-nums hover:bg-surface"
+              aria-label="Fit to workspace"
+              onClick={fit}
+            >
+              <span aria-live="polite">{Math.round(scale * 100)}%</span>
+            </button>
+            <button type="button" className="h-7 w-7 rounded-full text-[14px] text-ink hover:bg-surface" aria-label="Zoom in" onClick={() => zoomAt(1.1, size.w / 2, size.h / 2)}>
+              +
+            </button>
+          </div>
+          <div
+            role="toolbar"
+            aria-label="Annotation tools"
+            className="absolute bottom-3 left-1/2 z-10 flex max-w-[calc(100%-8rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-full border border-black/10 bg-white px-1.5 py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
           >
-            <span aria-live="polite">{Math.round(scale * 100)}%</span>
-          </button>
-          <button type="button" className="h-7 w-7 rounded-full text-[14px] text-ink hover:bg-surface" aria-label="Zoom in" onClick={() => zoomAt(1.1, size.w / 2, size.h / 2)}>
-            +
-          </button>
-        </div>
+            {DOCK_TOOLS.map((item, index) => (
+              <span key={item} className="contents">
+                {index === 4 || index === 7 || index === 9 || index === 11 ? <span className="mx-1 h-4 w-px shrink-0 bg-line" /> : null}
+                <button
+                  type="button"
+                  aria-label={item}
+                  aria-pressed={tool === item}
+                  title={item}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink hover:bg-surface ${tool === item ? "bg-[#3478F6]/12 text-accent" : ""}`}
+                  onClick={() => onTool(item)}
+                >
+                  <ToolIcon tool={item} />
+                </button>
+              </span>
+            ))}
+          </div>
+        </>
       ) : null}
     </div>
   );
 }
+
+const DOCK_TOOLS: Tool[] = [
+  "select",
+  "rect",
+  "rect-fill",
+  "circle",
+  "line",
+  "arrow",
+  "draw",
+  "text",
+  "marker",
+  "pixelate",
+  "blur",
+  "crop",
+];
 
 function computeScale(view: View, size: { w: number; h: number }, compW: number, compH: number) {
   if (size.w < 8 || size.h < 8) return 1;

@@ -23,8 +23,9 @@ struct EditorView: View {
     @ObservedObject var model: EditorModel
     @State private var dropTarget = false
     @State private var didConfigure = false
+    @State private var showBackground = false
 
-    private let tools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur]
+    private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
 
@@ -40,9 +41,13 @@ struct EditorView: View {
                     stage {
                         CanvasView(model: model)
                     }
+                    .overlay(alignment: .bottom) {
+                        toolDock
+                            .padding(.bottom, 16)
+                    }
                     Divider()
                     inspector
-                        .frame(width: 300)
+                        .frame(width: 280)
                         .background(Color.white)
                 }
             }
@@ -76,39 +81,29 @@ struct EditorView: View {
             HStack(spacing: 8) {
                 if model.picture != nil {
                     Button(action: { model.showLibrary() }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text("Library")
-                                .font(.system(size: 13))
-                        }
-                        .foregroundColor(ink)
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(ink)
+                            .frame(width: 28, height: 28)
                     }
                     .buttonStyle(.plain)
                     .help("Back to your screenshots (⌘L)")
-                    headerDivider
+                    Spacer(minLength: 8)
+                    iconButton("arrow.uturn.backward", help: "Undo") { model.undo() }
+                        .disabled(!model.canUndo)
+                    iconButton("arrow.uturn.forward", help: "Redo") { model.redo() }
+                        .disabled(!model.canRedo)
+                    Button(action: { model.exportPNG() }) {
+                        Text("Export PNG")
+                    }
+                    .help("Export PNG (⌘S)")
+                } else {
+                    Button(action: { model.openPanel() }) {
+                        Label("Open", systemImage: "folder")
+                    }
+                    .help("Open a screenshot (⌘O)")
+                    Spacer(minLength: 8)
                 }
-                Button(action: { model.openPanel() }) {
-                    Label("Open", systemImage: "folder")
-                }
-                .help("Open a screenshot (⌘O)")
-                headerDivider
-                toolButton(.crop, help: "Crop (K)")
-                    .disabled(model.picture == nil)
-                Spacer(minLength: 8)
-                iconButton("arrow.uturn.backward", help: "Undo") { model.undo() }
-                    .disabled(!model.canUndo)
-                iconButton("arrow.uturn.forward", help: "Redo") { model.redo() }
-                    .disabled(!model.canRedo)
-                iconButton("arrow.up.left.and.arrow.down.right", help: "Fit (⌘0)") { model.fit() }
-                    .disabled(model.picture == nil)
-                Button(action: { model.exportPNG() }) {
-                    Text("Export PNG")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(accent)
-                .disabled(model.picture == nil)
-                .help("Export PNG (⌘S)")
             }
             .padding(.leading, 86)
             .padding(.trailing, 12)
@@ -119,63 +114,123 @@ struct EditorView: View {
     }
 
     private var inspector: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Properties")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(ink)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 4)
-
-                section("Presets") { presetGrid }
-                section("Tools") { toolGrid }
-                if showsText || showsStroke || showsPixel || showsBlur || model.selected != nil {
-                    section("Mark") { markControls }
-                }
-                section("Background") { backgroundControls }
-                section("Layout") { layoutControls }
-                Color.clear.frame(height: 20)
-            }
-        }
-    }
-
-    private var presetGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-            ForEach(Presets.all) { preset in
-                let active = preset.style == model.style
-                Button(action: { model.applyPreset(preset) }) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ZStack {
-                            presetPreview(preset.style.background)
-                            RoundedRectangle(cornerRadius: min(6, preset.style.radius / 3))
-                                .fill(Color.white)
-                                .frame(width: 28, height: 18)
-                                .shadow(color: Color.black.opacity(0.12), radius: 2, y: 1)
-                        }
-                        .frame(height: 44)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        Text(preset.name)
-                            .font(.system(size: 11))
-                            .foregroundColor(ink)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Look")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(ink)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
+                    lookRow
+                        .padding(.top, 8)
+                    backgroundRow
+                    if showsText || showsStroke || showsPixel || showsBlur || model.selected != nil {
+                        section("Mark") { markControls }
                     }
-                    .padding(6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(active ? accent : line, lineWidth: active ? 1.5 : 1)
-                    )
+                    section("Layout") { layoutControls }
+                    Color.clear.frame(height: 12)
                 }
-                .buttonStyle(.plain)
             }
+            Button(action: { model.showLibrary() }) {
+                Text("Done")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(accent)
+            .controlSize(.large)
+            .help("Back to your screenshots")
+            .padding(12)
         }
     }
 
-    private var toolGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 4) {
-            ForEach(tools) { tool in
-                toolButton(tool, help: "\(tool.label) (\(shortcut(for: tool)))", wide: true)
+    private var lookRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(Presets.all) { preset in
+                    let active = preset.style == model.style
+                    Button(action: { model.applyPreset(preset) }) {
+                        Text(preset.name)
+                            .font(.system(size: 12))
+                            .padding(.horizontal, 10)
+                            .frame(height: 28)
+                            .foregroundColor(active ? .white : ink)
+                            .background(Capsule().fill(active ? Color(nsColor: NSColor(hex: "#222222")!) : Color.black.opacity(0.05)))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private var backgroundRow: some View {
+        Button(action: { showBackground = true }) {
+            HStack(spacing: 8) {
+                Text("Background")
+                    .font(.system(size: 13))
+                    .foregroundColor(ink)
+                Spacer()
+                presetPreview(model.style.background)
+                    .frame(width: 16, height: 16)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.black.opacity(0.1), lineWidth: 1))
+                Text(backgroundTitle)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background(RoundedRectangle(cornerRadius: 8).stroke(line))
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showBackground, arrowEdge: .leading) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Background")
+                        .font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Button("None") {
+                        model.setBackground(.color("transparent"))
+                        showBackground = false
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.secondary)
+                }
+                backgroundControls
+            }
+            .padding(14)
+            .frame(width: 300)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+    }
+
+    private var toolDock: some View {
+        HStack(spacing: 1) {
+            ForEach(Array(dockTools.enumerated()), id: \.element) { index, tool in
+                if index == 4 || index == 7 || index == 9 || index == 11 {
+                    Rectangle().fill(line).frame(width: 1, height: 16).padding(.horizontal, 4)
+                }
+                toolButton(tool, help: "\(tool.label) (\(shortcut(for: tool)))")
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 16, y: 6)
+        )
+        .overlay(Capsule().stroke(Color.black.opacity(0.08), lineWidth: 1))
+    }
+
+    private var backgroundTitle: String {
+        switch model.style.background {
+        case .color(let hex):
+            return hex == "transparent" ? "None" : "Colour"
+        case .gradient(let from, let to, _):
+            return Presets.gradients.first(where: { $0.1 == from && $0.2 == to })?.0 ?? "Gradient"
+        case .wallpaper(let id):
+            return id.label
         }
     }
 

@@ -24,7 +24,7 @@ enum Tool: String, CaseIterable, Identifiable {
     }
     var symbol: String {
         switch self {
-        case .select: return "arrow.up.left.and.arrow.down.right"
+        case .select: return "cursorarrow"
         case .crop: return "crop"
         case .rect: return "rectangle"
         case .rectFill: return "rectangle.fill"
