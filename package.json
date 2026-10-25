@@ -13,14 +13,12 @@
     "typecheck": "tsc --noEmit",
     "desktop:export": "SHOTLI_DESKTOP=1 next build",
     "desktop": "electron .",
-    "desktop:dist": "npm run desktop:export && electron-builder --mac"
-  },
-  "dependencies": {
-    "next": "16.4.3",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "desktop:dist": "npm run desktop:export && electron-builder --mac --publish never"
   },
   "devDependencies": {
+    "next": "16.4.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

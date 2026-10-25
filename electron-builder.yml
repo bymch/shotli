@@ -8,6 +8,7 @@ files:
   - package.json
   - desktop/**/*
   - out/**/*
+  - "!node_modules"
 mac:
   category: public.app-category.graphics
   icon: desktop/icon.png
