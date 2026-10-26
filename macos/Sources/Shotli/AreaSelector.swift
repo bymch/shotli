@@ -4,6 +4,11 @@ import ImageIO
 import ScreenCaptureKit
 import UniformTypeIdentifiers
 
+private final class AreaWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
 final class AreaSelector {
     static let shared = AreaSelector()
     private(set) var isActive = false
@@ -20,7 +25,7 @@ final class AreaSelector {
         rect = .zero
         host = nil
         windows = NSScreen.screens.map { screen in
-            let window = NSWindow(
+            let window = AreaWindow(
                 contentRect: screen.frame,
                 styleMask: .borderless,
                 backing: .buffered,
@@ -37,15 +42,27 @@ final class AreaSelector {
             window.isReleasedWhenClosed = false
             let view = AreaOverlay(selector: self, screen: screen)
             window.contentView = view
-            window.makeKeyAndOrderFront(nil)
             return window
         }
+        let mouse = NSEvent.mouseLocation
+        let keyWindow = windows.first { $0.frame.contains(mouse) } ?? windows.first
         NSApp.activate(ignoringOtherApps: true)
+        for window in windows where window !== keyWindow {
+            window.orderFrontRegardless()
+        }
+        keyWindow?.makeKeyAndOrderFront(nil)
+        keyWindow?.makeFirstResponder(keyWindow?.contentView)
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.isActive else { return event }
-            return self.key(event)
+            return self.handleKey(event) ? nil : event
         }
         NSCursor.crosshair.set()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isActive else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            keyWindow?.makeKey()
+            keyWindow?.makeFirstResponder(keyWindow?.contentView)
+        }
     }
 
     func selection(on screen: NSScreen) -> CGRect? {
@@ -54,7 +71,7 @@ final class AreaSelector {
     }
 
     func isAdjusting(on screen: NSScreen) -> Bool {
-        adjusting && host == screen
+        adjusting && host === screen
     }
 
     func mouseDown(on screen: NSScreen, at point: CGPoint) {
@@ -135,43 +152,42 @@ final class AreaSelector {
     func commit() {
         guard isActive, let screen = host, rect.width >= 4, rect.height >= 4 else { return }
         let local = rect
-        let scale = screen.backingScaleFactor
         let displayID = screen.displayID
-        let appKit = CGRect(
-            x: screen.frame.minX + local.minX,
-            y: screen.frame.maxY - local.maxY,
-            width: local.width,
-            height: local.height
-        )
-        tearDown()
-        Task {
-            let image = await AreaGrab.image(displayID: displayID, points: local, scale: scale, appKit: appKit)
-            DispatchQueue.main.async {
-                guard let image, let url = AreaGrab.write(image) else {
-                    EditorModel.shared.notice = "Couldn't capture that area."
-                    ScreenCapture.shared.revealEditor()
-                    return
+        let global = AreaGrab.globalTopLeft(screen: screen, local: local)
+        let scale = AreaGrab.pixelScale(displayID: displayID, screen: screen)
+        hideChrome()
+        // Wait a beat so the dimmed overlay is gone before the grab.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            Task {
+                let image = await AreaGrab.image(displayID: displayID, points: local, scale: scale, global: global)
+                DispatchQueue.main.async {
+                    guard let image, let url = AreaGrab.write(image) else {
+                        EditorModel.shared.notice = "Couldn't capture that area."
+                        ScreenCapture.shared.revealEditor()
+                        return
+                    }
+                    ScreenCapture.shared.adopt(url)
                 }
-                ScreenCapture.shared.adopt(url)
             }
         }
     }
 
     func cancel() {
-        tearDown()
+        guard isActive else { return }
+        hideChrome()
         ScreenCapture.shared.revealEditor()
     }
 
-    private func key(_ event: NSEvent) -> NSEvent? {
+    func handleKey(_ event: NSEvent) -> Bool {
         switch event.keyCode {
         case 53:
             cancel()
-            return nil
+            return true
         case 36, 76:
-            if adjusting { commit() }
-            return nil
+            commit()
+            return true
         case 123, 124, 125, 126:
-            guard adjusting, let screen = host else { return nil }
+            guard adjusting, let screen = host else { return true }
             let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
             var delta = CGPoint.zero
             if event.keyCode == 123 { delta.x = -step }
@@ -179,9 +195,9 @@ final class AreaSelector {
             if event.keyCode == 125 { delta.y = step }
             if event.keyCode == 126 { delta.y = -step }
             move(rect, by: delta, bounds: CGRect(origin: .zero, size: screen.frame.size))
-            return nil
+            return true
         default:
-            return event
+            return false
         }
     }
 
@@ -191,19 +207,24 @@ final class AreaSelector {
         }
     }
 
-    private func tearDown() {
+    private func hideChrome() {
         isActive = false
         adjusting = false
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
-            self.monitor = nil
-        }
-        for window in windows {
-            window.orderOut(nil)
-            window.close()
-        }
+        let tracked = monitor
+        monitor = nil
+        let open = windows
         windows = []
+        for window in open {
+            window.orderOut(nil)
+        }
         NSCursor.arrow.set()
+        // Removing the monitor inside its own key handler can drop the rest of the capture.
+        DispatchQueue.main.async {
+            if let tracked { NSEvent.removeMonitor(tracked) }
+            for window in open {
+                window.close()
+            }
+        }
     }
 
     private func cursor(for point: CGPoint, in rect: CGRect) -> NSCursor {
@@ -294,7 +315,15 @@ private final class AreaOverlay: NSView {
         drawReadout(hole)
     }
 
+    override func keyDown(with event: NSEvent) {
+        if selector.handleKey(event) { return }
+        super.keyDown(with: event)
+    }
+
     override func mouseDown(with event: NSEvent) {
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKey()
+        window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
         if event.clickCount == 2, selector.isAdjusting(on: screen) {
             selector.commit()
@@ -375,25 +404,54 @@ private final class AreaOverlay: NSView {
 }
 
 private enum AreaGrab {
-    static func image(displayID: CGDirectDisplayID, points: CGRect, scale: CGFloat, appKit: CGRect) async -> CGImage? {
+    static func globalTopLeft(screen: NSScreen, local: CGRect) -> CGRect {
+        let primary = NSScreen.screens.first { $0.frame.origin == .zero } ?? NSScreen.screens.first
+        let primaryTop = primary?.frame.maxY ?? screen.frame.maxY
+        return CGRect(
+            x: screen.frame.minX + local.minX,
+            y: primaryTop - screen.frame.maxY + local.minY,
+            width: local.width,
+            height: local.height
+        )
+    }
+
+    static func pixelScale(displayID: CGDirectDisplayID, screen: NSScreen) -> CGFloat {
+        let pixels = CGFloat(CGDisplayPixelsWide(displayID))
+        let points = screen.frame.width
+        if pixels > 1, points > 1 { return pixels / points }
+        return screen.backingScaleFactor
+    }
+
+    static func image(displayID: CGDirectDisplayID, points: CGRect, scale: CGFloat, global: CGRect) async -> CGImage? {
         if #available(macOS 14.0, *) {
-            if let image = await modern(displayID: displayID, points: points, scale: scale) {
+            if let image = await modern(displayID: displayID, points: points) {
                 return image
             }
         }
-        return legacy(appKit)
+        if let image = displayImage(displayID: displayID, points: points, scale: scale) {
+            return image
+        }
+        if let image = legacy(global) {
+            return image
+        }
+        return await tool(global)
     }
 
     @available(macOS 14.0, *)
-    private static func modern(displayID: CGDirectDisplayID, points: CGRect, scale: CGFloat) async -> CGImage? {
+    private static func modern(displayID: CGDirectDisplayID, points: CGRect) async -> CGImage? {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let display = content.displays.first(where: { $0.displayID == displayID }) else { return nil }
+            let bounds = CGRect(origin: .zero, size: display.frame.size)
+            let rect = points.intersection(bounds)
+            guard rect.width >= 1, rect.height >= 1 else { return nil }
+            let scaleX = display.frame.width > 0 ? CGFloat(display.width) / display.frame.width : 2
+            let scaleY = display.frame.height > 0 ? CGFloat(display.height) / display.frame.height : scaleX
             let filter = SCContentFilter(display: display, excludingWindows: [])
             let config = SCStreamConfiguration()
-            config.sourceRect = points
-            config.width = max(1, Int((points.width * scale).rounded()))
-            config.height = max(1, Int((points.height * scale).rounded()))
+            config.sourceRect = rect
+            config.width = max(1, Int((rect.width * scaleX).rounded()))
+            config.height = max(1, Int((rect.height * scaleY).rounded()))
             config.showsCursor = false
             config.capturesAudio = false
             return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
@@ -402,11 +460,51 @@ private enum AreaGrab {
         }
     }
 
+    private static func displayImage(displayID: CGDirectDisplayID, points: CGRect, scale: CGFloat) -> CGImage? {
+        let pixel = CGRect(
+            x: (points.minX * scale).rounded(.down),
+            y: (points.minY * scale).rounded(.down),
+            width: max(1, (points.width * scale).rounded()),
+            height: max(1, (points.height * scale).rounded())
+        )
+        guard let image = CGDisplayCreateImageForRect(displayID, pixel) else { return nil }
+        if image.width < 2 || image.height < 2 { return nil }
+        return image
+    }
+
     private static func legacy(_ rect: CGRect) -> CGImage? {
-        let primary = NSScreen.screens.first { $0.frame.origin == .zero } ?? NSScreen.main
-        let height = primary?.frame.height ?? 0
-        let global = CGRect(x: rect.minX, y: height - rect.maxY, width: rect.width, height: rect.height)
-        return CGWindowListCreateImage(global, .optionOnScreenOnly, kCGNullWindowID, [.bestResolution])
+        guard rect.width >= 1, rect.height >= 1 else { return nil }
+        return CGWindowListCreateImage(rect, .optionOnScreenOnly, kCGNullWindowID, [.bestResolution, .boundsIgnoreFraming])
+    }
+
+    private static func tool(_ rect: CGRect) async -> CGImage? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: runTool(rect))
+            }
+        }
+    }
+
+    private static func runTool(_ rect: CGRect) -> CGImage? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shotli-capture-\(UUID().uuidString).png")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        let x = Int(rect.minX.rounded())
+        let y = Int(rect.minY.rounded())
+        let width = max(1, Int(rect.width.rounded()))
+        let height = max(1, Int(rect.height.rounded()))
+        process.arguments = ["-x", "-R", "\(x),\(y),\(width),\(height)", url.path]
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+        guard process.terminationStatus == 0 else { return nil }
+        defer { try? FileManager.default.removeItem(at: url) }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 
     static func write(_ image: CGImage) -> URL? {
