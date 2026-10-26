@@ -639,11 +639,7 @@ private struct Painter {
             var blue: CGFloat = 0.18
             var tintAlpha: CGFloat = 1
             let resolved = tint.usingColorSpace(.sRGB) ?? tint
-            if !resolved.getRed(&red, green: &green, blue: &blue, alpha: &tintAlpha) {
-                red = 0.93
-                green = 0.42
-                blue = 0.18
-            }
+            resolved.getRed(&red, green: &green, blue: &blue, alpha: &tintAlpha)
             let color = NSColor(srgbRed: red, green: green, blue: blue, alpha: min(0.9, 0.35 + alpha)).cgColor
             context.setShadow(offset: CGSize(width: 0, height: -(8 + depth * 20)), blur: 20 + depth * 46, color: color)
         case .spread:
