@@ -50,8 +50,9 @@ export function Sidebar({
   const showMark = selected != null || (tool !== "select" && tool !== "crop");
 
   return (
-    <aside className="absolute top-12 right-0 bottom-0 z-20 flex w-[min(100%,300px)] shrink-0 flex-col overflow-hidden border-l border-line bg-panel shadow-[-8px_0_24px_rgba(0,0,0,0.04)] min-[960px]:static min-[960px]:top-auto min-[960px]:right-auto min-[960px]:bottom-auto min-[960px]:z-auto min-[960px]:shadow-none">
-      <div className="flex h-11 shrink-0 items-center border-b border-line px-4 text-[13px] font-semibold text-ink min-[960px]:hidden">
+    <aside className="absolute top-12 right-0 bottom-0 z-20 flex w-[min(100%,348px)] shrink-0 flex-col bg-workspace p-2.5 min-[960px]:static min-[960px]:top-auto min-[960px]:right-auto min-[960px]:bottom-auto min-[960px]:z-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_10px_28px_rgba(0,0,0,0.06)]">
+      <div className="flex h-11 shrink-0 items-center border-b border-line px-3.5 text-[13px] font-semibold text-ink min-[960px]:hidden">
         Look
         <button
           type="button"
@@ -62,9 +63,9 @@ export function Sidebar({
           ×
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <div className="text-[13px] font-semibold text-ink">Look</div>
-        <div className="mt-2 grid grid-cols-3 gap-1.5 rounded-[18px] border border-white/80 bg-[#eef0f3] p-1.5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3.5">
+        <div className="text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Look</div>
+        <div className="mt-2 grid grid-cols-2 gap-2.5">
           {PRESETS.map((preset) => {
             const active = stylesMatch(doc.style, preset.style);
             return (
@@ -73,25 +74,41 @@ export function Sidebar({
                 type="button"
                 aria-pressed={active}
                 onClick={() => onPreset(preset.style)}
-                className={`liquid-chip h-8 rounded-full px-1 text-[12px] text-ink ${active ? "liquid-chip-active font-semibold" : "font-medium"}`}
+                className="text-center"
               >
-                {preset.name}
+                <span
+                  className={`relative block h-[74px] overflow-hidden rounded-[10px] border-2 ${active ? "border-accent" : "border-black/10"}`}
+                  style={{
+                    background: backgroundCss(preset.style.background),
+                    backgroundSize: "8px 8px",
+                  }}
+                >
+                  <span className="absolute inset-x-3 top-2.5 bottom-2.5 rounded-[4px] bg-white shadow-[0_4px_10px_rgba(0,0,0,0.16)]" />
+                  {preset.style.frame !== "none" ? (
+                    <span className="absolute top-[14px] left-[16px] flex gap-[2px]">
+                      <span className="h-[3.5px] w-[3.5px] rounded-full bg-[#ff5f57]" />
+                      <span className="h-[3.5px] w-[3.5px] rounded-full bg-[#febc2e]" />
+                      <span className="h-[3.5px] w-[3.5px] rounded-full bg-[#28c840]" />
+                    </span>
+                  ) : null}
+                </span>
+                <span className={`mt-1 block text-[11px] ${active ? "font-semibold text-ink" : "text-muted"}`}>{preset.name}</span>
               </button>
             );
           })}
         </div>
 
-        <div className="mt-4 text-[13px] font-semibold text-ink">Background</div>
-        <div className="mt-2 mb-1 text-[11px] text-muted">Colour</div>
+        <div className="mt-5 text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Background</div>
+        <div className="mt-3 mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Colour</div>
         <Swatches
           label="Background colour"
           colors={COLORS}
           value={doc.style.background.kind === "color" ? doc.style.background.color : undefined}
           onChange={(color) => onBackground({ kind: "color", color })}
         />
-        <FillGrid title="Scenes" items={SCENES} doc={doc} onBackground={onBackground} tall />
-        <div className="mt-3 mb-1 text-[11px] text-muted">Gradient</div>
-        <div className="grid grid-cols-6 gap-1.5">
+        <FillGrid title="Scenes" items={SCENES} doc={doc} onBackground={onBackground} columns={2} height="h-[86px]" />
+        <div className="mt-4 mb-2 text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Gradient</div>
+        <div className="grid grid-cols-3 gap-2">
           {GRADIENTS.map((gradient) => {
             const active =
               doc.style.background.kind === "gradient" &&
@@ -104,30 +121,53 @@ export function Sidebar({
                 aria-label={gradient.name}
                 aria-pressed={active}
                 title={gradient.name}
-                className={`h-8 rounded-md border ${active ? "border-accent" : "border-black/10"}`}
+                className={`h-12 rounded-[10px] border-2 ${active ? "border-accent" : "border-black/10"}`}
                 style={{ background: `linear-gradient(${gradient.angle}deg, ${gradient.from}, ${gradient.to})` }}
                 onClick={() => onBackground({ kind: "gradient", from: gradient.from, to: gradient.to, angle: gradient.angle })}
               />
             );
           })}
         </div>
-        <FillGrid title="Pattern" items={WALLPAPERS} doc={doc} onBackground={onBackground} />
+        <FillGrid title="Pattern" items={WALLPAPERS} doc={doc} onBackground={onBackground} height="h-12" />
 
-        <div className="mt-4 mb-1.5 text-[12px] text-ink">Frame</div>
-        <Segmented
-          label="Screenshot frame"
-          value={doc.style.frame}
-          options={[
-            { value: "none" as FrameStyle, label: "None" },
-            { value: "browser" as FrameStyle, label: "Browser" },
-            { value: "desktop" as FrameStyle, label: "Window" },
-          ]}
-          onChange={(frame) => {
-            onGestureStart();
-            onStyleLive({ frame });
-            onGestureEnd();
-          }}
-        />
+        <div className="mt-5 mb-2 text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Frame</div>
+        <div className="grid grid-cols-3 gap-2">
+          {(
+            [
+              { value: "none" as FrameStyle, label: "None" },
+              { value: "browser" as FrameStyle, label: "Browser" },
+              { value: "desktop" as FrameStyle, label: "Window" },
+            ]
+          ).map((option) => {
+            const active = doc.style.frame === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={active}
+                className="text-center"
+                onClick={() => {
+                  onGestureStart();
+                  onStyleLive({ frame: option.value });
+                  onGestureEnd();
+                }}
+              >
+                <span className={`relative flex h-10 items-center justify-center rounded-lg border-2 bg-[#f5f5f6] ${active ? "border-accent" : "border-black/5"}`}>
+                  <span className="relative h-5 w-8 rounded-[3px] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.12)]">
+                    {option.value !== "none" ? (
+                      <span className="absolute top-1 left-1 flex gap-[2px]">
+                        <span className="h-1 w-1 rounded-full bg-[#ff5f57]" />
+                        <span className="h-1 w-1 rounded-full bg-[#febc2e]" />
+                        <span className="h-1 w-1 rounded-full bg-[#28c840]" />
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
+                <span className={`mt-1 block text-[10px] ${active ? "font-semibold text-ink" : "text-muted"}`}>{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
 
         <div className="mt-4 flex flex-col gap-3">
           <SliderField
@@ -259,14 +299,15 @@ export function Sidebar({
           </button>
         </div>
       </div>
-      <div className="shrink-0 border-t border-line p-3">
+      <div className="shrink-0 px-3.5 pt-2 pb-3.5">
         <button
           type="button"
-          className="h-10 w-full rounded-lg bg-accent text-[13px] font-medium text-white hover:bg-[#2d6ae0]"
+          className="h-9 w-full rounded-full bg-accent text-[13px] font-medium text-white hover:bg-[#2d6ae0]"
           onClick={onDone}
         >
           Done
         </button>
+      </div>
       </div>
     </aside>
   );
@@ -277,18 +318,20 @@ function FillGrid({
   items,
   doc,
   onBackground,
-  tall = false,
+  columns = 3,
+  height,
 }: {
   title: string;
   items: { id: WallpaperId; name: string }[];
   doc: Doc;
   onBackground: (background: Style["background"]) => void;
-  tall?: boolean;
+  columns?: 2 | 3;
+  height: string;
 }) {
   return (
     <>
-      <div className="mt-3 mb-1 text-[11px] text-muted">{title}</div>
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className="mt-4 mb-2 text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">{title}</div>
+      <div className={`grid gap-2.5 ${columns === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
         {items.map((item) => {
           const active = doc.style.background.kind === "wallpaper" && doc.style.background.id === item.id;
           const scene = isScene(item.id);
@@ -297,19 +340,23 @@ function FillGrid({
               key={item.id}
               type="button"
               aria-pressed={active}
-              className={`relative flex items-end justify-center overflow-hidden rounded-md border text-[10px] text-ink ${tall ? "h-16" : "h-12"} ${active ? "border-accent" : "border-black/10"}`}
-              style={
-                scene
-                  ? undefined
-                  : {
-                      background: backgroundCss({ kind: "wallpaper", id: item.id }),
-                      backgroundSize: "8px 8px",
-                    }
-              }
+              className="text-center"
               onClick={() => onBackground({ kind: "wallpaper", id: item.id })}
             >
-              {isScene(item.id) ? <SceneThumb id={item.id} /> : null}
-              <span className="relative mb-1 rounded bg-white/90 px-1 py-0.5">{item.name}</span>
+              <span
+                className={`relative block overflow-hidden rounded-[10px] border-2 ${height} ${active ? "border-accent" : "border-black/10"}`}
+                style={
+                  scene
+                    ? undefined
+                    : {
+                        background: backgroundCss({ kind: "wallpaper", id: item.id }),
+                        backgroundSize: "8px 8px",
+                      }
+                }
+              >
+                {isScene(item.id) ? <SceneThumb id={item.id} /> : null}
+              </span>
+              <span className={`mt-1 block text-[11px] ${active ? "font-semibold text-ink" : "text-muted"}`}>{item.name}</span>
             </button>
           );
         })}
