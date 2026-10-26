@@ -17,6 +17,7 @@ echo "Compiling arm64…"
 swiftc -swift-version 5 -O -parse-as-library \
   -target arm64-apple-macos12.0 \
   -framework AppKit -framework SwiftUI -framework ImageIO -framework UniformTypeIdentifiers -framework CoreImage \
+  -Xlinker -weak_framework -Xlinker ScreenCaptureKit \
   -o "$ROOT/build/Shotli-arm64" \
   "$ROOT"/macos/Sources/Shotli/*.swift
 
@@ -24,6 +25,7 @@ echo "Compiling x86_64…"
 swiftc -swift-version 5 -O -parse-as-library \
   -target x86_64-apple-macos12.0 \
   -framework AppKit -framework SwiftUI -framework ImageIO -framework UniformTypeIdentifiers -framework CoreImage \
+  -Xlinker -weak_framework -Xlinker ScreenCaptureKit \
   -o "$ROOT/build/Shotli-x64" \
   "$ROOT"/macos/Sources/Shotli/*.swift
 
