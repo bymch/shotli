@@ -1,4 +1,7 @@
 import AppKit
+import CoreImage
+
+private let sharedCIContext = CIContext(options: nil)
 
 func renderComposition(
     picture: LoadedPicture?,
@@ -12,14 +15,48 @@ func renderComposition(
 ) -> CGImage? {
     guard let picture else { return nil }
     let layout = composition(picture: picture, crop: crop, style: style)
-    let width = Int(ceil(layout.size.width))
-    let height = Int(ceil(layout.size.height))
-    guard let context = CGContext(
-        data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-        space: CGColorSpaceCreateDeviceRGB(),
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-    ) else { return nil }
-    let painter = Painter(context: context, height: CGFloat(height))
+    let tilted = !style.hideMockup && (abs(style.tiltX) > 0.4 || abs(style.tiltY) > 0.4)
+    if tilted, let context = bitmapContext(layout.size) {
+        let painter = Painter(context: context, height: layout.size.height)
+        painter.drawBackground(style.background, layout.size)
+        let placed = shiftedCardLayout(layout)
+        if let layer = renderFlat(
+            picture: picture, crop: crop, style: style, annotations: annotations, draft: draft,
+            interactive: interactive, cropDraft: cropDraft, selectedID: selectedID,
+            layout: placed.layout, paintBackground: false
+        ) {
+            let warped = warpCard(layer, tiltX: style.tiltX, tiltY: style.tiltY)
+            let dest = CGRect(
+                x: layout.window.minX - placed.margin,
+                y: layout.window.minY - placed.margin,
+                width: CGFloat(warped.width),
+                height: CGFloat(warped.height)
+            )
+            context.draw(warped, in: painter.cg(dest))
+        }
+        return context.makeImage()
+    }
+    return renderFlat(
+        picture: picture, crop: crop, style: style, annotations: annotations, draft: draft,
+        interactive: interactive, cropDraft: cropDraft, selectedID: selectedID,
+        layout: layout, paintBackground: true
+    )
+}
+
+private func renderFlat(
+    picture: LoadedPicture,
+    crop: CGRect?,
+    style: ShotliStyle,
+    annotations: [Annotation],
+    draft: Annotation?,
+    interactive: Bool,
+    cropDraft: CGRect?,
+    selectedID: String?,
+    layout: Composition,
+    paintBackground: Bool
+) -> CGImage? {
+    guard let context = bitmapContext(layout.size) else { return nil }
+    let painter = Painter(context: context, height: layout.size.height)
     let cropRect = activeCrop(picture: picture, crop: crop) ?? .zero
     let radius = style.radius
 
@@ -49,7 +86,9 @@ func renderComposition(
         return context.makeImage()
     }
 
-    painter.drawBackground(style.background, CGSize(width: width, height: height))
+    if paintBackground {
+        painter.drawBackground(style.background, layout.size)
+    }
     context.saveGState()
     painter.applyStyledShadow(style, tint: adaptiveTint(picture.image))
     painter.paintCard(layout.window, style: style)
@@ -75,6 +114,76 @@ func renderComposition(
     context.restoreGState()
     painter.paintCardEdge(layout.window, style: style)
     return context.makeImage()
+}
+
+private func bitmapContext(_ size: CGSize) -> CGContext? {
+    let width = Int(ceil(size.width))
+    let height = Int(ceil(size.height))
+    guard width > 0, height > 0 else { return nil }
+    return CGContext(
+        data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )
+}
+
+private func shiftedCardLayout(_ layout: Composition) -> (layout: Composition, margin: CGFloat) {
+    let margin = tiltMargin(max(layout.window.width, layout.window.height))
+    let dx = margin - layout.window.minX
+    let dy = margin - layout.window.minY
+    return (
+        Composition(
+            image: layout.image.offsetBy(dx: dx, dy: dy),
+            window: layout.window.offsetBy(dx: dx, dy: dy),
+            size: CGSize(width: layout.window.width + margin * 2, height: layout.window.height + margin * 2)
+        ),
+        margin
+    )
+}
+
+private func warpCard(_ image: CGImage, tiltX: CGFloat, tiltY: CGFloat) -> CGImage {
+    let input = CIImage(cgImage: image)
+    let width = input.extent.width
+    let height = input.extent.height
+    guard width > 2, height > 2, let filter = CIFilter(name: "CIPerspectiveTransform") else { return image }
+    let yaw = tiltY * .pi / 180
+    let pitch = tiltX * .pi / 180
+    let yawPull = sin(abs(yaw)) * width * 0.1
+    let pitchPull = sin(abs(pitch)) * height * 0.08
+    var topLeft = CGPoint(x: 0, y: height)
+    var topRight = CGPoint(x: width, y: height)
+    var bottomLeft = CGPoint(x: 0, y: 0)
+    var bottomRight = CGPoint(x: width, y: 0)
+    if tiltY > 0 {
+        topRight.x -= yawPull
+        bottomRight.x -= yawPull
+        topRight.y -= height * 0.035 * sin(abs(yaw))
+        bottomRight.y += height * 0.035 * sin(abs(yaw))
+    } else if tiltY < 0 {
+        topLeft.x += yawPull
+        bottomLeft.x += yawPull
+        topLeft.y -= height * 0.035 * sin(abs(yaw))
+        bottomLeft.y += height * 0.035 * sin(abs(yaw))
+    }
+    if tiltX > 0 {
+        topLeft.y -= pitchPull
+        topRight.y -= pitchPull
+        topLeft.x += width * 0.025 * sin(abs(pitch))
+        topRight.x -= width * 0.025 * sin(abs(pitch))
+    } else if tiltX < 0 {
+        bottomLeft.y += pitchPull
+        bottomRight.y += pitchPull
+        bottomLeft.x += width * 0.02 * sin(abs(pitch))
+        bottomRight.x -= width * 0.02 * sin(abs(pitch))
+    }
+    filter.setValue(input, forKey: kCIInputImageKey)
+    filter.setValue(CIVector(cgPoint: topLeft), forKey: "inputTopLeft")
+    filter.setValue(CIVector(cgPoint: topRight), forKey: "inputTopRight")
+    filter.setValue(CIVector(cgPoint: bottomLeft), forKey: "inputBottomLeft")
+    filter.setValue(CIVector(cgPoint: bottomRight), forKey: "inputBottomRight")
+    let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+    guard let output = filter.outputImage, let rendered = sharedCIContext.createCGImage(output, from: bounds) else { return image }
+    return rendered
 }
 
 private struct Painter {
@@ -231,7 +340,7 @@ private struct Painter {
                 x += 18
             }
             context.strokePath()
-        case .dusk, .night, .harbour, .hills, .aurora, .sorbet:
+        case .dusk, .night, .harbour, .hills, .aurora, .sorbet, .studio, .porcelain, .bloom, .tide, .sand, .ink, .citrus, .glacier, .clay, .moss:
             drawScene(id, size)
         }
     }
@@ -276,6 +385,52 @@ private struct Painter {
             glow(size, 0.18, 0.76, 0.42, "#FDE68A", 0.8)
             glow(size, 0.86, 0.62, 0.4, "#7DD3FC", 0.75)
             glow(size, 0.46, 0.4, 0.32, "#F9A8D4", 0.7)
+        case .studio:
+            vertical(size, [(0, "#F4F5F7"), (0.62, "#E4E6EB"), (1, "#D0D3DA")])
+            glow(size, 0.34, 0.3, 0.58, "#FFFFFF", 0.95)
+            glow(size, 0.72, 0.82, 0.36, "#C5C8D1", 0.4)
+            vignette(size, "#8E929C", 0.28)
+        case .porcelain:
+            vertical(size, [(0, "#FBF7F3"), (0.55, "#F1E8DF"), (1, "#E3D8CC")])
+            glow(size, 0.48, 0.24, 0.52, "#FFFFFF", 0.92)
+            glow(size, 0.16, 0.78, 0.34, "#E6D0C0", 0.4)
+        case .bloom:
+            vertical(size, [(0, "#FFD8C4"), (1, "#FF8B6C")])
+            glow(size, 0.14, 0.42, 0.55, "#FF5418", 0.95)
+            glow(size, 0.84, 0.28, 0.5, "#FF4D8D", 0.92)
+            glow(size, 0.52, 0.78, 0.46, "#FFC48A", 0.88)
+            glow(size, 0.4, 0.18, 0.28, "#FFE7A8", 0.7)
+        case .tide:
+            vertical(size, [(0, "#8FD4FF"), (0.46, "#4C6BFF"), (1, "#7A4DFF")])
+            glow(size, 0.55, 0.42, 0.4, "#EAF4FF", 0.55)
+            glow(size, 0.18, 0.2, 0.38, "#5CE1FF", 0.72)
+            glow(size, 0.86, 0.74, 0.38, "#C084FC", 0.68)
+        case .sand:
+            vertical(size, [(0, "#F8E6D0"), (0.58, "#E6C6A0"), (1, "#C9A078")])
+            glow(size, 0.4, 0.26, 0.5, "#FFF6EA", 0.88)
+            glow(size, 0.8, 0.72, 0.34, "#E09A68", 0.42)
+        case .ink:
+            vertical(size, [(0, "#1A1D27"), (1, "#0B0D13")])
+            glow(size, 0.48, 0.34, 0.46, "#3A4258", 0.92)
+            glow(size, 0.5, 0.3, 0.16, "#F4F6FB", 0.38)
+            glow(size, 0.14, 0.8, 0.3, "#243056", 0.85)
+        case .citrus:
+            vertical(size, [(0, "#FFE58A"), (0.5, "#FF8A3D"), (1, "#FF5D73")])
+            glow(size, 0.28, 0.28, 0.46, "#FFF3B0", 0.92)
+            glow(size, 0.76, 0.66, 0.4, "#FF4D6A", 0.75)
+        case .glacier:
+            vertical(size, [(0, "#F5FBFF"), (0.5, "#D5E6FF"), (1, "#E6DCF8")])
+            glow(size, 0.32, 0.26, 0.48, "#FFFFFF", 0.95)
+            glow(size, 0.8, 0.72, 0.4, "#B7C6FF", 0.55)
+            glow(size, 0.14, 0.8, 0.32, "#C8F3EA", 0.5)
+        case .clay:
+            vertical(size, [(0, "#F6D6C6"), (0.55, "#E08970"), (1, "#8C3E3A")])
+            glow(size, 0.34, 0.3, 0.42, "#FFD8C2", 0.82)
+            glow(size, 0.76, 0.62, 0.34, "#C4504A", 0.55)
+        case .moss:
+            vertical(size, [(0, "#D7E7C8"), (0.45, "#3E7A55"), (1, "#143028")])
+            glow(size, 0.3, 0.28, 0.42, "#E7F5C8", 0.78)
+            glow(size, 0.74, 0.64, 0.34, "#1F6B4A", 0.62)
         default:
             break
         }
@@ -322,6 +477,20 @@ private struct Painter {
                 options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
             )
         }
+    }
+
+    func vignette(_ size: CGSize, _ hex: String, _ alpha: CGFloat) {
+        let center = cg(CGPoint(x: size.width / 2, y: size.height / 2))
+        let colors = [paint(hex, alpha: 0), paint(hex, alpha: alpha)] as CFArray
+        guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) else { return }
+        context.drawRadialGradient(
+            gradient,
+            startCenter: center,
+            startRadius: min(size.width, size.height) * 0.28,
+            endCenter: center,
+            endRadius: max(size.width, size.height) * 0.72,
+            options: []
+        )
     }
 
     func glow(_ size: CGSize, _ x: CGFloat, _ y: CGFloat, _ radius: CGFloat, _ hex: String, _ alpha: CGFloat) {
