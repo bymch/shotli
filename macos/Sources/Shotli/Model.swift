@@ -326,18 +326,18 @@ enum TemplateLibrary {
     static let groups = ["Product promotion", "Abstract colour"]
 
     static let all: [ShotTemplate] = [
-        shot("stage", "Screenshot", "Product promotion", .image, 108, 18, 40, .none, .wallpaper(.studio), .sixteenNine, 0, 0, 0.28, 0),
-        shot("lean", "Screenshot", "Product promotion", .angled, 96, 22, 44, .none, .wallpaper(.porcelain), .sixteenNine, 10, -18, 0.16, 0),
-        shot("hero", "Screenshot", "Product promotion", .angled, 112, 16, 36, .none, .wallpaper(.sand), .threeTwo, 8, 16, -0.18, 0.04),
-        shot("quiet", "Screenshot", "Product promotion", .image, 120, 26, 28, .none, .wallpaper(.glacier), .sixteenNine, 0, 0, 0, 0, card: .glassLight),
-        shot("spotlight", "Screenshot", "Product promotion", .image, 100, 20, 48, .none, .wallpaper(.ink), .sixteenNine, 0, 0, 0, -0.08),
-        shot("bloom", "Screenshot", "Abstract colour", .image, 100, 24, 34, .none, .wallpaper(.bloom), .sixteenNine, 0, 0, 0.22, 0),
-        shot("bloom-lean", "Screenshot", "Abstract colour", .angled, 92, 22, 38, .none, .wallpaper(.bloom), .sixteenNine, 12, -20, 0.08, 0),
-        shot("tide", "Browser", "Abstract colour", .image, 84, 14, 32, .browser, .wallpaper(.tide), .sixteenNine, 0, 0, 0, 0),
-        shot("tide-lean", "Browser", "Abstract colour", .angled, 88, 14, 36, .browser, .wallpaper(.tide), .sixteenNine, 8, 14, 0.1, 0),
-        shot("citrus", "Screenshot", "Abstract colour", .angled, 104, 22, 34, .none, .wallpaper(.citrus), .sixteenNine, 6, -16, -0.12, 0),
-        shot("clay", "Screenshot", "Abstract colour", .image, 110, 18, 30, .none, .wallpaper(.clay), .threeTwo, 0, 0, -0.2, 0),
-        shot("moss", "Screenshot", "Abstract colour", .angled, 96, 20, 40, .none, .wallpaper(.moss), .sixteenNine, 8, 18, 0.12, 0),
+        shot("stage", "Studio", "Product promotion", .image, 72, 18, 40, .none, .wallpaper(.studio), .sixteenNine, 0, 0, 0.22, 0),
+        shot("lean", "Lean", "Product promotion", .angled, 64, 22, 48, .none, .wallpaper(.porcelain), .sixteenNine, 14, -26, -0.06, 0),
+        shot("hero", "Sand", "Product promotion", .angled, 72, 16, 36, .none, .wallpaper(.sand), .threeTwo, 10, 22, -0.16, 0),
+        shot("quiet", "Glass", "Product promotion", .image, 80, 26, 28, .none, .wallpaper(.glacier), .sixteenNine, 0, 0, 0, 0, card: .glassLight),
+        shot("spotlight", "Spotlight", "Product promotion", .image, 68, 20, 48, .none, .wallpaper(.ink), .sixteenNine, 0, 0, 0, -0.06),
+        shot("bloom", "Bloom", "Abstract colour", .image, 72, 24, 34, .none, .wallpaper(.bloom), .sixteenNine, 0, 0, 0.16, 0),
+        shot("bloom-lean", "Bloom tilt", "Abstract colour", .angled, 64, 22, 42, .none, .wallpaper(.bloom), .sixteenNine, 12, 24, 0.08, 0),
+        shot("tide", "Browser", "Abstract colour", .image, 64, 14, 32, .browser, .wallpaper(.tide), .sixteenNine, 0, 0, 0, 0),
+        shot("tide-lean", "Browser tilt", "Abstract colour", .angled, 60, 14, 36, .browser, .wallpaper(.tide), .sixteenNine, 8, 20, 0.08, 0),
+        shot("citrus", "Citrus", "Abstract colour", .angled, 68, 22, 34, .none, .wallpaper(.citrus), .sixteenNine, 8, -22, -0.1, 0),
+        shot("clay", "Clay", "Abstract colour", .image, 76, 18, 30, .none, .wallpaper(.clay), .threeTwo, 0, 0, -0.18, 0),
+        shot("moss", "Moss", "Abstract colour", .angled, 64, 20, 40, .none, .wallpaper(.moss), .sixteenNine, 10, 20, 0.1, 0),
     ]
 
     static func inGroup(_ group: String, kind: TemplateKind?) -> [ShotTemplate] {

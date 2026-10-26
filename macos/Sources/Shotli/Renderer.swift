@@ -148,8 +148,8 @@ private func warpCard(_ image: CGImage, tiltX: CGFloat, tiltY: CGFloat) -> CGIma
     guard width > 2, height > 2, let filter = CIFilter(name: "CIPerspectiveTransform") else { return image }
     let yaw = tiltY * .pi / 180
     let pitch = tiltX * .pi / 180
-    let yawPull = sin(abs(yaw)) * width * 0.1
-    let pitchPull = sin(abs(pitch)) * height * 0.08
+    let yawPull = sin(abs(yaw)) * width * 0.2
+    let pitchPull = sin(abs(pitch)) * height * 0.14
     var topLeft = CGPoint(x: 0, y: height)
     var topRight = CGPoint(x: width, y: height)
     var bottomLeft = CGPoint(x: 0, y: 0)
@@ -386,14 +386,14 @@ private struct Painter {
             glow(size, 0.86, 0.62, 0.4, "#7DD3FC", 0.75)
             glow(size, 0.46, 0.4, 0.32, "#F9A8D4", 0.7)
         case .studio:
-            vertical(size, [(0, "#F4F5F7"), (0.62, "#E4E6EB"), (1, "#D0D3DA")])
-            glow(size, 0.34, 0.3, 0.58, "#FFFFFF", 0.95)
-            glow(size, 0.72, 0.82, 0.36, "#C5C8D1", 0.4)
-            vignette(size, "#8E929C", 0.28)
+            vertical(size, [(0, "#E7E9EF"), (0.48, "#C9CED8"), (1, "#B4BAC6")])
+            glow(size, 0.4, 0.36, 0.42, "#FFFFFF", 1)
+            glow(size, 0.72, 0.12, 0.28, "#F4F6FA", 0.75)
+            vignette(size, "#5C6270", 0.5)
         case .porcelain:
-            vertical(size, [(0, "#FBF7F3"), (0.55, "#F1E8DF"), (1, "#E3D8CC")])
-            glow(size, 0.48, 0.24, 0.52, "#FFFFFF", 0.92)
-            glow(size, 0.16, 0.78, 0.34, "#E6D0C0", 0.4)
+            vertical(size, [(0, "#F3E6D8"), (0.5, "#E4D0BC"), (1, "#CDB49C")])
+            glow(size, 0.55, 0.3, 0.4, "#FFF8F1", 0.96)
+            vignette(size, "#8C7058", 0.38)
         case .bloom:
             vertical(size, [(0, "#FFD8C4"), (1, "#FF8B6C")])
             glow(size, 0.14, 0.42, 0.55, "#FF5418", 0.95)
