@@ -65,6 +65,7 @@ struct EditorView: View {
                     Divider()
                     inspector
                         .frame(width: 280)
+                        .clipped()
                         .background(Color.white)
                 }
             }
@@ -162,22 +163,78 @@ struct EditorView: View {
     }
 
     private var lookRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(Presets.all) { preset in
-                    let active = preset.style == model.style
-                    Button(action: { model.applyPreset(preset) }) {
-                        Text(preset.name)
-                            .font(.system(size: 12))
-                            .padding(.horizontal, 10)
-                            .frame(height: 28)
-                            .foregroundColor(active ? .white : ink)
-                            .background(Capsule().fill(active ? Color(nsColor: NSColor(hex: "#222222")!) : Color.black.opacity(0.05)))
-                    }
-                    .buttonStyle(.plain)
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 6)], spacing: 6) {
+            ForEach(Presets.all) { preset in
+                let active = preset.style == model.style
+                Button(action: { model.applyPreset(preset) }) {
+                    Text(preset.name)
+                        .font(.system(size: 12, weight: active ? .semibold : .medium))
+                        .foregroundColor(ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 30)
+                        .background(liquidFill(active: active))
+                        .clipShape(Capsule())
+                        .overlay(liquidRim(active: active))
+                        .shadow(color: Color.black.opacity(active ? 0.16 : 0.08), radius: active ? 8 : 3, y: active ? 3 : 1)
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color(nsColor: NSColor(srgbRed: 0.93, green: 0.94, blue: 0.96, alpha: 1)))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.white.opacity(0.85), lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
+    }
+
+    private func liquidFill(active: Bool) -> some View {
+        ZStack {
+            Capsule().fill(Color.white.opacity(0.35))
+            Capsule().fill(.ultraThinMaterial)
+            Capsule().fill(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(active ? 0.92 : 0.62),
+                        Color.white.opacity(active ? 0.28 : 0.1),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.7), Color.white.opacity(0)],
+                        startPoint: .top,
+                        endPoint: .center
+                    )
+                )
+                .padding(.horizontal, 7)
+                .padding(.top, 1)
+                .padding(.bottom, 15)
+        }
+    }
+
+    private func liquidRim(active: Bool) -> some View {
+        ZStack {
+            Capsule().stroke(
+                LinearGradient(
+                    colors: [Color.white.opacity(0.95), Color.black.opacity(0.1)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                lineWidth: 1
+            )
+            Capsule()
+                .stroke(active ? accent.opacity(0.75) : Color.clear, lineWidth: 1.5)
+                .padding(1.5)
         }
     }
 

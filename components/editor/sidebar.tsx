@@ -50,7 +50,7 @@ export function Sidebar({
   const showMark = selected != null || (tool !== "select" && tool !== "crop");
 
   return (
-    <aside className="absolute top-12 right-0 bottom-0 z-20 flex w-[min(100%,300px)] shrink-0 flex-col border-l border-line bg-panel shadow-[-8px_0_24px_rgba(0,0,0,0.04)] min-[960px]:static min-[960px]:top-auto min-[960px]:right-auto min-[960px]:bottom-auto min-[960px]:z-auto min-[960px]:shadow-none">
+    <aside className="absolute top-12 right-0 bottom-0 z-20 flex w-[min(100%,300px)] shrink-0 flex-col overflow-hidden border-l border-line bg-panel shadow-[-8px_0_24px_rgba(0,0,0,0.04)] min-[960px]:static min-[960px]:top-auto min-[960px]:right-auto min-[960px]:bottom-auto min-[960px]:z-auto min-[960px]:shadow-none">
       <div className="flex h-11 shrink-0 items-center border-b border-line px-4 text-[13px] font-semibold text-ink min-[960px]:hidden">
         Look
         <button
@@ -64,7 +64,7 @@ export function Sidebar({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="text-[13px] font-semibold text-ink">Look</div>
-        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+        <div className="mt-2 grid grid-cols-3 gap-1.5 rounded-[18px] border border-white/80 bg-[#eef0f3] p-1.5">
           {PRESETS.map((preset) => {
             const active = stylesMatch(doc.style, preset.style);
             return (
@@ -73,7 +73,7 @@ export function Sidebar({
                 type="button"
                 aria-pressed={active}
                 onClick={() => onPreset(preset.style)}
-                className={`h-7 shrink-0 rounded-full px-2.5 text-[12px] ${active ? "bg-ink text-white" : "bg-surface text-ink hover:bg-[#e7e7e7]"}`}
+                className={`liquid-chip h-8 rounded-full px-1 text-[12px] text-ink ${active ? "liquid-chip-active font-semibold" : "font-medium"}`}
               >
                 {preset.name}
               </button>
