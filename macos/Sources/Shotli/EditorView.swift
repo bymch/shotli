@@ -496,10 +496,10 @@ struct EditorView: View {
                     showMagic.toggle()
                 }) {
                     HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
+                        Image(systemName: "circle.grid.2x2.fill")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Color(nsColor: NSColor(srgbRed: 0.93, green: 0.35, blue: 0.62, alpha: 1)))
-                        Text("Magic Preset")
+                            .foregroundColor(ink)
+                        Text("Palette")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(ink)
                         Spacer(minLength: 0)
@@ -507,7 +507,7 @@ struct EditorView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Recommended backgrounds from this picture")
+                .help("Backgrounds from the colours in this picture")
                 Button(action: { cycleMagic(-1) }) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))

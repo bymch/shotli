@@ -131,14 +131,14 @@ export function LeftRail({
         </label>
 
         <div className="mb-4 flex items-center gap-2">
-          <button type="button" className="h-8 w-8 rounded-full bg-black/5 text-lg leading-none" aria-label="Previous preset" onClick={() => cycle(-1)}>
+          <button type="button" className="h-8 w-8 rounded-full bg-black/5 text-lg leading-none" aria-label="Previous palette" onClick={() => cycle(-1)}>
             ‹
           </button>
           <div className="min-w-0 flex-1 text-center">
-            <div className="text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Magic preset</div>
+            <div className="text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Palette</div>
             <div className="truncate text-[13px] font-medium">{presetLabel(doc.style, matched)}</div>
           </div>
-          <button type="button" className="h-8 w-8 rounded-full bg-black/5 text-lg leading-none" aria-label="Next preset" onClick={() => cycle(1)}>
+          <button type="button" className="h-8 w-8 rounded-full bg-black/5 text-lg leading-none" aria-label="Next palette" onClick={() => cycle(1)}>
             ›
           </button>
         </div>
