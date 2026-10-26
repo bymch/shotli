@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { exportCompositionPng, fontFamilyFromDocument } from "@/lib/export-png";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { copyCompositionPng, exportCompositionPng, fontFamilyFromDocument } from "@/lib/export-png";
 import { fileFromClipboard, loadImageFile } from "@/lib/load-image";
 import { DEFAULT_STYLE } from "@/lib/presets";
 import { createSampleImage } from "@/lib/sample";
@@ -18,9 +18,8 @@ import {
   type Tool,
 } from "@/lib/types";
 import { LibraryHome, type LibrarySourceId, type RecentShot } from "./library-home";
-import { LookRail, Sidebar } from "./sidebar";
-import { Toolbar } from "./toolbar";
-import { Workspace } from "./workspace";
+import { LeftRail, RightRail } from "./studio";
+import { Workspace, type ZoomCommand } from "./workspace";
 
 const INITIAL_BRUSH: Brush = {
   color: "#E5484D",
@@ -60,14 +59,25 @@ export function Editor() {
   const docRef = useRef(doc);
   const [tool, setTool] = useState<Tool>("select");
   const [brush, setBrush] = useState<Brush>(INITIAL_BRUSH);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [fileDrag, setFileDrag] = useState(false);
-  const [historyState, setHistoryState] = useState({ undo: false, redo: false });
   const [imageKey, setImageKey] = useState(0);
   const [librarySource, setLibrarySource] = useState<LibrarySourceId>("recent");
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [recents, setRecents] = useState<RecentShot[]>([]);
+  const [zoom, setZoom] = useState<{ percent: number; mode: "fit" | "manual" }>({ percent: 100, mode: "fit" });
+  const [zoomCommand, setZoomCommand] = useState<ZoomCommand | null>(null);
+  const [tiltMode, setTiltMode] = useState<"tilt" | "precision">("precision");
+  const [animateToken, setAnimateToken] = useState(0);
+  const [output, setOutput] = useState<"image" | "video" | "frames">("image");
+  const [exportScale, setExportScale] = useState<1 | 2>(1);
+  const [mediaKind, setMediaKind] = useState<"Screenshot" | "Image" | "Video">("Screenshot");
+  const [narrow, setNarrow] = useState(false);
+  const [rail, setRail] = useState<null | "style" | "export">(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const exportScaleRef = useRef<1 | 2>(1);
+  const outputRef = useRef(output);
+  const zoomSeq = useRef(0);
   const history = useRef<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
   const gesture = useRef<Snapshot | null>(null);
   const dragDepth = useRef(0);
@@ -78,18 +88,10 @@ export function Editor() {
     setDoc(next);
   }
 
-  function syncHistory() {
-    setHistoryState({
-      undo: history.current.past.length > 0,
-      redo: history.current.future.length > 0,
-    });
-  }
-
   function pushHistory(before: Snapshot) {
     history.current.past.push(before);
     if (history.current.past.length > 60) history.current.past.shift();
     history.current.future = [];
-    syncHistory();
   }
 
   function beginGesture() {
@@ -107,7 +109,6 @@ export function Editor() {
     if (!previous) return;
     history.current.future.push(snapshot(docRef.current));
     setDocument(applySnapshot(docRef.current, previous));
-    syncHistory();
   }
 
   function redo() {
@@ -115,7 +116,6 @@ export function Editor() {
     if (!next) return;
     history.current.past.push(snapshot(docRef.current));
     setDocument(applySnapshot(docRef.current, next));
-    syncHistory();
   }
 
   function replaceImage(image: LoadedImage, message: string | null) {
@@ -123,7 +123,6 @@ export function Editor() {
     history.current = { past: [], future: [] };
     gesture.current = null;
     setImageKey((key) => key + 1);
-    syncHistory();
     setDocument({
       image,
       crop: null,
@@ -146,6 +145,8 @@ export function Editor() {
         ? "Scaled to 4096px on the long edge so editing stays responsive. Export uses this size."
         : null,
     );
+    setLibraryOpen(false);
+    setRail(null);
     remember(file);
   }
 
@@ -170,21 +171,18 @@ export function Editor() {
     });
   }
 
-  function showLibrary() {
-    docRef.current.image?.bitmap.close();
-    history.current = { past: [], future: [] };
-    gesture.current = null;
-    setImageKey((key) => key + 1);
-    syncHistory();
-    setDocument({
-      image: null,
-      crop: null,
-      style: docRef.current.style,
-      annotations: [],
-      selectedId: null,
-    });
-    setNotice(null);
-    setLibrarySource("recent");
+  function toggleLibrary() {
+    setLibraryOpen((open) => !open);
+    setRail(null);
+  }
+
+  const reportZoom = useCallback((info: { percent: number; mode: "fit" | "manual" }) => {
+    setZoom((current) => (current.percent === info.percent && current.mode === info.mode ? current : info));
+  }, []);
+
+  function commandZoom(kind: ZoomCommand["kind"], percent?: number) {
+    zoomSeq.current += 1;
+    setZoomCommand({ id: zoomSeq.current, kind, percent });
   }
 
   useEffect(() => {
@@ -227,28 +225,44 @@ export function Editor() {
   async function loadSample() {
     try {
       replaceImage(await createSampleImage(), null);
+      setLibraryOpen(false);
+      setRail(null);
     } catch {
       setNotice("Couldn't create the sample screenshot.");
     }
   }
 
   async function exportPng() {
-    if (!docRef.current.image) return;
+    if (!docRef.current.image) {
+      setNotice("Add an image before exporting.");
+      return;
+    }
+    if (outputRef.current === "video") {
+      setAnimateToken((token) => token + 1);
+      setNotice("Playing the intro. The download is a PNG of this frame.");
+    }
     try {
-      await exportCompositionPng(docRef.current, fontFamilyFromDocument());
+      await exportCompositionPng(docRef.current, fontFamilyFromDocument(), exportScaleRef.current);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Export failed.");
     }
   }
 
-  function updateStyle(patch: Partial<Style>) {
-    setDocument({ ...docRef.current, style: { ...docRef.current.style, ...patch } });
+  async function copyPng() {
+    if (!docRef.current.image) {
+      setNotice("Add an image before copying.");
+      return;
+    }
+    try {
+      await copyCompositionPng(docRef.current, fontFamilyFromDocument());
+      setNotice("Copied the image.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Couldn't copy the image.");
+    }
   }
 
-  function setBackground(background: Style["background"]) {
-    beginGesture();
-    updateStyle({ background });
-    endGesture();
+  function updateStyle(patch: Partial<Style>) {
+    setDocument({ ...docRef.current, style: { ...docRef.current.style, ...patch } });
   }
 
   function applyPreset(style: Style) {
@@ -257,6 +271,15 @@ export function Editor() {
     if (!pictureChanged(before, snapshot(next))) return;
     setDocument(next);
     pushHistory(before);
+  }
+
+  function commitPatch(patch: Partial<Style>) {
+    applyPreset({ ...docRef.current.style, ...patch });
+  }
+
+  function applyLayout(style: Style) {
+    applyPreset(style);
+    if (style.tilt !== 0) setTiltMode("tilt");
   }
 
   function patchSelected(patch: Partial<Annotation>) {
@@ -350,6 +373,22 @@ export function Editor() {
   }, []);
 
   useEffect(() => {
+    exportScaleRef.current = exportScale;
+    outputRef.current = output;
+  });
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1040px)");
+    const apply = () => {
+      setNarrow(query.matches);
+      if (!query.matches) setRail(null);
+    };
+    apply();
+    query.addEventListener("change", apply);
+    return () => query.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
     const desktop = window.shotli;
     if (!desktop) return;
     const stopOpen = desktop.onOpenFiles((files) => {
@@ -405,40 +444,49 @@ export function Editor() {
         if (file) void importFile(file);
       }}
     >
-      {doc.image ? <LookRail doc={doc} onPreset={applyPreset} /> : null}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Toolbar
-          canUndo={historyState.undo}
-          canRedo={historyState.redo}
-          canExport={Boolean(doc.image)}
-          sidebarOpen={sidebarOpen}
-          onFile={(file) => void importFile(file)}
-          onCapture={() => void captureScreen()}
-          onSample={() => void loadSample()}
-          onUndo={undo}
-          onRedo={redo}
-          onExport={() => void exportPng()}
-          onToggleSidebar={() => setSidebarOpen((open) => !open)}
-          onLibrary={showLibrary}
-          fileRef={fileRef}
-        />
-        {doc.image ? (
-          <Workspace
-            key={imageKey}
-            doc={doc}
-            tool={tool}
-            brush={brush}
-            notice={notice}
-            fileDrag={fileDrag}
-            onNotice={setNotice}
-            onCommit={(next, before) => {
-              setDocument(next);
-              if (pictureChanged(before, snapshot(next))) pushHistory(before);
-            }}
-            onLive={setDocument}
-            onTool={setTool}
-          />
-        ) : (
+      {narrow && rail ? (
+        <button type="button" className="absolute inset-0 z-30 bg-black/20" aria-label="Close panel" onClick={() => setRail(null)} />
+      ) : null}
+      <LeftRail
+        className={narrow ? `absolute inset-y-0 left-0 z-40 shadow-2xl ${rail === "style" ? "" : "hidden"}` : ""}
+        doc={doc}
+        recents={recents}
+        media={mediaKind}
+        libraryOpen={libraryOpen}
+        fileDrag={fileDrag}
+        onMedia={setMediaKind}
+        onStyleLive={updateStyle}
+        onStyleCommit={commitPatch}
+        onPreset={applyPreset}
+        onGestureStart={beginGesture}
+        onGestureEnd={endGesture}
+        onOpen={() => fileRef.current?.click()}
+        onOpenRecent={(shot) => void importFile(shot.file)}
+        onFile={(file) => void importFile(file)}
+        onSample={() => void loadSample()}
+        onCapture={() => void captureScreen()}
+        onLibrary={toggleLibrary}
+        tool={tool}
+        brush={brush}
+        onBrush={(patch) => setBrush((current) => ({ ...current, ...patch }))}
+        onPatchSelected={patchSelected}
+        onDeleteSelected={deleteSelected}
+        onRemoveRedactions={removeRedactions}
+        onResetCrop={resetCrop}
+      />
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        {narrow ? (
+          <div className="flex h-11 shrink-0 items-center justify-between border-b border-black/8 bg-white px-2">
+            <button type="button" className="h-8 rounded-lg px-3 text-[13px] hover:bg-black/5" onClick={() => setRail("style")}>
+              Style
+            </button>
+            <div className="text-[13px] font-semibold tracking-tight">Shotli</div>
+            <button type="button" className="h-8 rounded-lg px-3 text-[13px] hover:bg-black/5" onClick={() => setRail("export")}>
+              Export
+            </button>
+          </div>
+        ) : null}
+        {libraryOpen ? (
           <LibraryHome
             source={librarySource}
             recents={recents}
@@ -448,37 +496,84 @@ export function Editor() {
             onOpenRecent={(shot) => void importFile(shot.file)}
             onSample={() => void loadSample()}
           />
+        ) : (
+          <Workspace
+            key={imageKey}
+            doc={doc}
+            tool={tool}
+            brush={brush}
+            notice={notice}
+            fileDrag={fileDrag}
+            zoomCommand={zoomCommand}
+            tiltMode={tiltMode === "tilt"}
+            animateToken={animateToken}
+            onNotice={setNotice}
+            onCommit={(next, before) => {
+              setDocument(next);
+              if (pictureChanged(before, snapshot(next))) pushHistory(before);
+            }}
+            onLive={setDocument}
+            onTool={setTool}
+            onZoom={reportZoom}
+            onRequestFile={() => fileRef.current?.click()}
+          />
+        )}
+        {libraryOpen ? null : (
+          <button
+            type="button"
+            className="absolute bottom-5 left-1/2 z-20 inline-flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-ink px-5 text-[14px] font-medium text-white shadow-[0_12px_30px_rgba(0,0,0,0.2)]"
+            onClick={() => {
+              setAnimateToken((token) => token + 1);
+              if (output === "video") setNotice("Playing the intro on the canvas.");
+            }}
+          >
+            <PlayIcon />
+            Animate
+          </button>
         )}
       </div>
-      {sidebarOpen && doc.image ? (
-        <button
-          type="button"
-          className="absolute top-12 right-0 bottom-0 left-0 z-10 bg-black/10 min-[960px]:hidden"
-          aria-label="Close properties"
-          onClick={() => setSidebarOpen(false)}
-        />
-      ) : null}
-      {doc.image ? (
-      <Sidebar
-        open={sidebarOpen}
+      <RightRail
+        className={narrow ? `absolute inset-y-0 right-0 z-40 shadow-2xl ${rail === "export" ? "" : "hidden"}` : ""}
         doc={doc}
-        tool={tool}
-        brush={brush}
-        onPreset={applyPreset}
-        onStyleLive={updateStyle}
-        onGestureStart={beginGesture}
-        onGestureEnd={endGesture}
-        onBackground={setBackground}
-        onBrush={(patch) => setBrush((current) => ({ ...current, ...patch }))}
-        onPatchSelected={patchSelected}
-        onDeleteSelected={deleteSelected}
-        onRemoveRedactions={removeRedactions}
-        onResetCrop={resetCrop}
-        onClose={() => setSidebarOpen(false)}
-        onDone={showLibrary}
+        zoom={zoom}
+        tiltMode={tiltMode}
+        output={output}
+        scale={exportScale}
+        onApplyLayout={applyLayout}
+        onZoom={(percent) => commandZoom("percent", percent)}
+        onFit={() => commandZoom("fit")}
+        onTilt={setTiltMode}
+        onOutput={setOutput}
+        onScale={setExportScale}
+        onExport={() => void exportPng()}
+        onCopy={() => void copyPng()}
+        onUndo={undo}
+        onRedo={redo}
       />
-      ) : null}
+      <input
+        ref={fileRef}
+        type="file"
+        accept={
+          mediaKind === "Video"
+            ? "video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+            : "image/png,image/jpeg,image/webp,video/mp4,video/webm,.png,.jpg,.jpeg,.webp,.mp4,.webm"
+        }
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) void importFile(file);
+        }}
+      />
     </div>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M4.5 2.8c0-.7.8-1.2 1.4-.8l7.2 4.2c.6.3.6 1.2 0 1.6l-7.2 4.2c-.6.4-1.4 0-1.4-.8V2.8Z" />
+    </svg>
   );
 }
 
