@@ -35,9 +35,12 @@ struct EditorView: View {
             } else {
                 HStack(spacing: 0) {
                     stage {
-                        CanvasView(model: model)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        GeometryReader { geo in
+                            CanvasView(model: model, viewport: geo.size)
+                                .frame(width: geo.size.width, height: geo.size.height)
+                        }
                     }
+                    .clipped()
                     .overlay(alignment: .topLeading) {
                         Button(action: { model.showLibrary() }) {
                             HStack(spacing: 4) {

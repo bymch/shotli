@@ -43,6 +43,7 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - Presets set the background, padding, corner radius, shadow and frame together.
 - Backgrounds use Screendrop's public-domain colour set and three-stop gradients (Aurora, Cobalt, Mist, and the rest), plus the city scenes and simple patterns.
 - Draw with the tool bar along the bottom of the picture. The panel on the right is the look: background, frame, padding, corners and shadow. **Done** returns to your screenshots.
+- Fit keeps the whole screenshot in the window, with the background around it. The picture stays put until you zoom in past the window. Canvas width and height are in the panel.
 - Pixelate and blur paint into the exported image. They are not a separate overlay.
 - Crop from the toolbar, then drag on the screenshot. Reset crop is in Layout.
 - **Export PNG** asks where to save. The file is the composition only: background, frame, shadow, annotations and redactions. The editor grid is not included.
