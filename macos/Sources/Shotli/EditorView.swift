@@ -89,32 +89,36 @@ struct EditorView: View {
             refreshMagic()
             configureWindow()
         }
-        .onChange(of: pictureKey) { _ in refreshMagic() }
+        .onChange(of: pictureKey) { _ in
+            refreshMagic()
+            if model.picture == nil { showTemplates = false }
+        }
     }
 
     private var studioBar: some View {
         HStack(spacing: 12) {
             HStack(spacing: 6) {
-                iconButton("chevron.left", help: "Library") { model.showLibrary() }
-                    .disabled(model.picture == nil)
-                Button(action: { showTemplates = true }) {
-                    HStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: "#F78529")!), Color(nsColor: NSColor(hex: "#7A42E8")!)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 16, height: 16)
-                        Text("Templates")
-                            .font(.system(size: 13, weight: .medium))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.secondary)
+                if model.picture != nil {
+                    iconButton("chevron.left", help: "Library") { model.showLibrary() }
+                    Button(action: { showTemplates = true }) {
+                        HStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: "#F78529")!), Color(nsColor: NSColor(hex: "#7A42E8")!)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 16, height: 16)
+                            Text("Templates")
+                                .font(.system(size: 13, weight: .medium))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.secondary)
+                        }
+                        .foregroundColor(ink)
+                        .padding(.horizontal, 4)
+                        .frame(height: 32)
+                        .contentShape(Rectangle())
                     }
-                    .foregroundColor(ink)
-                    .padding(.horizontal, 4)
-                    .frame(height: 32)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .help("Templates")
                 }
-                .buttonStyle(.plain)
-                .help("Templates")
             }
             .frame(width: 280, alignment: .leading)
 
@@ -132,8 +136,12 @@ struct EditorView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
 
-            exportButton
-                .frame(width: 292, alignment: .trailing)
+            if model.picture != nil {
+                exportButton
+                    .frame(width: 292, alignment: .trailing)
+            } else {
+                Color.clear.frame(width: 292, height: 32)
+            }
         }
         .padding(.horizontal, 12)
         .frame(height: 52)
