@@ -236,8 +236,8 @@ export function LeftRail({
             ))}
           </div>
           <div className="mt-2 grid grid-cols-4 gap-1.5">
-            {GRADIENTS.slice(0, 8).map((gradient) => {
-              const background: Background = { kind: "gradient", from: gradient.from, to: gradient.to, angle: gradient.angle };
+            {GRADIENTS.map((gradient) => {
+              const background: Background = { kind: "gradient", from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle };
               return (
                 <button
                   key={gradient.name}

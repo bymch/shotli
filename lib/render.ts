@@ -106,6 +106,7 @@ export function paintBackground(ctx: CanvasRenderingContext2D, background: Backg
     const dy = (Math.sin(radians) * length) / 2;
     const gradient = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
     gradient.addColorStop(0, background.from);
+    if (background.mid) gradient.addColorStop(0.5, background.mid);
     gradient.addColorStop(1, background.to);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);

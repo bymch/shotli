@@ -364,19 +364,19 @@ struct EditorView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                 ForEach(Array(Presets.gradients.enumerated()), id: \.offset) { _, gradient in
                     let active: Bool = {
-                        if case .gradient(let from, let to, _) = model.style.background {
-                            return gradient.1 == from && gradient.2 == to
+                        if case .gradient(let from, let mid, let to, _) = model.style.background {
+                            return gradient.from == from && gradient.mid == mid && gradient.to == to
                         }
                         return false
                     }()
-                    Button(action: { model.setBackground(.gradient(from: gradient.1, to: gradient.2, angle: gradient.3)) }) {
+                    Button(action: { model.setBackground(.gradient(from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle)) }) {
                         RoundedRectangle(cornerRadius: 10)
-                            .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: gradient.1)!), Color(nsColor: NSColor(hex: gradient.2)!)], startPoint: .top, endPoint: .bottom))
+                            .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: gradient.from)!), Color(nsColor: NSColor(hex: gradient.mid)!), Color(nsColor: NSColor(hex: gradient.to)!)], startPoint: .topLeading, endPoint: .bottomTrailing))
                             .frame(height: 48)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1))
                     }
                     .buttonStyle(.plain)
-                    .help(gradient.0)
+                    .help(gradient.name)
                 }
             }
             wallpaperGrid("Pattern", WallpaperID.patterns, columns: 3, height: 48)
@@ -610,11 +610,11 @@ struct EditorView: View {
             } else {
                 Color(nsColor: NSColor(hex: hex) ?? .white)
             }
-        case .gradient(let from, let to, _):
+        case .gradient(let from, let mid, let to, _):
             LinearGradient(
-                colors: [Color(nsColor: NSColor(hex: from)!), Color(nsColor: NSColor(hex: to)!)],
-                startPoint: .top,
-                endPoint: .bottom
+                colors: [Color(nsColor: NSColor(hex: from)!), Color(nsColor: NSColor(hex: mid ?? to)!), Color(nsColor: NSColor(hex: to)!)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
         case .wallpaper(let id):
             wallpaperPreview(id)
