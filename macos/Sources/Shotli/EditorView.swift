@@ -1534,24 +1534,23 @@ private struct TemplateCard: View {
     let shot: NSImage?
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        ZStack {
             TemplateBackground(background: template.style.background)
-            shotFace
-                .frame(width: 168)
-                .rotation3DEffect(.degrees(template.style.tiltX), axis: (x: 1, y: 0, z: 0), perspective: 0.55)
-                .rotation3DEffect(.degrees(template.style.tiltY), axis: (x: 0, y: 1, z: 0), perspective: 0.55)
-                .offset(x: template.style.shiftX * 28, y: template.style.shiftY * 14)
-                .shadow(color: Color.black.opacity(0.22), radius: 14, y: 8)
-            if template.kind == .angled {
-                Image(systemName: "rotate.right")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(ink)
-                    .frame(width: 22, height: 22)
-                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.white.opacity(0.92)))
-                    .padding(8)
+            GeometryReader { geo in
+                let width = min(geo.size.width * 0.8, geo.size.height * 1.45)
+                shotFace
+                    .frame(width: width)
+                    .rotation3DEffect(.degrees(template.style.tiltX), axis: (x: 1, y: 0, z: 0), perspective: 0.4)
+                    .rotation3DEffect(.degrees(template.style.tiltY), axis: (x: 0, y: 1, z: 0), perspective: 0.4)
+                    .shadow(color: Color.black.opacity(0.28), radius: 18, y: 14)
+                    .shadow(color: Color.black.opacity(0.1), radius: 2, y: 1)
+                    .position(
+                        x: geo.size.width * (0.5 + template.style.shiftX * 0.18),
+                        y: geo.size.height * (0.5 + template.style.shiftY * 0.08)
+                    )
             }
         }
-        .frame(height: 168)
+        .frame(height: 196)
         .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }

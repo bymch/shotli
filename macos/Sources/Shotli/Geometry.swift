@@ -42,14 +42,14 @@ func composition(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> 
 }
 
 func tiltMargin(_ span: CGFloat) -> CGFloat {
-    max(160, span * 0.22)
+    max(96, span * 0.12)
 }
 
 func stagePad(_ style: ShotliStyle, span: CGFloat) -> CGFloat {
     if style.hideMockup { return 0 }
     let tilt = abs(style.tiltX) + abs(style.tiltY)
     if tilt < 0.5 { return style.padding }
-    return max(style.padding, tiltMargin(span) + 16)
+    return style.padding + min(140, span * 0.05)
 }
 
 func contentSize(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> CGSize {
