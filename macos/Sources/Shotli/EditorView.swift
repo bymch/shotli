@@ -140,25 +140,41 @@ struct EditorView: View {
     }
 
     private var exportButton: some View {
-        Button(action: { model.exportPNG() }) {
-            HStack(spacing: 8) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("Export")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("1× PNG")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.secondary)
+        HStack(spacing: 0) {
+            Button(action: { model.exportPNG() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Export")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("1× PNG")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+                .foregroundColor(ink)
+                .padding(.leading, 12)
+                .padding(.trailing, 8)
+                .frame(height: 32)
+                .contentShape(Rectangle())
             }
-            .foregroundColor(ink)
-            .padding(.horizontal, 12)
-            .frame(height: 32)
-            .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.1), radius: 8, y: 2))
-            .contentShape(Capsule())
+            .buttonStyle(.plain)
+            .disabled(model.picture == nil)
+            .help("Export PNG (⌘S)")
+            Rectangle()
+                .fill(line)
+                .frame(width: 1, height: 14)
+            Button(action: { model.copyPNG() }) {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(ink)
+                    .frame(width: 34, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(model.picture == nil)
+            .help("Copy PNG (⌘C)")
         }
-        .buttonStyle(.plain)
-        .disabled(model.picture == nil)
-        .help("Export PNG (⌘S)")
+        .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.1), radius: 8, y: 2))
     }
 
     private func barCapsule(_ title: String, action: @escaping () -> Void) -> some View {
