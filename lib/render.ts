@@ -86,19 +86,7 @@ export function renderComposition(
   }
   ctx.restore();
 
-  ctx.save();
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
-  ctx.lineWidth = 1;
-  traceRoundRect(
-    ctx,
-    composition.window.x + 0.5,
-    composition.window.y + 0.5,
-    composition.window.w - 1,
-    composition.window.h - 1,
-    Math.max(0, radius - 0.5),
-  );
-  ctx.stroke();
-  ctx.restore();
+  paintCardEdge(ctx, composition.window, doc.style);
   ctx.restore();
 }
 
@@ -256,6 +244,29 @@ function paintCard(ctx: CanvasRenderingContext2D, rect: Rect, style: Doc["style"
     traceRoundRect(ctx, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, radius);
     ctx.stroke();
     ctx.restore();
+  }
+  ctx.restore();
+}
+
+function paintCardEdge(ctx: CanvasRenderingContext2D, rect: Rect, style: Doc["style"]) {
+  const card = style.card ?? "default";
+  const radius = style.radius;
+  ctx.save();
+  if (card === "outline" || card === "border") {
+    ctx.strokeStyle = "#171717";
+    ctx.lineWidth = card === "outline" ? style.borderWidth || 3 : style.borderWidth || 8;
+    traceRoundRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.stroke();
+  } else if (card === "glass-light" || card === "liquid" || card === "glass-dark") {
+    ctx.strokeStyle = card === "glass-dark" ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 2;
+    traceRoundRect(ctx, rect.x + 1.5, rect.y + 1.5, rect.w - 3, rect.h - 3, Math.max(0, radius - 1));
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
+    ctx.lineWidth = 1;
+    traceRoundRect(ctx, rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1, Math.max(0, radius - 0.5));
+    ctx.stroke();
   }
   ctx.restore();
 }
