@@ -6,6 +6,7 @@ private let accent = Color(nsColor: NSColor(hex: "#3478F6")!)
 private let ink = Color(nsColor: NSColor(hex: "#222222")!)
 private let line = Color(nsColor: NSColor(hex: "#DADADA")!)
 private let workspace = Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1))
+private let panel = Color(nsColor: NSColor(srgbRed: 0.965, green: 0.965, blue: 0.968, alpha: 1))
 
 private enum SceneThumbs {
     static var cache: [String: NSImage] = [:]
@@ -23,6 +24,7 @@ struct EditorView: View {
     @State private var didConfigure = false
     @State private var tilted = false
     @State private var animatePop = false
+    @State private var adjustingLight = false
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
@@ -178,92 +180,26 @@ struct EditorView: View {
                 .padding(.bottom, 8)
             }
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    Button(action: { model.openPanel() }) {
-                        HStack(spacing: 8) {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.black.opacity(0.06))
-                                .frame(width: 36, height: 28)
-                                .overlay(Image(systemName: "photo").font(.system(size: 11)).foregroundColor(.secondary))
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(model.picture?.name ?? "Screenshot")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(ink)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Text("Adapts to media")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white).shadow(color: Color.black.opacity(0.05), radius: 4, y: 1))
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.06), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    HStack {
-                        Button(action: { cyclePreset(-1) }) {
-                            Image(systemName: "chevron.left").frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        VStack(spacing: 1) {
-                            Text("MAGIC PRESET")
-                                .font(.system(size: 9, weight: .semibold))
-                                .kerning(0.5)
-                                .foregroundColor(.secondary)
-                            Text(presetName)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(ink)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity)
-                        Button(action: { cyclePreset(1) }) {
-                            Image(systemName: "chevron.right").frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 4)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.04)))
-                    caption("Media")
-                    Button(action: { model.openPanel() }) {
-                        VStack(spacing: 8) {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color.white)
-                                .frame(width: 54, height: 44)
-                                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 1)
-                                .overlay(Image(systemName: "plus").font(.system(size: 16, weight: .medium)).foregroundColor(ink))
-                            Text("Drop media or click to choose")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.04)))
-                    }
-                    .buttonStyle(.plain)
-                    caption("Style")
-                    lookRow
-                    caption("Border")
-                    labelledSlider("Padding", value: Binding(get: { model.style.padding }, set: { model.beginGesture(); model.setPadding($0) }), range: 0...200)
-                    labelledSlider("Corner radius", value: Binding(get: { model.style.radius }, set: { model.beginGesture(); model.setRadius($0) }), range: 0...64)
-                    labelledSlider("Shadow", value: Binding(get: { model.style.shadow }, set: { model.beginGesture(); model.setShadow($0) }), range: 0...100)
-                    caption("Background")
-                    backgroundControls
+                VStack(alignment: .leading, spacing: 16) {
+                    screenshotRow
+                    magicPresetRow
+                    mediaWell
+                    styleGrid
+                    borderSection
+                    shadowSection
+                    lightControl
+                    visibilitySection
+                    detailsSection
                     if showsText || showsStroke || showsPixel || showsBlur || model.selected != nil {
                         caption("Mark")
                         markControls
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.bottom, 16)
+                .padding(.bottom, 18)
             }
         }
-        .background(Color.white)
+        .background(panel)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(color: Color.black.opacity(0.05), radius: 10, y: 2)
     }
@@ -475,26 +411,300 @@ struct EditorView: View {
     }
 
 
-    private var lookRow: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 10) {
-            ForEach(Presets.all) { preset in
-                let active = preset.style == model.style
-                Button(action: { model.applyPreset(preset) }) {
-                    VStack(spacing: 4) {
-                        layoutCard(preset.style)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(active ? accent : Color.clear, lineWidth: 2)
-                            )
-                        Text(preset.name)
-                            .font(.system(size: 11, weight: active ? .semibold : .medium))
-                            .foregroundColor(active ? ink : .secondary)
-                            .lineLimit(1)
-                    }
+    private var screenshotRow: some View {
+        Button(action: { model.openPanel() }) {
+            HStack(spacing: 10) {
+                shotThumb
+                    .frame(width: 42, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Screenshot")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(ink)
+                    Text("Adapts To Media")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white)
+                    .shadow(color: Color.black.opacity(0.06), radius: 8, y: 2)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var shotThumb: some View {
+        Group {
+            if let shotImage {
+                Image(nsImage: shotImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Color.black.opacity(0.06)
+            }
+        }
+    }
+
+    private var magicPresetRow: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Color(nsColor: NSColor(srgbRed: 0.93, green: 0.35, blue: 0.62, alpha: 1)))
+                Text("Magic Preset")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(ink)
+                Spacer(minLength: 0)
+                Button(action: { cyclePreset(-1) }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                Button(action: { cyclePreset(1) }) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.045)))
+            .help(presetName)
+            Rectangle()
+                .fill(Color.black.opacity(0.08))
+                .frame(height: 1)
         }
+    }
+
+    private var mediaWell: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Media")
+            Button(action: { model.openPanel() }) {
+                VStack(spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color.black.opacity(0.045))
+                            .frame(height: 96)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white)
+                            .frame(width: 56, height: 48)
+                            .shadow(color: Color.black.opacity(0.07), radius: 5, y: 2)
+                            .overlay(Image(systemName: "plus").font(.system(size: 18, weight: .medium)).foregroundColor(ink))
+                    }
+                    Text("Drop media or click to choose")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var styleGrid: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Style")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 10) {
+                ForEach(CardStyle.allCases, id: \.self) { card in
+                    let active = model.style.card == card
+                    Button(action: { model.setCard(card) }) {
+                        VStack(spacing: 5) {
+                            StyleStudy(card: card)
+                                .frame(height: 54)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(active ? Color.black.opacity(0.82) : Color.black.opacity(0.06), lineWidth: active ? 2 : 1)
+                                )
+                            Text(card.title)
+                                .font(.system(size: 10, weight: active ? .semibold : .medium))
+                                .foregroundColor(active ? ink : .secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var borderSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Border")
+            HStack(spacing: 6) {
+                cornerButton("Sharp", radius: 0, curve: 0)
+                cornerButton("Curved", radius: 20, curve: 10)
+                cornerButton("Round", radius: 48, curve: 18)
+            }
+            .padding(4)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.black.opacity(0.045)))
+            metricSlider("Radius", value: Binding(get: { model.style.radius }, set: { model.beginGesture(); model.setRadius($0) }), range: 0...64)
+        }
+    }
+
+    private func cornerButton(_ title: String, radius: CGFloat, curve: CGFloat) -> some View {
+        let on = cornerIsOn(radius)
+        return Button(action: { model.setCorner(radius) }) {
+            VStack(spacing: 4) {
+                CornerMark(radius: curve)
+                    .stroke(ink, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                    .frame(width: 28, height: 22)
+                Text(title)
+                    .font(.system(size: 11, weight: on ? .semibold : .medium))
+                    .foregroundColor(ink)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(on ? Color.white : Color.clear)
+                    .shadow(color: on ? Color.black.opacity(0.08) : .clear, radius: 4, y: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func cornerIsOn(_ radius: CGFloat) -> Bool {
+        let current = model.style.radius
+        if radius == 0 { return current < 2 }
+        if radius == 20 { return current >= 2 && current < 36 }
+        return current >= 36
+    }
+
+    private var shadowSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Shadow")
+            HStack(spacing: 8) {
+                ForEach(ShadowKind.allCases, id: \.self) { kind in
+                    let active = model.style.shadowKind == kind
+                    Button(action: { model.setShadowKind(kind) }) {
+                        VStack(spacing: 5) {
+                            ShadowStudy(kind: kind, image: shotImage)
+                                .frame(height: 46)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .stroke(active ? Color.black.opacity(0.82) : Color.clear, lineWidth: 2)
+                                )
+                            Text(kind.title)
+                                .font(.system(size: 10, weight: active ? .semibold : .medium))
+                                .foregroundColor(active ? ink : .secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            metricSlider("Opacity", value: Binding(get: { model.style.shadowOpacity }, set: { model.beginGesture(); model.setShadowOpacity($0) }), range: 0...100)
+        }
+    }
+
+    private var lightControl: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: { adjustingLight.toggle() }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("Adjust Light")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .foregroundColor(ink)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+            if adjustingLight {
+                metricSlider("Light", value: Binding(get: { model.style.light }, set: { model.beginGesture(); model.setLight($0) }), range: -50...50)
+            }
+        }
+    }
+
+    private var visibilitySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Visibility")
+            Button(action: { model.setHideMockup(!model.style.hideMockup) }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 13, weight: .medium))
+                    Text("Hide Mockup")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundColor(ink)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(model.style.hideMockup ? Color.white : Color.black.opacity(0.05))
+                        .shadow(color: model.style.hideMockup ? Color.black.opacity(0.06) : .clear, radius: 4, y: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var detailsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Details")
+            VStack(alignment: .leading, spacing: 10) {
+                detailRow("Device", "Screenshot")
+                detailRow("Screen pixels", "Adapts to media")
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
+            )
+        }
+    }
+
+    private func detailRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+        }
+    }
+
+    private func metricSlider(_ title: String, value: Binding<CGFloat>, range: ClosedRange<CGFloat>) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.white)
+                        .shadow(color: Color.black.opacity(0.05), radius: 2, y: 1)
+                )
+            Slider(value: value, in: range, onEditingChanged: { editing in
+                if !editing { model.endGesture() }
+            })
+            Text("\(Int(value.wrappedValue.rounded()))")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .monospacedDigit()
+                .frame(width: 32, alignment: .trailing)
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 8)
+        .padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.045)))
     }
 
     private func caption(_ title: String) -> some View {
@@ -985,6 +1195,179 @@ struct EditorView: View {
                 window.center()
             }
         }
+    }
+}
+
+private struct CornerMark: Shape {
+    var radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let left = rect.minX + rect.width * 0.18
+        let top = rect.minY + rect.height * 0.12
+        let bottom = rect.maxY - rect.height * 0.16
+        let right = rect.maxX - rect.width * 0.06
+        path.move(to: CGPoint(x: left, y: top))
+        if radius < 1 {
+            path.addLine(to: CGPoint(x: left, y: bottom))
+            path.addLine(to: CGPoint(x: right, y: bottom))
+        } else {
+            path.addArc(
+                tangent1End: CGPoint(x: left, y: bottom),
+                tangent2End: CGPoint(x: right, y: bottom),
+                radius: min(radius, rect.width * 0.7)
+            )
+            path.addLine(to: CGPoint(x: right, y: bottom))
+        }
+        return path
+    }
+}
+
+private struct StyleStudy: View {
+    let card: CardStyle
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                backdrop
+                cardBody(geo.size)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var backdrop: some View {
+        Group {
+            switch card {
+            case .liquid:
+                ZStack {
+                    Color(nsColor: NSColor(srgbRed: 0.98, green: 0.58, blue: 0.24, alpha: 1))
+                    DiagonalStripes()
+                }
+            case .glassDark:
+                Color(nsColor: NSColor(srgbRed: 0.80, green: 0.81, blue: 0.84, alpha: 1))
+            default:
+                Color(nsColor: NSColor(srgbRed: 0.90, green: 0.90, blue: 0.92, alpha: 1))
+            }
+        }
+    }
+
+    private func cardBody(_ size: CGSize) -> some View {
+        let radius: CGFloat = card == .border ? 16 : 24
+        return RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(fill)
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(edge, lineWidth: edgeWidth)
+            )
+            .frame(width: size.width * 1.55, height: size.height * 1.75)
+            .position(x: size.width * 0.95, y: size.height * 0.98)
+    }
+
+    private var fill: Color {
+        switch card {
+        case .glassLight: return Color.white.opacity(0.82)
+        case .glassDark: return Color(nsColor: NSColor(srgbRed: 0.11, green: 0.12, blue: 0.15, alpha: 0.92))
+        case .liquid: return Color.white.opacity(0.42)
+        case .insetLight: return Color(nsColor: NSColor(srgbRed: 0.95, green: 0.95, blue: 0.96, alpha: 1))
+        case .insetDark: return Color(nsColor: NSColor(srgbRed: 0.16, green: 0.17, blue: 0.20, alpha: 1))
+        case .outline: return Color.white.opacity(0.35)
+        case .retro: return Color(nsColor: NSColor(srgbRed: 0.91, green: 0.89, blue: 0.85, alpha: 1))
+        case .border, .default: return Color.white
+        }
+    }
+
+    private var edge: Color {
+        switch card {
+        case .glassLight, .liquid: return Color.white.opacity(0.95)
+        case .glassDark: return Color.white.opacity(0.4)
+        case .insetLight: return Color.black.opacity(0.18)
+        case .insetDark: return Color.black.opacity(0.55)
+        case .outline: return Color.black.opacity(0.75)
+        case .border: return Color.black
+        case .retro: return Color(nsColor: NSColor(srgbRed: 0.23, green: 0.20, blue: 0.17, alpha: 1))
+        case .default: return Color.black.opacity(0.08)
+        }
+    }
+
+    private var edgeWidth: CGFloat {
+        switch card {
+        case .border: return 5
+        case .insetLight, .insetDark: return 6
+        case .retro: return 2.5
+        case .outline: return 1.5
+        case .glassLight, .glassDark, .liquid: return 2
+        case .default: return 1
+        }
+    }
+}
+
+private struct DiagonalStripes: View {
+    var body: some View {
+        GeometryReader { geo in
+            Path { path in
+                var x = -geo.size.height
+                while x < geo.size.width + geo.size.height {
+                    path.move(to: CGPoint(x: x, y: geo.size.height))
+                    path.addLine(to: CGPoint(x: x + geo.size.height, y: 0))
+                    x += 7
+                }
+            }
+            .stroke(Color(nsColor: NSColor(srgbRed: 0.86, green: 0.34, blue: 0.08, alpha: 0.9)), lineWidth: 3)
+        }
+    }
+}
+
+private struct ShadowStudy: View {
+    let kind: ShadowKind
+    let image: NSImage?
+
+    private var adaptiveFill: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                LinearGradient(
+                    colors: [
+                        Color(nsColor: NSColor(srgbRed: 0.98, green: 0.55, blue: 0.28, alpha: 1)),
+                        Color(nsColor: NSColor(srgbRed: 0.86, green: 0.28, blue: 0.18, alpha: 1))
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(nsColor: NSColor(srgbRed: 0.93, green: 0.93, blue: 0.94, alpha: 1)))
+            switch kind {
+            case .none:
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.white)
+                    .padding(9)
+            case .spread:
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.white)
+                    .shadow(color: Color.black.opacity(0.28), radius: 6, y: 4)
+                    .padding(10)
+            case .hug:
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.white)
+                    .shadow(color: Color.black.opacity(0.45), radius: 1.2, y: 1)
+                    .padding(8)
+            case .adaptive:
+                Color.clear
+                    .overlay(adaptiveFill)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .padding(4)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 

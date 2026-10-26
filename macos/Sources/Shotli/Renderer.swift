@@ -20,14 +20,39 @@ func renderComposition(
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     ) else { return nil }
     let painter = Painter(context: context, height: CGFloat(height))
-    painter.drawBackground(style.background, CGSize(width: width, height: height))
     let cropRect = activeCrop(picture: picture, crop: crop) ?? .zero
     let radius = style.radius
-    let card = style.frame == .none ? NSColor.white : NSColor(srgbRed: 0.956, green: 0.956, blue: 0.956, alpha: 1)
 
+    func paintMarks() {
+        let all = draft == nil ? annotations : annotations + [draft!]
+        for annotation in all {
+            if case .shape(let mark) = annotation, mark.kind == .pixelate || mark.kind == .blur {
+                painter.drawRedaction(picture.image, mark, layout: layout, crop: cropRect)
+            }
+        }
+        for annotation in all {
+            if case .shape(let mark) = annotation, mark.kind == .pixelate || mark.kind == .blur { continue }
+            painter.drawAnnotation(annotation, layout: layout, crop: cropRect)
+        }
+        if interactive, let cropDraft {
+            painter.drawCropOverlay(visible: cropRect, draft: cropDraft, layout: layout)
+        }
+        if interactive, let selectedID, let selected = all.first(where: { $0.id == selectedID }), selected.id != draft?.id {
+            painter.drawSelection(selected, layout: layout, crop: cropRect)
+        }
+    }
+
+    if style.hideMockup {
+        painter.drawImage(picture.image, crop: cropRect, dest: layout.image)
+        painter.applyLight(style.light, rect: layout.image)
+        paintMarks()
+        return context.makeImage()
+    }
+
+    painter.drawBackground(style.background, CGSize(width: width, height: height))
     context.saveGState()
-    if style.shadow > 0 { painter.applyShadow(style.shadow) }
-    painter.fillRound(layout.window, radius: radius, color: card)
+    painter.applyStyledShadow(style, tint: adaptiveTint(picture.image))
+    painter.paintCard(layout.window, style: style)
     context.restoreGState()
 
     if style.frame == .browser {
@@ -38,31 +63,17 @@ func renderComposition(
 
     context.saveGState()
     painter.clipRound(layout.window, radius: radius)
-    context.clip(to: painter.cg(layout.image))
+    if style.frame == .none {
+        let inner = max(0, radius - cardRim(style))
+        painter.clipRound(layout.image, radius: inner)
+    } else {
+        context.clip(to: painter.cg(layout.image))
+    }
     painter.drawImage(picture.image, crop: cropRect, dest: layout.image)
-    let all = draft == nil ? annotations : annotations + [draft!]
-    for annotation in all {
-        if case .shape(let mark) = annotation, mark.kind == .pixelate || mark.kind == .blur {
-            painter.drawRedaction(picture.image, mark, layout: layout, crop: cropRect)
-        }
-    }
-    for annotation in all {
-        if case .shape(let mark) = annotation, mark.kind == .pixelate || mark.kind == .blur { continue }
-        painter.drawAnnotation(annotation, layout: layout, crop: cropRect)
-    }
-    if interactive, let cropDraft {
-        painter.drawCropOverlay(visible: cropRect, draft: cropDraft, layout: layout)
-    }
-    if interactive, let selectedID, let selected = all.first(where: { $0.id == selectedID }), selected.id != draft?.id {
-        painter.drawSelection(selected, layout: layout, crop: cropRect)
-    }
+    painter.applyLight(style.light, rect: layout.image)
+    paintMarks()
     context.restoreGState()
-
-    context.saveGState()
-    context.setStrokeColor(NSColor.black.withAlphaComponent(0.12).cgColor)
-    context.setLineWidth(1)
-    painter.strokeRound(layout.window.insetBy(dx: 0.5, dy: 0.5), radius: max(0, radius - 0.5))
-    context.restoreGState()
+    painter.paintCardEdge(layout.window, style: style)
     return context.makeImage()
 }
 
@@ -442,10 +453,110 @@ private struct Painter {
         context.restoreGState()
     }
 
-    func applyShadow(_ intensity: CGFloat) {
-        let amount = intensity / 100
-        let color = NSColor(srgbRed: 0.08, green: 0.08, blue: 0.08, alpha: 0.05 + amount * 0.4).cgColor
-        context.setShadow(offset: CGSize(width: 0, height: -(2 + amount * 26)), blur: 8 + amount * 72, color: color)
+    func applyStyledShadow(_ style: ShotliStyle, tint: NSColor) {
+        guard style.shadowKind != .none, style.shadow > 0, style.shadowOpacity > 0.5 else { return }
+        let depth = style.shadow / 100
+        let gain = style.shadowOpacity / 40
+        let alpha = min(0.85, (0.05 + depth * 0.4) * gain)
+        switch style.shadowKind {
+        case .none:
+            return
+        case .hug:
+            let color = NSColor(srgbRed: 0.05, green: 0.05, blue: 0.05, alpha: min(0.9, alpha * 1.15)).cgColor
+            context.setShadow(offset: CGSize(width: 0, height: -(1 + depth * 3)), blur: 2 + depth * 10, color: color)
+        case .adaptive:
+            var red: CGFloat = 0.93
+            var green: CGFloat = 0.42
+            var blue: CGFloat = 0.18
+            var tintAlpha: CGFloat = 1
+            let resolved = tint.usingColorSpace(.sRGB) ?? tint
+            if !resolved.getRed(&red, green: &green, blue: &blue, alpha: &tintAlpha) {
+                red = 0.93
+                green = 0.42
+                blue = 0.18
+            }
+            let color = NSColor(srgbRed: red, green: green, blue: blue, alpha: min(0.9, 0.35 + alpha)).cgColor
+            context.setShadow(offset: CGSize(width: 0, height: -(8 + depth * 20)), blur: 20 + depth * 46, color: color)
+        case .spread:
+            let color = NSColor(srgbRed: 0.08, green: 0.08, blue: 0.08, alpha: alpha).cgColor
+            context.setShadow(offset: CGSize(width: 0, height: -(2 + depth * 26)), blur: 8 + depth * 72, color: color)
+        }
+    }
+
+    func applyLight(_ amount: CGFloat, rect: CGRect) {
+        guard abs(amount) > 0.4, rect.width > 1, rect.height > 1 else { return }
+        context.saveGState()
+        context.clip(to: cg(rect))
+        if amount > 0 {
+            context.setBlendMode(.plusLighter)
+            context.setFillColor(NSColor.white.withAlphaComponent(min(0.8, amount / 55)).cgColor)
+        } else {
+            context.setBlendMode(.multiply)
+            let shade = max(0.2, 1 + amount / 55)
+            context.setFillColor(NSColor(srgbRed: shade, green: shade, blue: shade, alpha: 1).cgColor)
+        }
+        context.fill(cg(rect))
+        context.restoreGState()
+    }
+
+    func paintCard(_ window: CGRect, style: ShotliStyle) {
+        let radius = style.radius
+        switch style.card {
+        case .outline:
+            fillRound(window, radius: radius, color: style.frame == .none ? NSColor.white : NSColor(srgbRed: 0.956, green: 0.956, blue: 0.956, alpha: 1))
+        case .glassLight:
+            fillRound(window, radius: radius, color: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.72))
+        case .glassDark:
+            fillRound(window, radius: radius, color: NSColor(srgbRed: 16 / 255, green: 18 / 255, blue: 27 / 255, alpha: 0.62))
+        case .liquid:
+            fillRound(window, radius: radius, color: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.4))
+        case .insetLight:
+            fillRound(window, radius: radius, color: NSColor(srgbRed: 0.953, green: 0.953, blue: 0.957, alpha: 1))
+        case .insetDark:
+            fillRound(window, radius: radius, color: NSColor(srgbRed: 0.086, green: 0.090, blue: 0.110, alpha: 1))
+        case .retro:
+            fillRound(window, radius: radius, color: NSColor(srgbRed: 0.906, green: 0.886, blue: 0.855, alpha: 1))
+        case .border, .default:
+            let card = style.frame == .none ? NSColor.white : NSColor(srgbRed: 0.956, green: 0.956, blue: 0.956, alpha: 1)
+            fillRound(window, radius: radius, color: card)
+        }
+    }
+
+    func paintCardEdge(_ window: CGRect, style: ShotliStyle) {
+        let radius = style.radius
+        switch style.card {
+        case .outline:
+            context.setStrokeColor(paint("#171717"))
+            context.setLineWidth(3)
+            strokeRound(window.insetBy(dx: 1.5, dy: 1.5), radius: max(0, radius - 1.5))
+        case .border:
+            context.setStrokeColor(paint("#171717"))
+            context.setLineWidth(8)
+            strokeRound(window.insetBy(dx: 4, dy: 4), radius: max(0, radius - 4))
+        case .glassLight, .liquid:
+            context.setStrokeColor(NSColor.white.withAlphaComponent(0.9).cgColor)
+            context.setLineWidth(2)
+            strokeRound(window.insetBy(dx: 1.5, dy: 1.5), radius: max(0, radius - 1.5))
+        case .glassDark:
+            context.setStrokeColor(NSColor.white.withAlphaComponent(0.45).cgColor)
+            context.setLineWidth(2)
+            strokeRound(window.insetBy(dx: 1.5, dy: 1.5), radius: max(0, radius - 1.5))
+        case .insetLight, .insetDark:
+            context.saveGState()
+            clipRound(window, radius: radius)
+            context.setStrokeColor(style.card == .insetDark ? NSColor.black.withAlphaComponent(0.65).cgColor : NSColor.black.withAlphaComponent(0.16).cgColor)
+            context.setLineWidth(18)
+            strokeRound(window.insetBy(dx: 1, dy: 1), radius: max(0, radius - 1))
+            context.restoreGState()
+        case .retro:
+            context.setStrokeColor(NSColor(srgbRed: 0.227, green: 0.204, blue: 0.173, alpha: 1).cgColor)
+            context.setLineWidth(3)
+            strokeRound(window.insetBy(dx: 1.5, dy: 1.5), radius: max(0, radius - 1.5))
+        case .default:
+            context.setStrokeColor(NSColor.black.withAlphaComponent(0.12).cgColor)
+            context.setLineWidth(1)
+            strokeRound(window.insetBy(dx: 0.5, dy: 0.5), radius: max(0, radius - 0.5))
+        }
     }
 
     func fillRound(_ rect: CGRect, radius: CGFloat, color: NSColor) {
@@ -721,6 +832,41 @@ private func displayName(_ filename: String) -> String {
     let ns = filename as NSString
     let base = ns.deletingPathExtension
     return base.isEmpty ? filename : base
+}
+
+private func adaptiveTint(_ image: CGImage) -> NSColor {
+    let cols = 4
+    let rows = 4
+    let fallback = NSColor(srgbRed: 0.93, green: 0.42, blue: 0.18, alpha: 1)
+    guard let ctx = CGContext(
+        data: nil, width: cols, height: rows, bitsPerComponent: 8, bytesPerRow: cols * 4,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ), let data = ctx.data else { return fallback }
+    ctx.interpolationQuality = .medium
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: cols, height: rows))
+    let ptr = data.bindMemory(to: UInt8.self, capacity: cols * rows * 4)
+    var bestScore: CGFloat = -1
+    var best = fallback
+    for index in 0..<(cols * rows) {
+        let red = CGFloat(ptr[index * 4]) / 255
+        let green = CGFloat(ptr[index * 4 + 1]) / 255
+        let blue = CGFloat(ptr[index * 4 + 2]) / 255
+        let maxC = max(red, green, blue)
+        let minC = min(red, green, blue)
+        let score = (maxC - minC) * 2 + maxC * 0.2
+        if score > bestScore {
+            bestScore = score
+            let average = (red + green + blue) / 3
+            best = NSColor(
+                srgbRed: min(1, average + (red - average) * 1.45),
+                green: min(1, average + (green - average) * 1.45),
+                blue: min(1, average + (blue - average) * 1.45),
+                alpha: 1
+            )
+        }
+    }
+    return best
 }
 
 private func paint(_ hex: String, alpha: CGFloat = 1) -> CGColor {
