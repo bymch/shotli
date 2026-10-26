@@ -20,7 +20,7 @@ Requires macOS 12 or newer. One download works on Apple silicon and Intel. The a
 
 Shotli stays in the menu bar. Click the viewfinder and choose **Capture Full Screen**, **Capture Window**, or **Capture Area**. The picture opens in Shotli. Closing the window leaves the menu bar item in place. Quit is in that menu.
 
-The first time you capture, macOS asks for Screen Recording permission. Allow Shotli in System Settings, then capture again.
+The first time you capture, macOS asks for Screen & System Audio Recording. That dialog is Apple's, and it mentions audio even though Shotli never records any. Capture runs the same `/usr/sbin/screencapture` tool Screendrop uses, so macOS treats the app that launched it as recording the screen. Allow Shotli, then capture again. Dropping, pasting, or opening a picture does not ask. Because this build is not notarized, an update can make macOS ask once more.
 
 The first time you open it, macOS may say the developer cannot be verified. Control-click Shotli, choose **Open**, then choose **Open** again. I don't have an Apple developer account yet, so the app isn't notarized.
 
@@ -41,7 +41,7 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - Import a PNG, JPEG, or WebP file, drop it on the window, or paste an image.
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
 - Presets set the background, padding, corner radius, shadow and frame together.
-- Backgrounds include flat colours, mixed gradients, city scenes (dusk, night, harbour, hills, aurora) and a soft mixed-colour wash, plus the simple patterns.
+- Backgrounds use Screendrop's public-domain colour set and three-stop gradients (Aurora, Cobalt, Mist, and the rest), plus the city scenes and simple patterns.
 - Draw with the tool bar along the bottom of the picture. The panel on the right is the look: background, frame, padding, corners and shadow. **Done** returns to your screenshots.
 - Pixelate and blur paint into the exported image. They are not a separate overlay.
 - Crop from the toolbar, then drag on the screenshot. Reset crop is in Layout.

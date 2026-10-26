@@ -100,13 +100,18 @@ private struct Painter {
             }
             context.setFillColor(paint(hex))
             context.fill(CGRect(origin: .zero, size: size))
-        case .gradient(let from, let to, let angle):
+        case .gradient(let from, let mid, let to, let angle):
             let radians = (angle - 90) * .pi / 180
             let length = abs(size.width * cos(radians)) + abs(size.height * sin(radians))
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
             let delta = CGPoint(x: cos(radians) * length / 2, y: sin(radians) * length / 2)
-            let colors = [paint(from), paint(to)] as CFArray
-            let locations: [CGFloat] = [0, 1]
+            var stops = [paint(from), paint(to)]
+            var locations: [CGFloat] = [0, 1]
+            if let mid {
+                stops.insert(paint(mid), at: 1)
+                locations = [0, 0.5, 1]
+            }
+            let colors = stops as CFArray
             guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: locations) else { return }
             context.drawLinearGradient(gradient, start: cg(CGPoint(x: center.x - delta.x, y: center.y - delta.y)), end: cg(CGPoint(x: center.x + delta.x, y: center.y + delta.y)), options: [])
         case .wallpaper(let id):
