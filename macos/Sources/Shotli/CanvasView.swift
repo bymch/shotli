@@ -125,6 +125,7 @@ final class EditorCanvas: NSView {
         switch drag {
         case .pan(let start, let origin):
             pan = CGPoint(x: origin.x + viewPoint.x - start.x, y: origin.y + viewPoint.y - start.y)
+            settle()
         case .move(let origin, let start):
             guard let point = imagePoint(from: viewPoint) else { return }
             replace(translated(origin, dx: point.x - start.x, dy: point.y - start.y))
@@ -182,11 +183,13 @@ final class EditorCanvas: NSView {
             pan.x += event.scrollingDeltaX
             pan.y += event.scrollingDeltaY
         }
+        settle()
         needsDisplay = true
     }
 
     override func magnify(with event: NSEvent) {
         zoom = min(8, max(0.2, zoom * (1 + event.magnification)))
+        settle()
         needsDisplay = true
     }
 
@@ -228,6 +231,7 @@ final class EditorCanvas: NSView {
         let viewPoint = convert(event.locationInWindow, from: nil)
         if case .pan(let start, let origin) = drag {
             pan = CGPoint(x: origin.x + viewPoint.x - start.x, y: origin.y + viewPoint.y - start.y)
+            settle()
             needsDisplay = true
         }
     }
@@ -315,11 +319,26 @@ final class EditorCanvas: NSView {
         model.selectedID = annotation.id
     }
 
+    private func settle() {
+        guard model?.picture != nil, bounds.width > 80, bounds.height > 80 else { return }
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        guard layout.size.width > 1, layout.size.height > 1 else { return }
+        let fit = min((bounds.width - 64) / layout.size.width, (bounds.height - 64) / layout.size.height)
+        let scale = max(0.02, fit) * zoom
+        let limitX = max(0, layout.size.width * scale - bounds.width) / 2
+        let limitY = max(0, layout.size.height * scale - bounds.height) / 2
+        pan.x = min(max(pan.x, -limitX), limitX)
+        pan.y = min(max(pan.y, -limitY), limitY)
+    }
+
     private func placement(for size: CGSize) -> (scale: CGFloat, origin: CGPoint) {
         guard size.width > 1, size.height > 1, bounds.width > 80, bounds.height > 80 else { return (1, .zero) }
         let fit = min((bounds.width - 64) / size.width, (bounds.height - 64) / size.height)
         let scale = max(0.02, fit) * zoom
-        let origin = CGPoint(x: (bounds.width - size.width * scale) / 2 + pan.x, y: (bounds.height - size.height * scale) / 2 + pan.y)
+        let limitX = max(0, size.width * scale - bounds.width) / 2
+        let limitY = max(0, size.height * scale - bounds.height) / 2
+        let held = CGPoint(x: min(max(pan.x, -limitX), limitX), y: min(max(pan.y, -limitY), limitY))
+        let origin = CGPoint(x: (bounds.width - size.width * scale) / 2 + held.x, y: (bounds.height - size.height * scale) / 2 + held.y)
         return (scale, origin)
     }
 
