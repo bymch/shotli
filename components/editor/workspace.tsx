@@ -707,7 +707,7 @@ export function Workspace({
             className="absolute inset-0"
             style={{
               transform: tiltMode
-                ? `perspective(1200px) rotateX(${(doc.style.tilt || 8) * 0.55}deg) rotateY(${(doc.style.tilt || 8) * 0.35}deg)`
+                ? `perspective(1400px) rotateX(${(doc.style.tilt || 8) * 0.9}deg) rotateY(${(doc.style.tilt || 8) * 0.42}deg)`
                 : undefined,
               transformOrigin: "center center",
             }}

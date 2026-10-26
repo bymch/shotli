@@ -136,7 +136,7 @@ export function LeftRail({
           </button>
           <div className="min-w-0 flex-1 text-center">
             <div className="text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Magic preset</div>
-            <div className="truncate text-[13px] font-medium">{matched >= 0 ? PRESETS[matched].name : "Custom"}</div>
+            <div className="truncate text-[13px] font-medium">{presetLabel(doc.style, matched)}</div>
           </div>
           <button type="button" className="h-8 w-8 rounded-full bg-black/5 text-lg leading-none" aria-label="Next preset" onClick={() => cycle(1)}>
             ›
@@ -184,7 +184,19 @@ export function LeftRail({
         <div className="mt-2 grid grid-cols-3 gap-2">
           {styles.map((item) => {
             const active = doc.style.card === item.id;
-            const preview: Style = { ...doc.style, card: item.id, radius: item.radius, shadow: item.shadow, borderWidth: item.borderWidth, tilt: 0 };
+            const preview: Style = {
+              ...doc.style,
+              card: item.id,
+              radius: item.radius,
+              shadow: item.shadow,
+              borderWidth: item.borderWidth,
+              tilt: 0,
+              padding: 84,
+              canvas: "16:9",
+              canvasWidth: 0,
+              canvasHeight: 0,
+              background: swatchBackground(doc.style.background),
+            };
             return (
               <button
                 key={item.id}
@@ -509,7 +521,10 @@ export function MiniStage({ doc, style, tilt = 0, className = "h-12" }: { doc: D
       <canvas
         ref={ref}
         className="max-h-full max-w-full"
-        style={{ transform: tilt ? `rotateX(${tilt * 0.45}deg) rotateY(${tilt * 0.28}deg)` : undefined, transformOrigin: "center" }}
+        style={{
+          transform: tilt ? `perspective(520px) rotateX(${Math.min(22, 7 + tilt * 0.55)}deg) rotateY(${Math.min(14, 4 + tilt * 0.28)}deg)` : undefined,
+          transformOrigin: "center center",
+        }}
       />
     </div>
   );
@@ -698,6 +713,28 @@ function commitZoom(raw: string | null, fallback: number, onZoom: (percent: numb
   const next = Math.round(Number(raw));
   if (!Number.isFinite(next) || next < 8 || next > 600 || next === fallback) return;
   onZoom(next);
+}
+
+function presetLabel(style: Style, matched: number) {
+  if (matched >= 0) return PRESETS[matched].name;
+  return LAYOUTS.find((layout) => stylesMatch(layout.style, style))?.name ?? "Custom";
+}
+
+function swatchBackground(background: Background): Background {
+  if (background.kind === "color" && luminance(background.color) > 0.82) {
+    return { kind: "gradient", from: "#b7c5d8", to: "#f4ece4", angle: 145 };
+  }
+  return background;
+}
+
+function luminance(color: string) {
+  const hex = color.trim();
+  if (!hex.startsWith("#") || (hex.length !== 7 && hex.length !== 4)) return 1;
+  const full = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
+  const r = Number.parseInt(full.slice(1, 3), 16);
+  const g = Number.parseInt(full.slice(3, 5), 16);
+  const b = Number.parseInt(full.slice(5, 7), 16);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
 function sameBackground(a: Background, b: Background) {

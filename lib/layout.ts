@@ -18,24 +18,33 @@ export type Composition = {
 
 const EMPTY_PICTURE = { w: 960, h: 600 };
 
+export function cardInset(style: Doc["style"]) {
+  if (style.card === "glass-light" || style.card === "glass-dark" || style.card === "liquid") return 22;
+  if (style.card === "inset-light" || style.card === "inset-dark") return 18;
+  if (style.card === "border") return Math.max(12, style.borderWidth);
+  return 0;
+}
+
 export function contentSize(doc: Doc) {
   const crop = activeCrop(doc);
   const width = crop?.w ?? (doc.image ? 0 : EMPTY_PICTURE.w);
   const height = crop?.h ?? (doc.image ? 0 : EMPTY_PICTURE.h);
   const pad = doc.style.padding;
   const chrome = doc.style.frame === "none" ? 0 : CHROME_HEIGHT;
+  const inset = cardInset(doc.style);
   return {
     width,
     height,
     pad,
     chrome,
-    contentW: Math.max(1, width + pad * 2),
-    contentH: Math.max(1, height + chrome + pad * 2),
+    inset,
+    contentW: Math.max(1, width + pad * 2 + inset * 2),
+    contentH: Math.max(1, height + chrome + pad * 2 + inset * 2),
   };
 }
 
 export function compositionOf(doc: Doc): Composition {
-  const { width, height, pad, chrome, contentW, contentH } = contentSize(doc);
+  const { width, height, pad, chrome, inset, contentW, contentH } = contentSize(doc);
   let compW = contentW;
   let compH = contentH;
   if (doc.style.canvasWidth > 0 && doc.style.canvasHeight > 0) {
@@ -51,9 +60,11 @@ export function compositionOf(doc: Doc): Composition {
   }
   const extraX = Math.max(0, compW - contentW);
   const extraY = Math.max(0, compH - contentH);
+  const originX = pad + extraX / 2;
+  const originY = pad + extraY / 2;
   return {
-    image: { x: pad + extraX / 2, y: pad + chrome + extraY / 2, w: width, h: height },
-    window: { x: pad + extraX / 2, y: pad + extraY / 2, w: width, h: height + chrome },
+    image: { x: originX + inset, y: originY + chrome + inset, w: width, h: height },
+    window: { x: originX, y: originY, w: width + inset * 2, h: height + chrome + inset * 2 },
     compW,
     compH,
   };
