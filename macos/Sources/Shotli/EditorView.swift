@@ -21,65 +21,412 @@ struct EditorView: View {
     @ObservedObject var model: EditorModel
     @State private var dropTarget = false
     @State private var didConfigure = false
+    @State private var tilted = false
+    @State private var animatePop = false
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            studioBar
             if model.picture == nil {
                 stage {
                     LibraryHome(onOpen: { model.openPanel() })
                 }
             } else {
-                HStack(spacing: 0) {
-                    stage {
-                        GeometryReader { geo in
-                            CanvasView(model: model, viewport: geo.size)
-                                .frame(width: geo.size.width, height: geo.size.height)
+                HStack(alignment: .top, spacing: 12) {
+                    leftRail
+                        .frame(width: 252)
+                        .frame(maxHeight: .infinity)
+                    VStack(spacing: 12) {
+                        stage {
+                            GeometryReader { geo in
+                                CanvasView(model: model, viewport: geo.size)
+                                    .frame(width: geo.size.width, height: geo.size.height)
+                            }
                         }
-                    }
-                    .clipped()
-                    .overlay(alignment: .topLeading) {
-                        Button(action: { model.showLibrary() }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text("Library")
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .scaleEffect(animatePop ? 1.015 : 1)
+                        .rotation3DEffect(.degrees(tilted ? 7 : 0), axis: (x: 0.55, y: 0.85, z: 0), perspective: 0.45)
+                        Button(action: playAnimate) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text("Animate")
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .foregroundColor(ink)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule().fill(Color.white)
-                                    .shadow(color: Color.black.opacity(0.14), radius: 10, y: 3)
-                            )
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 10, y: 3))
                         }
                         .buttonStyle(.plain)
-                        .help("Back to your screenshots (⌘L)")
-                        .padding(.top, 14)
-                        .padding(.leading, 16)
                     }
-                    .overlay(alignment: .bottom) {
-                        toolDock
-                            .padding(.bottom, 16)
-                    }
-                    .overlay(alignment: .bottomLeading) {
-                        zoomControls
-                            .padding(.leading, 16)
-                            .padding(.bottom, 16)
-                    }
-                    inspector
-                        .frame(width: 320)
-                        .padding(.init(top: 10, leading: 2, bottom: 10, trailing: 10))
-                        .background(workspace)
+                    .frame(maxHeight: .infinity)
+                    rightRail
+                        .frame(width: 276)
+                        .frame(maxHeight: .infinity)
                 }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
             }
         }
         .background(workspace)
         .onAppear(perform: configureWindow)
+    }
+
+    private var studioBar: some View {
+        ZStack {
+            WindowDrag()
+            HStack(spacing: 10) {
+                Button(action: { model.showLibrary() }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(ink)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Library")
+                .disabled(model.picture == nil)
+                Menu {
+                    ForEach(Presets.all) { preset in
+                        Button(preset.name) { model.applyPreset(preset) }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: "#F78529")!), Color(nsColor: NSColor(hex: "#7A42E8")!)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 18, height: 18)
+                        Text("Templates")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(ink)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                Spacer(minLength: 8)
+                if model.picture != nil {
+                    HStack(spacing: 2) {
+                        iconButton("arrow.uturn.backward", help: "Undo") { model.undo() }
+                            .disabled(!model.canUndo)
+                        iconButton("arrow.uturn.forward", help: "Redo") { model.redo() }
+                            .disabled(!model.canRedo)
+                    }
+                    Button(action: { model.startOver() }) {
+                        Text("Start Over")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(ink)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.08), radius: 6, y: 2))
+                    }
+                    .buttonStyle(.plain)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        toolDock
+                    }
+                    .frame(width: 340)
+                }
+                Spacer(minLength: 8)
+                Button(action: { model.exportPNG() }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Export")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("1× PNG")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .foregroundColor(ink)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.1), radius: 8, y: 2))
+                }
+                .buttonStyle(.plain)
+                .disabled(model.picture == nil)
+                .help("Export PNG (⌘S)")
+            }
+            .padding(.leading, 78)
+            .padding(.trailing, 16)
+        }
+        .frame(height: 54)
+    }
+
+    private var leftRail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 4) {
+                tabButton("Mockup", on: model.style.frame == .none) {
+                    model.setFrame(.none)
+                }
+                tabButton("Frame", on: model.style.frame != .none) {
+                    if model.style.frame == .none { model.setFrame(.browser) }
+                }
+            }
+            .padding(10)
+            if model.style.frame != .none {
+                HStack(spacing: 4) {
+                    tabButton("Browser", on: model.style.frame == .browser) { model.setFrame(.browser) }
+                    tabButton("Window", on: model.style.frame == .desktop) { model.setFrame(.desktop) }
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Button(action: { model.openPanel() }) {
+                        HStack(spacing: 8) {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.black.opacity(0.06))
+                                .frame(width: 36, height: 28)
+                                .overlay(Image(systemName: "photo").font(.system(size: 11)).foregroundColor(.secondary))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(model.picture?.name ?? "Screenshot")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(ink)
+                                    .lineLimit(1)
+                                Text("Adapts to media")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white).shadow(color: Color.black.opacity(0.05), radius: 4, y: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.06), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    HStack {
+                        Button(action: { cyclePreset(-1) }) {
+                            Image(systemName: "chevron.left").frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        VStack(spacing: 1) {
+                            Text("MAGIC PRESET")
+                                .font(.system(size: 9, weight: .semibold))
+                                .kerning(0.5)
+                                .foregroundColor(.secondary)
+                            Text(presetName)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(ink)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity)
+                        Button(action: { cyclePreset(1) }) {
+                            Image(systemName: "chevron.right").frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.04)))
+                    caption("Media")
+                    Button(action: { model.openPanel() }) {
+                        VStack(spacing: 8) {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.white)
+                                .frame(width: 54, height: 44)
+                                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 1)
+                                .overlay(Image(systemName: "plus").font(.system(size: 16, weight: .medium)).foregroundColor(ink))
+                            Text("Drop media or click to choose")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.04)))
+                    }
+                    .buttonStyle(.plain)
+                    caption("Style")
+                    lookRow
+                    caption("Border")
+                    labelledSlider("Padding", value: Binding(get: { model.style.padding }, set: { model.beginGesture(); model.setPadding($0) }), range: 0...200)
+                    labelledSlider("Corner radius", value: Binding(get: { model.style.radius }, set: { model.beginGesture(); model.setRadius($0) }), range: 0...64)
+                    labelledSlider("Shadow", value: Binding(get: { model.style.shadow }, set: { model.beginGesture(); model.setShadow($0) }), range: 0...100)
+                    caption("Background")
+                    backgroundControls
+                    if showsText || showsStroke || showsPixel || showsBlur || model.selected != nil {
+                        caption("Mark")
+                        markControls
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 16)
+            }
+        }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: Color.black.opacity(0.05), radius: 10, y: 2)
+    }
+
+    private var rightRail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 2) {
+                densityButton("rectangle", padding: 28, help: "Tight")
+                densityButton("rectangle.split.2x1", padding: 72, help: "Balanced")
+                densityButton("square.grid.2x2", padding: 120, help: "Airy")
+            }
+            .padding(3)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.05)))
+            .padding(12)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text("Zoom")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(ink)
+                    Slider(value: Binding(get: { model.zoomMultiplier }, set: { model.setZoomMultiplier($0) }), in: 0.4...2)
+                    Text("\(Int((model.zoomMultiplier * 100).rounded()))%")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: 36, alignment: .trailing)
+                }
+                HStack(spacing: 8) {
+                    Button(action: { tilted = true }) {
+                        Text("Tilt")
+                            .font(.system(size: 12, weight: tilted ? .semibold : .regular))
+                            .foregroundColor(tilted ? ink : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                    Button(action: { tilted = false }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: tilted ? "circle" : "circle.inset.filled")
+                                .font(.system(size: 11))
+                            Text("Precision mode")
+                                .font(.system(size: 12))
+                        }
+                        .foregroundColor(ink)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            Button(action: { model.fit() }) {
+                layoutCard(model.style, height: 92)
+                    .overlay(
+                        HStack {
+                            Text("Zoom")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("Fit")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(ink)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 6),
+                        alignment: .bottom
+                    )
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            caption("Layout presets")
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+            ScrollView {
+                VStack(spacing: 10) {
+                    ForEach(Presets.all) { preset in
+                        let active = preset.style == model.style
+                        Button(action: { model.applyPreset(preset) }) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                layoutCard(preset.style, height: 108)
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(active ? accent : Color.clear, lineWidth: 2))
+                                Text(preset.name)
+                                    .font(.system(size: 11, weight: active ? .semibold : .regular))
+                                    .foregroundColor(active ? ink : .secondary)
+                                    .padding(.leading, 2)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+            }
+        }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: Color.black.opacity(0.05), radius: 10, y: 2)
+    }
+
+    private func playAnimate() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.62)) { animatePop = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { animatePop = false }
+        }
+    }
+
+    private func cyclePreset(_ step: Int) {
+        let presets = Presets.all
+        guard !presets.isEmpty else { return }
+        let current = presets.firstIndex { $0.style == model.style } ?? 0
+        let next = (current + step + presets.count) % presets.count
+        model.applyPreset(presets[next])
+    }
+
+    private var presetName: String {
+        Presets.all.first { $0.style == model.style }?.name ?? "Custom"
+    }
+
+    private func tabButton(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: on ? .semibold : .medium))
+                .foregroundColor(on ? .white : ink)
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: 9).fill(on ? ink : Color.black.opacity(0.05)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func densityButton(_ symbol: String, padding: CGFloat, help: String) -> some View {
+        let on = abs(model.style.padding - padding) < 8
+        return Button(action: {
+            model.beginGesture()
+            model.setPadding(padding)
+            model.endGesture()
+        }) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(on ? ink : .secondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: 8).fill(on ? Color.white : Color.clear).shadow(color: on ? Color.black.opacity(0.08) : .clear, radius: 3, y: 1))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private func layoutCard(_ style: ShotliStyle, height: CGFloat) -> some View {
+        ZStack {
+            presetPreview(style.background)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.92))
+                .shadow(color: Color.black.opacity(0.18), radius: 8, y: 6)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 22)
+            if style.frame != .none {
+                HStack(spacing: 3) {
+                    Circle().fill(Color(nsColor: NSColor(hex: "#FF5F57")!)).frame(width: 5, height: 5)
+                    Circle().fill(Color(nsColor: NSColor(hex: "#FEBC2E")!)).frame(width: 5, height: 5)
+                    Circle().fill(Color(nsColor: NSColor(hex: "#28C840")!)).frame(width: 5, height: 5)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, 34)
+                .padding(.top, 26)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
+        .frame(height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func stage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -101,159 +448,9 @@ struct EditorView: View {
         }
     }
 
-    private var header: some View {
-        ZStack {
-            WindowDrag()
-            HStack(spacing: 8) {
-                if model.picture != nil {
-                    Button(action: { model.showLibrary() }) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(ink)
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Back to your screenshots (⌘L)")
-                    Spacer(minLength: 8)
-                    iconButton("arrow.uturn.backward", help: "Undo") { model.undo() }
-                        .disabled(!model.canUndo)
-                    iconButton("arrow.uturn.forward", help: "Redo") { model.redo() }
-                        .disabled(!model.canRedo)
-                    Button(action: { model.exportPNG() }) {
-                        Text("Export PNG")
-                    }
-                    .help("Export PNG (⌘S)")
-                } else {
-                    Button(action: { model.openPanel() }) {
-                        Label("Open", systemImage: "folder")
-                    }
-                    .help("Open a screenshot (⌘O)")
-                    Spacer(minLength: 8)
-                }
-            }
-            .padding(.leading, 86)
-            .padding(.trailing, 12)
-        }
-        .frame(height: 52)
-        .background(Color.white)
-        .overlay(Rectangle().frame(height: 1).foregroundColor(line), alignment: .bottom)
-    }
-
-    private var inspector: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    caption("Canvas")
-                        .padding(.horizontal, 14)
-                        .padding(.top, 14)
-                    canvasRow
-                        .padding(.horizontal, 14)
-                        .padding(.top, 8)
-                    canvasSizeFields
-                        .padding(.horizontal, 14)
-                        .padding(.top, 8)
-                    caption("Look")
-                        .padding(.horizontal, 14)
-                        .padding(.top, 16)
-                    lookRow
-                        .padding(.horizontal, 14)
-                        .padding(.top, 8)
-                    section("Background") { backgroundControls }
-                    if showsText || showsStroke || showsPixel || showsBlur || model.selected != nil {
-                        section("Mark") { markControls }
-                    }
-                    section("Layout") { layoutControls }
-                    Color.clear.frame(height: 12)
-                }
-            }
-            Button(action: { model.showLibrary() }) {
-                Text("Done")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 34)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(accent)
-            .clipShape(Capsule())
-            .help("Back to your screenshots")
-            .padding(.horizontal, 14)
-            .padding(.top, 8)
-            .padding(.bottom, 14)
-        }
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: Color.black.opacity(0.06), radius: 16, y: 4)
-    }
-
-    private var canvasRow: some View {
-        HStack(spacing: 4) {
-            ForEach(CanvasRatio.allCases) { ratio in
-                let active = model.style.canvas == ratio && model.style.canvasWidth == 0 && model.style.canvasHeight == 0
-                Button(action: { model.setCanvas(ratio) }) {
-                    Text(ratio.label)
-                        .font(.system(size: 11, weight: active ? .semibold : .medium))
-                        .foregroundColor(active ? .white : ink)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 28)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(active ? accent : Color.black.opacity(0.05)))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private var canvasSizeFields: some View {
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
-        return HStack(spacing: 8) {
-            CanvasSizeField(label: "W", value: layout.size.width) { width in
-                model.beginGesture()
-                model.setCanvasSize(width: width, height: layout.size.height)
-                model.endGesture()
-            }
-            CanvasSizeField(label: "H", value: layout.size.height) { height in
-                model.beginGesture()
-                model.setCanvasSize(width: layout.size.width, height: height)
-                model.endGesture()
-            }
-        }
-    }
-
-    private var zoomControls: some View {
-        HStack(spacing: 2) {
-            zoomButton("minus") { model.zoomOut() }
-            Text("\(model.zoomPercent)%")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(ink)
-                .frame(minWidth: 44)
-            zoomButton("plus") { model.zoomIn() }
-            Rectangle().fill(line).frame(width: 1, height: 14).padding(.horizontal, 4)
-            Button("Fit") { model.fit() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(ink)
-                .padding(.horizontal, 6)
-            Button("100%") { model.actualSize() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(ink)
-                .padding(.horizontal, 6)
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 10, y: 3))
-    }
-
-    private func zoomButton(_ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(ink)
-                .frame(width: 22, height: 22)
-        }
-        .buttonStyle(.plain)
-    }
 
     private var lookRow: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 10) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 8) {
             ForEach(Presets.all) { preset in
                 let active = preset.style == model.style
                 Button(action: { model.applyPreset(preset) }) {
@@ -277,14 +474,15 @@ struct EditorView: View {
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             }
                         }
-                        .frame(height: 74)
+                        .frame(height: 42)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
                                 .stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1)
                         )
                         Text(preset.name)
-                            .font(.system(size: 11, weight: active ? .semibold : .regular))
+                            .font(.system(size: 9, weight: active ? .semibold : .regular))
+                            .lineLimit(1)
                             .foregroundColor(active ? ink : .secondary)
                     }
                 }
@@ -539,10 +737,6 @@ struct EditorView: View {
         .help(help)
     }
 
-    private var headerDivider: some View {
-        Rectangle().fill(line).frame(width: 1, height: 18)
-    }
-
     private func labelledSlider(_ title: String, value: Binding<CGFloat>, range: ClosedRange<CGFloat>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -778,49 +972,13 @@ struct EditorView: View {
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
             window.isMovableByWindowBackground = false
-            window.minSize = NSSize(width: 980, height: 680)
+            window.minSize = NSSize(width: 1100, height: 720)
             window.backgroundColor = NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)
             if window.contentRect(forFrameRect: window.frame).width < 1000 {
                 window.setContentSize(NSSize(width: 1180, height: 760))
                 window.center()
             }
         }
-    }
-}
-
-private struct CanvasSizeField: View {
-    var label: String
-    var value: CGFloat
-    var onCommit: (CGFloat) -> Void
-    @State private var text = ""
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
-            TextField(label, text: $text, onCommit: commit)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-        }
-        .padding(.horizontal, 8)
-        .frame(maxWidth: .infinity)
-        .frame(height: 28)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.05)))
-        .onAppear { text = String(Int(value.rounded())) }
-        .onChange(of: Int(value.rounded())) { next in
-            text = String(next)
-        }
-    }
-
-    private func commit() {
-        guard let number = Double(text), number >= 32 else {
-            text = String(Int(value.rounded()))
-            return
-        }
-        let rounded = CGFloat(number.rounded())
-        if abs(rounded - value) < 0.5 { return }
-        onCommit(rounded)
     }
 }
 

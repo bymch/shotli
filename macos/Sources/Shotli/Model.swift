@@ -288,6 +288,9 @@ final class EditorModel: ObservableObject {
     @Published var zoomInRequest = 0
     @Published var zoomOutRequest = 0
     @Published var zoomPercent = 100
+    @Published var zoomMultiplier: CGFloat = 1
+    @Published var zoomSetRequest = 0
+    var zoomSetValue: CGFloat = 1
 
     private var undoStack: [Snapshot] = []
     private var redoStack: [Snapshot] = []
@@ -477,6 +480,20 @@ final class EditorModel: ObservableObject {
 
     func zoomOut() {
         zoomOutRequest += 1
+    }
+
+    func setZoomMultiplier(_ value: CGFloat) {
+        zoomSetValue = min(3, max(0.35, value))
+        zoomSetRequest += 1
+    }
+
+    func startOver() {
+        guard picture != nil else { return }
+        pushUndo()
+        crop = nil
+        annotations = []
+        selectedID = nil
+        tool = .select
     }
 
     func replaceSelectedText(_ text: String) {
