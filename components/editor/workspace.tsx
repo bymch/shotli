@@ -728,7 +728,15 @@ function computePan(view: View, size: { w: number; h: number }, compW: number, c
   if (view.mode === "fit") {
     return { x: (size.w - compW * scale) / 2, y: (size.h - compH * scale) / 2 };
   }
-  return { x: view.panX, y: view.panY };
+  return {
+    x: holdInFrame(view.panX, compW * scale, size.w),
+    y: holdInFrame(view.panY, compH * scale, size.h),
+  };
+}
+
+function holdInFrame(origin: number, drawn: number, view: number) {
+  if (drawn <= view) return (view - drawn) / 2;
+  return Math.min(0, Math.max(view - drawn, origin));
 }
 
 function clampZoom(value: number) {

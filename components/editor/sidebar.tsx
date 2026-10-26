@@ -64,41 +64,14 @@ export function Sidebar({
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3.5">
-        <div className="text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Look</div>
-        <div className="mt-2 grid grid-cols-2 gap-2.5">
-          {PRESETS.map((preset) => {
-            const active = stylesMatch(doc.style, preset.style);
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onPreset(preset.style)}
-                className="text-center"
-              >
-                <span
-                  className={`relative block h-[74px] overflow-hidden rounded-[10px] border-2 ${active ? "border-accent" : "border-black/10"}`}
-                  style={{
-                    background: backgroundCss(preset.style.background),
-                    backgroundSize: "8px 8px",
-                  }}
-                >
-                  <span className="absolute inset-x-3 top-2.5 bottom-2.5 rounded-[4px] bg-white shadow-[0_4px_10px_rgba(0,0,0,0.16)]" />
-                  {preset.style.frame !== "none" ? (
-                    <span className="absolute top-[14px] left-[16px] flex gap-[2px]">
-                      <span className="h-[3.5px] w-[3.5px] rounded-full bg-[#ff5f57]" />
-                      <span className="h-[3.5px] w-[3.5px] rounded-full bg-[#febc2e]" />
-                      <span className="h-[3.5px] w-[3.5px] rounded-full bg-[#28c840]" />
-                    </span>
-                  ) : null}
-                </span>
-                <span className={`mt-1 block text-[11px] ${active ? "font-semibold text-ink" : "text-muted"}`}>{preset.name}</span>
-              </button>
-            );
-          })}
+        <div className="min-[1100px]:hidden">
+          <div className="text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Look</div>
+          <div className="mt-2">
+            <LookGrid doc={doc} onPreset={onPreset} />
+          </div>
         </div>
 
-        <div className="mt-5 text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Background</div>
+        <div className="mt-5 text-[10px] font-semibold tracking-[0.08em] text-muted uppercase min-[1100px]:mt-0">Background</div>
         <div className="mt-3 mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Colour</div>
         <Swatches
           label="Background colour"
@@ -310,6 +283,58 @@ export function Sidebar({
       </div>
       </div>
     </aside>
+  );
+}
+
+export function LookRail({ doc, onPreset }: { doc: Doc; onPreset: (style: Style) => void }) {
+  return (
+    <aside className="hidden w-[268px] shrink-0 flex-col bg-workspace p-2.5 pr-0 min-[1100px]:flex">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_10px_28px_rgba(0,0,0,0.06)]">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3.5">
+          <div className="text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Look</div>
+          <div className="mt-2">
+            <LookGrid doc={doc} onPreset={onPreset} />
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function LookGrid({ doc, onPreset }: { doc: Doc; onPreset: (style: Style) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-2.5">
+      {PRESETS.map((preset) => {
+        const active = stylesMatch(doc.style, preset.style);
+        return (
+          <button
+            key={preset.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onPreset(preset.style)}
+            className="text-center"
+          >
+            <span
+              className={`relative block h-[74px] overflow-hidden rounded-[10px] border-2 ${active ? "border-accent" : "border-black/10"}`}
+              style={{
+                background: backgroundCss(preset.style.background),
+                backgroundSize: "8px 8px",
+              }}
+            >
+              <span className="absolute inset-x-3 top-2.5 bottom-2.5 rounded-[4px] bg-white shadow-[0_4px_10px_rgba(0,0,0,0.16)]" />
+              {preset.style.frame !== "none" ? (
+                <span className="absolute top-[14px] left-[16px] flex gap-[2px]">
+                  <span className="h-[3.5px] w-[3.5px] rounded-full bg-[#ff5f57]" />
+                  <span className="h-[3.5px] w-[3.5px] rounded-full bg-[#febc2e]" />
+                  <span className="h-[3.5px] w-[3.5px] rounded-full bg-[#28c840]" />
+                </span>
+              ) : null}
+            </span>
+            <span className={`mt-1 block text-[11px] ${active ? "font-semibold text-ink" : "text-muted"}`}>{preset.name}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

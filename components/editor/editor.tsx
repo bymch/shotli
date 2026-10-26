@@ -18,7 +18,7 @@ import {
   type Tool,
 } from "@/lib/types";
 import { LibraryHome, type LibrarySourceId, type RecentShot } from "./library-home";
-import { Sidebar } from "./sidebar";
+import { LookRail, Sidebar } from "./sidebar";
 import { Toolbar } from "./toolbar";
 import { Workspace } from "./workspace";
 
@@ -405,6 +405,7 @@ export function Editor() {
         if (file) void importFile(file);
       }}
     >
+      {doc.image ? <LookRail doc={doc} onPreset={applyPreset} /> : null}
       <div className="flex min-w-0 flex-1 flex-col">
         <Toolbar
           canUndo={historyState.undo}
