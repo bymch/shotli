@@ -35,12 +35,12 @@ struct EditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            studioBar
             if model.picture == nil {
                 stage {
                     LibraryHome(onOpen: { model.openPanel() })
                 }
             } else {
+                studioBar
                 HStack(alignment: .top, spacing: 12) {
                     leftRail
                         .frame(width: 280)
