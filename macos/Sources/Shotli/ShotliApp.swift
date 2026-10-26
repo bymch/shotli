@@ -9,7 +9,7 @@ struct ShotliApp: App {
     var body: some Scene {
         WindowGroup {
             EditorView(model: model)
-                .frame(minWidth: 980, minHeight: 680)
+                .frame(minWidth: 1100, minHeight: 720)
         }
         .windowStyle(.hiddenTitleBar)
         .commands {

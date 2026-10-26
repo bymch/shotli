@@ -38,6 +38,10 @@ struct CanvasView: NSViewRepresentable {
             view.seenZoomOut = model.zoomOutRequest
             if model.zoomOutRequest > 0 { view.zoomBy(1 / 1.1) }
         }
+        if view.seenZoomSet != model.zoomSetRequest {
+            view.seenZoomSet = model.zoomSetRequest
+            if model.zoomSetRequest > 0 { view.setZoomMultiplier(model.zoomSetValue) }
+        }
         view.needsDisplay = true
     }
 }
@@ -51,6 +55,7 @@ final class EditorCanvas: NSView {
     var seenActual = 0
     var seenZoomIn = 0
     var seenZoomOut = 0
+    var seenZoomSet = 0
     private var draft: Annotation?
     private var cropDraft: CGRect?
     private var spaceDown = false
@@ -116,17 +121,6 @@ final class EditorCanvas: NSView {
     private func drawStage() {
         NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1).setFill()
         bounds.fill()
-        NSColor(white: 0.82, alpha: 1).setFill()
-        let step: CGFloat = 16
-        var y: CGFloat = 8
-        while y < bounds.height {
-            var x: CGFloat = 8
-            while x < bounds.width {
-                NSBezierPath(ovalIn: CGRect(x: x, y: y, width: 1.4, height: 1.4)).fill()
-                x += step
-            }
-            y += step
-        }
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -322,6 +316,14 @@ final class EditorCanvas: NSView {
         zoomAt(factor, anchor: CGPoint(x: box.midX, y: box.midY))
     }
 
+    func setZoomMultiplier(_ value: CGFloat) {
+        zoom = min(3, max(0.35, value))
+        pan = .zero
+        settle()
+        publishZoom()
+        needsDisplay = true
+    }
+
     private func placeInstant(at point: CGPoint, shift: Bool) {
         _ = shift
         let annotation = makeAnnotation(at: point)
@@ -400,8 +402,8 @@ final class EditorCanvas: NSView {
     private func fitScale(_ size: CGSize) -> CGFloat {
         let box = stageBox()
         guard size.width > 1, size.height > 1, box.width > 80, box.height > 80 else { return 1 }
-        let availW = box.width - 72
-        let availH = box.height - 160
+        let availW = box.width - 20
+        let availH = box.height - 20
         guard availW > 40, availH > 40 else { return 1 }
         return max(0.02, min(availW / size.width, availH / size.height))
     }
@@ -449,10 +451,14 @@ final class EditorCanvas: NSView {
 
     private func publishZoom() {
         let percent = Int((currentScale() * 100).rounded())
-        guard model?.zoomPercent != percent else { return }
+        let multiple = zoom
+        let samePercent = model?.zoomPercent == percent
+        let sameMultiple = abs((model?.zoomMultiplier ?? 0) - multiple) < 0.001
+        guard !samePercent || !sameMultiple else { return }
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.model?.zoomPercent != percent else { return }
-            self.model?.zoomPercent = percent
+            guard let self else { return }
+            if self.model?.zoomPercent != percent { self.model?.zoomPercent = percent }
+            if abs((self.model?.zoomMultiplier ?? 0) - multiple) >= 0.001 { self.model?.zoomMultiplier = multiple }
         }
     }
 
