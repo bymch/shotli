@@ -62,6 +62,11 @@ func contentSize(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> 
     return CGSize(width: max(1, width + pad * 2 + rim * 2), height: max(1, height + chrome + pad * 2 + rim * 2))
 }
 
+func cornerRadius(_ control: CGFloat, span: CGFloat) -> CGFloat {
+    let amount = min(64, max(0, control)) / 64
+    return amount * max(0, span) * 0.125
+}
+
 func cardRim(_ style: ShotliStyle) -> CGFloat {
     if style.hideMockup { return 0 }
     switch style.card {
