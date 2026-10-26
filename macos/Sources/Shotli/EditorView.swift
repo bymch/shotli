@@ -62,11 +62,10 @@ struct EditorView: View {
                         toolDock
                             .padding(.bottom, 16)
                     }
-                    Divider()
                     inspector
-                        .frame(width: 280)
-                        .clipped()
-                        .background(Color.white)
+                        .frame(width: 320)
+                        .padding(.init(top: 10, leading: 2, bottom: 10, trailing: 10))
+                        .background(workspace)
                 }
             }
         }
@@ -135,12 +134,11 @@ struct EditorView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Look")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(ink)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 16)
+                    caption("Look")
+                        .padding(.horizontal, 14)
+                        .padding(.top, 14)
                     lookRow
+                        .padding(.horizontal, 14)
                         .padding(.top, 8)
                     section("Background") { backgroundControls }
                     if showsText || showsStroke || showsPixel || showsBlur || model.selected != nil {
@@ -153,89 +151,67 @@ struct EditorView: View {
             Button(action: { model.showLibrary() }) {
                 Text("Done")
                     .frame(maxWidth: .infinity)
+                    .frame(height: 34)
             }
             .buttonStyle(.borderedProminent)
             .tint(accent)
-            .controlSize(.large)
+            .clipShape(Capsule())
             .help("Back to your screenshots")
-            .padding(12)
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+            .padding(.bottom, 14)
         }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color.black.opacity(0.06), radius: 16, y: 4)
     }
 
     private var lookRow: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 6)], spacing: 6) {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 10) {
             ForEach(Presets.all) { preset in
                 let active = preset.style == model.style
                 Button(action: { model.applyPreset(preset) }) {
-                    Text(preset.name)
-                        .font(.system(size: 12, weight: active ? .semibold : .medium))
-                        .foregroundColor(ink)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 30)
-                        .background(liquidFill(active: active))
-                        .clipShape(Capsule())
-                        .overlay(liquidRim(active: active))
-                        .shadow(color: Color.black.opacity(active ? 0.16 : 0.08), radius: active ? 8 : 3, y: active ? 3 : 1)
+                    VStack(spacing: 5) {
+                        ZStack {
+                            presetPreview(preset.style.background)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.white)
+                                .shadow(color: Color.black.opacity(0.16), radius: 3, y: 2)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                            if preset.style.frame != .none {
+                                HStack(spacing: 2) {
+                                    Circle().fill(Color(nsColor: NSColor(hex: "#FF5F57")!)).frame(width: 3.5, height: 3.5)
+                                    Circle().fill(Color(nsColor: NSColor(hex: "#FEBC2E")!)).frame(width: 3.5, height: 3.5)
+                                    Circle().fill(Color(nsColor: NSColor(hex: "#28C840")!)).frame(width: 3.5, height: 3.5)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.leading, 16)
+                                .padding(.top, 12)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            }
+                        }
+                        .frame(height: 74)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1)
+                        )
+                        Text(preset.name)
+                            .font(.system(size: 11, weight: active ? .semibold : .regular))
+                            .foregroundColor(active ? ink : .secondary)
+                    }
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(6)
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color(nsColor: NSColor(srgbRed: 0.93, green: 0.94, blue: 0.96, alpha: 1)))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.white.opacity(0.85), lineWidth: 1)
-        )
-        .padding(.horizontal, 16)
     }
 
-    private func liquidFill(active: Bool) -> some View {
-        ZStack {
-            Capsule().fill(Color.white.opacity(0.35))
-            Capsule().fill(.ultraThinMaterial)
-            Capsule().fill(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(active ? 0.92 : 0.62),
-                        Color.white.opacity(active ? 0.28 : 0.1),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            Capsule()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.7), Color.white.opacity(0)],
-                        startPoint: .top,
-                        endPoint: .center
-                    )
-                )
-                .padding(.horizontal, 7)
-                .padding(.top, 1)
-                .padding(.bottom, 15)
-        }
-    }
-
-    private func liquidRim(active: Bool) -> some View {
-        ZStack {
-            Capsule().stroke(
-                LinearGradient(
-                    colors: [Color.white.opacity(0.95), Color.black.opacity(0.1)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
-                lineWidth: 1
-            )
-            Capsule()
-                .stroke(active ? accent.opacity(0.75) : Color.clear, lineWidth: 1.5)
-                .padding(1.5)
-        }
+    private func caption(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .kerning(0.6)
+            .foregroundColor(.secondary)
     }
 
     private var toolDock: some View {
@@ -295,17 +271,13 @@ struct EditorView: View {
 
     private var backgroundControls: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Colour")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+            caption("Colour")
             swatchRow(Presets.colors, selected: {
                 if case .color(let selected) = model.style.background { return selected }
                 return nil
             }()) { model.setBackground(.color($0)) }
-            wallpaperGrid("Scenes", WallpaperID.scenes, height: 58)
-            Text("Gradient")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+            wallpaperGrid("Scenes", WallpaperID.scenes, columns: 2, height: 86)
+            caption("Gradient")
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                 ForEach(Array(Presets.gradients.enumerated()), id: \.offset) { _, gradient in
                     let active: Bool = {
@@ -315,45 +287,42 @@ struct EditorView: View {
                         return false
                     }()
                     Button(action: { model.setBackground(.gradient(from: gradient.1, to: gradient.2, angle: gradient.3)) }) {
-                        RoundedRectangle(cornerRadius: 6)
+                        RoundedRectangle(cornerRadius: 10)
                             .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: gradient.1)!), Color(nsColor: NSColor(hex: gradient.2)!)], startPoint: .top, endPoint: .bottom))
-                            .frame(height: 36)
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? accent : line, lineWidth: active ? 2 : 1))
+                            .frame(height: 48)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1))
                     }
                     .buttonStyle(.plain)
                     .help(gradient.0)
                 }
             }
-            wallpaperGrid("Pattern", WallpaperID.patterns, height: 36)
+            wallpaperGrid("Pattern", WallpaperID.patterns, columns: 3, height: 48)
         }
     }
 
-    private func wallpaperGrid(_ title: String, _ items: [WallpaperID], height: CGFloat) -> some View {
+    private func wallpaperGrid(_ title: String, _ items: [WallpaperID], columns: Int, height: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+            caption(title)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 10) {
                 ForEach(items) { wallpaper in
                     let active: Bool = {
                         if case .wallpaper(let selected) = model.style.background { return selected == wallpaper }
                         return false
                     }()
                     Button(action: { model.setBackground(.wallpaper(wallpaper)) }) {
-                        ZStack(alignment: .bottom) {
+                        VStack(spacing: 4) {
                             wallpaperPreview(wallpaper)
+                                .frame(height: height)
+                                .frame(maxWidth: .infinity)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1)
+                                )
                             Text(wallpaper.label)
-                                .font(.system(size: 10, weight: .medium))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(Color.white.opacity(0.88))
-                                .cornerRadius(4)
-                                .padding(.bottom, 3)
+                                .font(.system(size: 11, weight: active ? .semibold : .regular))
+                                .foregroundColor(active ? ink : .secondary)
                         }
-                        .frame(height: height)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? accent : line, lineWidth: active ? 2 : 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -366,13 +335,8 @@ struct EditorView: View {
             labelledSlider("Padding", value: Binding(get: { model.style.padding }, set: { model.beginGesture(); model.setPadding($0) }), range: 0...200)
             labelledSlider("Corner radius", value: Binding(get: { model.style.radius }, set: { model.beginGesture(); model.setRadius($0) }), range: 0...64)
             labelledSlider("Shadow", value: Binding(get: { model.style.shadow }, set: { model.beginGesture(); model.setShadow($0) }), range: 0...100)
-            Picker("Frame", selection: Binding(get: { model.style.frame }, set: { model.setFrame($0) })) {
-                ForEach(FrameStyle.allCases) { frame in
-                    Text(frame.label).tag(frame)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            caption("Frame")
+            framePicker
             Button(action: { model.resetCrop() }) {
                 Text("Reset crop").frame(maxWidth: .infinity)
             }
@@ -384,15 +348,61 @@ struct EditorView: View {
         }
     }
 
+    private var framePicker: some View {
+        HStack(spacing: 8) {
+            ForEach(FrameStyle.allCases) { frame in
+                let active = model.style.frame == frame
+                Button(action: { model.setFrame(frame) }) {
+                    VStack(spacing: 4) {
+                        frameGlyph(frame)
+                            .frame(height: 40)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color(nsColor: NSColor(srgbRed: 0.96, green: 0.96, blue: 0.97, alpha: 1)))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(active ? accent : Color.black.opacity(0.06), lineWidth: active ? 2 : 1)
+                            )
+                        Text(frame.label)
+                            .font(.system(size: 10, weight: active ? .semibold : .regular))
+                            .foregroundColor(active ? ink : .secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func frameGlyph(_ frame: FrameStyle) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.1), radius: 1, y: 1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            if frame != .none {
+                HStack(spacing: 2) {
+                    Circle().fill(Color(nsColor: NSColor(hex: "#FF5F57")!)).frame(width: 4, height: 4)
+                    Circle().fill(Color(nsColor: NSColor(hex: "#FEBC2E")!)).frame(width: 4, height: 4)
+                    Circle().fill(Color(nsColor: NSColor(hex: "#28C840")!)).frame(width: 4, height: 4)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, 16)
+                .padding(.bottom, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            }
+        }
+    }
+
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.secondary)
+            caption(title)
             content()
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
+        .padding(.horizontal, 14)
+        .padding(.top, 18)
     }
 
     private func noticeBanner(_ text: String) -> some View {
