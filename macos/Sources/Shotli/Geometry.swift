@@ -10,10 +10,11 @@ func composition(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> 
     let cropRect = activeCrop(picture: picture, crop: crop)
     let width = cropRect?.width ?? 0
     let height = cropRect?.height ?? 0
-    let pad = style.padding
-    let chrome: CGFloat = style.frame == .none ? 0 : chromeHeight
-    let contentW = max(1, width + pad * 2)
-    let contentH = max(1, height + chrome + pad * 2)
+    let pad = style.hideMockup ? 0 : style.padding
+    let chrome: CGFloat = style.hideMockup || style.frame == .none ? 0 : chromeHeight
+    let rim = cardRim(style)
+    let contentW = max(1, width + pad * 2 + rim * 2)
+    let contentH = max(1, height + chrome + pad * 2 + rim * 2)
     var compW = contentW
     var compH = contentH
     if style.canvasWidth > 0, style.canvasHeight > 0 {
@@ -30,8 +31,8 @@ func composition(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> 
     let extraX = max(0, compW - contentW)
     let extraY = max(0, compH - contentH)
     return Composition(
-        image: CGRect(x: pad + extraX / 2, y: pad + chrome + extraY / 2, width: width, height: height),
-        window: CGRect(x: pad + extraX / 2, y: pad + extraY / 2, width: width, height: height + chrome),
+        image: CGRect(x: pad + rim + extraX / 2, y: pad + chrome + rim + extraY / 2, width: width, height: height),
+        window: CGRect(x: pad + extraX / 2, y: pad + extraY / 2, width: width + rim * 2, height: height + chrome + rim * 2),
         size: CGSize(width: compW, height: compH)
     )
 }
@@ -40,8 +41,21 @@ func contentSize(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> 
     let cropRect = activeCrop(picture: picture, crop: crop)
     let width = cropRect?.width ?? 0
     let height = cropRect?.height ?? 0
-    let chrome: CGFloat = style.frame == .none ? 0 : chromeHeight
-    return CGSize(width: max(1, width + style.padding * 2), height: max(1, height + chrome + style.padding * 2))
+    let chrome: CGFloat = style.hideMockup || style.frame == .none ? 0 : chromeHeight
+    let pad = style.hideMockup ? 0 : style.padding
+    let rim = cardRim(style)
+    return CGSize(width: max(1, width + pad * 2 + rim * 2), height: max(1, height + chrome + pad * 2 + rim * 2))
+}
+
+func cardRim(_ style: ShotliStyle) -> CGFloat {
+    if style.hideMockup { return 0 }
+    switch style.card {
+    case .glassLight, .glassDark, .liquid: return 22
+    case .insetLight, .insetDark: return 18
+    case .border: return 14
+    case .retro: return 10
+    default: return 0
+    }
 }
 
 func activeCrop(picture: LoadedPicture?, crop: CGRect?) -> CGRect? {

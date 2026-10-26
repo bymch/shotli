@@ -111,6 +111,35 @@ enum Background: Equatable {
     case wallpaper(WallpaperID)
 }
 
+enum CardStyle: String, Equatable, Hashable, CaseIterable {
+    case `default`, glassLight, glassDark, liquid, insetLight, insetDark, outline, border, retro
+    var title: String {
+        switch self {
+        case .default: return "Default"
+        case .glassLight: return "Glass Light"
+        case .glassDark: return "Glass Dark"
+        case .liquid: return "Liquid…"
+        case .insetLight: return "Inset Light"
+        case .insetDark: return "Inset Dark"
+        case .outline: return "Outline"
+        case .border: return "Border"
+        case .retro: return "Retro"
+        }
+    }
+}
+
+enum ShadowKind: String, Equatable, Hashable, CaseIterable {
+    case none, spread, hug, adaptive
+    var title: String {
+        switch self {
+        case .none: return "None"
+        case .spread: return "Spread"
+        case .hug: return "Hug"
+        case .adaptive: return "Adap…"
+        }
+    }
+}
+
 struct ShotliStyle: Equatable {
     var padding: CGFloat
     var radius: CGFloat
@@ -120,6 +149,11 @@ struct ShotliStyle: Equatable {
     var canvasWidth: CGFloat
     var canvasHeight: CGFloat
     var background: Background
+    var card: CardStyle = .default
+    var shadowKind: ShadowKind = .spread
+    var shadowOpacity: CGFloat = 40
+    var light: CGFloat = 0
+    var hideMockup: Bool = false
 }
 
 struct Brush: Equatable {
@@ -428,6 +462,65 @@ final class EditorModel: ObservableObject {
         var next = style
         next.shadow = value
         style = next
+    }
+
+    func setCard(_ card: CardStyle) {
+        guard style.card != card else { return }
+        edit {
+            var next = style
+            next.card = card
+            switch card {
+            case .default: next.radius = 22; next.shadowKind = .spread; next.shadow = 36
+            case .glassLight: next.radius = 28; next.shadowKind = .spread; next.shadow = 28
+            case .glassDark: next.radius = 28; next.shadowKind = .spread; next.shadow = 34
+            case .liquid: next.radius = 32; next.shadowKind = .spread; next.shadow = 22
+            case .insetLight, .insetDark: next.radius = 24; next.shadowKind = .hug; next.shadow = 8
+            case .outline: next.radius = 18; next.shadowKind = .none; next.shadow = 0
+            case .border: next.radius = 16; next.shadowKind = .spread; next.shadow = 18
+            case .retro: next.radius = 18; next.shadowKind = .hug; next.shadow = 14
+            }
+            style = next
+        }
+    }
+
+    func setShadowKind(_ kind: ShadowKind) {
+        guard style.shadowKind != kind else { return }
+        edit {
+            var next = style
+            next.shadowKind = kind
+            if kind == .none { next.shadow = 0 }
+            else if next.shadow < 8 { next.shadow = kind == .hug ? 12 : 36 }
+            style = next
+        }
+    }
+
+    func setShadowOpacity(_ value: CGFloat) {
+        var next = style
+        next.shadowOpacity = value
+        style = next
+    }
+
+    func setLight(_ value: CGFloat) {
+        var next = style
+        next.light = value
+        style = next
+    }
+
+    func setHideMockup(_ hidden: Bool) {
+        guard style.hideMockup != hidden else { return }
+        edit {
+            var next = style
+            next.hideMockup = hidden
+            style = next
+        }
+    }
+
+    func setCorner(_ radius: CGFloat) {
+        edit {
+            var next = style
+            next.radius = radius
+            style = next
+        }
     }
 
     func setCanvas(_ canvas: CanvasRatio) {

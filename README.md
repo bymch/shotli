@@ -42,7 +42,7 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
 - Presets set the background, padding, corner radius, shadow and frame together.
 - Backgrounds include solid colours and three-stop gradients (Aurora, Cobalt, Mist, and the rest), plus the city scenes and simple patterns.
-- The editor is three columns. Looks, media and padding are on the left. The picture sits in the middle on its background. Zoom and layout presets are on the right. Drawing tools are along the top. The back arrow returns to your screenshots.
+- The editor is three columns. The left side is the mockup: card style, corners, shadow, light, and hide mockup. The picture sits in the middle on its background. Zoom and layout presets are on the right. Drawing tools are along the top. The back arrow returns to your screenshots.
 - Fit keeps the whole screenshot in the window, with the background around it. The picture stays put until you zoom in past the window. Canvas width and height are in the panel.
 - Pixelate and blur paint into the exported image. They are not a separate overlay.
 - Crop from the toolbar, then drag on the screenshot. Reset crop is in Layout.
