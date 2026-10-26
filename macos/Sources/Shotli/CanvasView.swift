@@ -7,6 +7,10 @@ struct CanvasView: NSViewRepresentable {
     func makeNSView(context: Context) -> EditorCanvas {
         let view = EditorCanvas()
         view.model = model
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         return view
     }
 
@@ -14,21 +18,40 @@ struct CanvasView: NSViewRepresentable {
         view.model = model
         if view.seenFit != model.fitRequest {
             view.seenFit = model.fitRequest
-            view.resetView()
-        } else {
-            view.needsDisplay = true
+            view.fitToScreen()
         }
+        if view.seenActual != model.actualRequest {
+            view.seenActual = model.actualRequest
+            if model.actualRequest > 0 { view.actualSize() }
+        }
+        if view.seenZoomIn != model.zoomInRequest {
+            view.seenZoomIn = model.zoomInRequest
+            if model.zoomInRequest > 0 { view.zoomBy(1.1) }
+        }
+        if view.seenZoomOut != model.zoomOutRequest {
+            view.seenZoomOut = model.zoomOutRequest
+            if model.zoomOutRequest > 0 { view.zoomBy(1 / 1.1) }
+        }
+        view.needsDisplay = true
     }
 }
 
 final class EditorCanvas: NSView {
     var model: EditorModel!
-    private var zoom: CGFloat = 1
+    private var mode: ViewMode = .fit
+    private var manualScale: CGFloat = 1
     private var pan = CGPoint.zero
     var seenFit = 0
+    var seenActual = 0
+    var seenZoomIn = 0
+    var seenZoomOut = 0
     private var draft: Annotation?
     private var cropDraft: CGRect?
     private var spaceDown = false
+
+    private enum ViewMode { case fit, manual }
+
+    private enum CanvasEdge { case nw, n, ne, e, se, s, sw, w }
 
     private enum Drag {
         case none
@@ -37,6 +60,7 @@ final class EditorCanvas: NSView {
         case resize(Annotation, Handle, CGPoint)
         case crop(CGPoint)
         case pan(CGPoint, CGPoint)
+        case canvas(CanvasEdge, CGPoint, CGSize, CGFloat, CGFloat?)
     }
 
     private var drag: Drag = .none
@@ -57,9 +81,18 @@ final class EditorCanvas: NSView {
 
     required init?(coder: NSCoder) { nil }
 
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
+    override func layout() {
+        super.layout()
+        publishZoom()
+        needsDisplay = true
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1).setFill()
-        dirtyRect.fill()
+        drawStage()
         guard model.picture != nil else { return }
         guard let image = renderComposition(
             picture: model.picture,
@@ -74,14 +107,56 @@ final class EditorCanvas: NSView {
         let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
         let place = placement(for: layout.size)
         let dest = CGRect(x: place.origin.x, y: place.origin.y, width: layout.size.width * place.scale, height: layout.size.height * place.scale)
+        NSColor.black.withAlphaComponent(0.16).setFill()
+        NSBezierPath(roundedRect: dest.offsetBy(dx: 0, dy: 6), xRadius: 2, yRadius: 2).fill()
         NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)).draw(in: dest)
+        let border = NSBezierPath(rect: dest)
+        border.lineWidth = 1
+        NSColor.black.withAlphaComponent(0.14).setStroke()
+        border.stroke()
+        if model.tool == .select { drawCanvasHandles(around: dest) }
+    }
+
+    private func drawStage() {
+        NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1).setFill()
+        bounds.fill()
+        NSColor(white: 0.82, alpha: 1).setFill()
+        let step: CGFloat = 16
+        var y: CGFloat = 8
+        while y < bounds.height {
+            var x: CGFloat = 8
+            while x < bounds.width {
+                NSBezierPath(ovalIn: CGRect(x: x, y: y, width: 1.4, height: 1.4)).fill()
+                x += step
+            }
+            y += step
+        }
+    }
+
+    private func drawCanvasHandles(around rect: CGRect) {
+        for item in canvasHandles(in: rect) {
+            let box = CGRect(x: item.1.x - 4.5, y: item.1.y - 4.5, width: 9, height: 9)
+            NSColor(srgbRed: 0.204, green: 0.471, blue: 0.965, alpha: 1).setFill()
+            NSColor.white.setStroke()
+            let path = NSBezierPath(roundedRect: box, xRadius: 2, yRadius: 2)
+            path.fill()
+            path.lineWidth = 1.5
+            path.stroke()
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let viewPoint = convert(event.locationInWindow, from: nil)
         if spaceDown || event.buttonNumber == 2 {
+            beginManual()
             drag = .pan(viewPoint, pan)
+            return
+        }
+        if model.tool == .select, let edge = hitCanvasHandle(viewPoint) {
+            let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+            model.beginGesture()
+            drag = .canvas(edge, viewPoint, layout.size, currentScale(), model.style.canvas.ratio)
             return
         }
         guard let imagePoint = imagePoint(from: viewPoint) else {
@@ -125,7 +200,9 @@ final class EditorCanvas: NSView {
         switch drag {
         case .pan(let start, let origin):
             pan = CGPoint(x: origin.x + viewPoint.x - start.x, y: origin.y + viewPoint.y - start.y)
-            settle()
+            publishZoom()
+        case .canvas(let edge, let start, let size, let scale, let ratio):
+            resizeCanvas(edge: edge, from: start, to: viewPoint, size: size, scale: scale, ratio: ratio)
         case .move(let origin, let start):
             guard let point = imagePoint(from: viewPoint) else { return }
             replace(translated(origin, dx: point.x - start.x, dy: point.y - start.y))
@@ -166,7 +243,7 @@ final class EditorCanvas: NSView {
             self.cropDraft = nil
             model.endGesture()
             model.tool = .select
-        case .move, .resize:
+        case .move, .resize, .canvas:
             model.endGesture()
         case .pan, .none:
             break
@@ -176,21 +253,21 @@ final class EditorCanvas: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        if event.modifierFlags.contains(.command) {
-            let factor = 1 + event.scrollingDeltaY * 0.012
-            zoom = min(8, max(0.2, zoom * factor))
+        let anchor = convert(event.locationInWindow, from: nil)
+        if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control) {
+            zoomAt(1 + event.scrollingDeltaY * 0.012, anchor: anchor)
         } else {
+            beginManual()
             pan.x += event.scrollingDeltaX
             pan.y += event.scrollingDeltaY
+            publishZoom()
+            needsDisplay = true
         }
-        settle()
-        needsDisplay = true
     }
 
     override func magnify(with event: NSEvent) {
-        zoom = min(8, max(0.2, zoom * (1 + event.magnification)))
-        settle()
-        needsDisplay = true
+        let anchor = convert(event.locationInWindow, from: nil)
+        zoomAt(1 + event.magnification, anchor: anchor)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -224,6 +301,7 @@ final class EditorCanvas: NSView {
     override func otherMouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let viewPoint = convert(event.locationInWindow, from: nil)
+        beginManual()
         drag = .pan(viewPoint, pan)
     }
 
@@ -231,7 +309,7 @@ final class EditorCanvas: NSView {
         let viewPoint = convert(event.locationInWindow, from: nil)
         if case .pan(let start, let origin) = drag {
             pan = CGPoint(x: origin.x + viewPoint.x - start.x, y: origin.y + viewPoint.y - start.y)
-            settle()
+            publishZoom()
             needsDisplay = true
         }
     }
@@ -248,10 +326,25 @@ final class EditorCanvas: NSView {
         return true
     }
 
-    func resetView() {
-        zoom = 1
+    func fitToScreen() {
+        mode = .fit
         pan = .zero
+        publishZoom()
         needsDisplay = true
+    }
+
+    func actualSize() {
+        guard model.picture != nil else { return }
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        mode = .manual
+        manualScale = 1
+        pan = CGPoint(x: (bounds.width - layout.size.width) / 2, y: (bounds.height - layout.size.height) / 2)
+        publishZoom()
+        needsDisplay = true
+    }
+
+    func zoomBy(_ factor: CGFloat) {
+        zoomAt(factor, anchor: CGPoint(x: bounds.midX, y: bounds.midY))
     }
 
     private func placeInstant(at point: CGPoint, shift: Bool) {
@@ -319,27 +412,109 @@ final class EditorCanvas: NSView {
         model.selectedID = annotation.id
     }
 
-    private func settle() {
-        guard model?.picture != nil, bounds.width > 80, bounds.height > 80 else { return }
+    private func fitScale(_ size: CGSize) -> CGFloat {
+        guard size.width > 1, size.height > 1, bounds.width > 80, bounds.height > 80 else { return 1 }
+        return max(0.02, min((bounds.width - 48) / size.width, (bounds.height - 96) / size.height))
+    }
+
+    private func currentScale() -> CGFloat {
+        guard model?.picture != nil else { return 1 }
+        if mode == .manual { return min(8, max(0.05, manualScale)) }
         let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
-        guard layout.size.width > 1, layout.size.height > 1 else { return }
-        let fit = min((bounds.width - 64) / layout.size.width, (bounds.height - 64) / layout.size.height)
-        let scale = max(0.02, fit) * zoom
-        let limitX = max(0, layout.size.width * scale - bounds.width) / 2
-        let limitY = max(0, layout.size.height * scale - bounds.height) / 2
-        pan.x = min(max(pan.x, -limitX), limitX)
-        pan.y = min(max(pan.y, -limitY), limitY)
+        return fitScale(layout.size)
+    }
+
+    private func beginManual() {
+        guard mode == .fit, model?.picture != nil else { return }
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let scale = fitScale(layout.size)
+        manualScale = scale
+        pan = CGPoint(x: (bounds.width - layout.size.width * scale) / 2, y: (bounds.height - layout.size.height * scale) / 2)
+        mode = .manual
+    }
+
+    private func zoomAt(_ factor: CGFloat, anchor: CGPoint) {
+        guard model?.picture != nil, factor > 0, factor.isFinite else { return }
+        beginManual()
+        let old = max(currentScale(), 0.05)
+        let next = min(8, max(0.05, old * factor))
+        let canvasX = (anchor.x - pan.x) / old
+        let canvasY = (anchor.y - pan.y) / old
+        manualScale = next
+        pan = CGPoint(x: anchor.x - canvasX * next, y: anchor.y - canvasY * next)
+        publishZoom()
+        needsDisplay = true
+    }
+
+    private func publishZoom() {
+        let percent = Int((currentScale() * 100).rounded())
+        guard model?.zoomPercent != percent else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.model?.zoomPercent != percent else { return }
+            self.model?.zoomPercent = percent
+        }
     }
 
     private func placement(for size: CGSize) -> (scale: CGFloat, origin: CGPoint) {
-        guard size.width > 1, size.height > 1, bounds.width > 80, bounds.height > 80 else { return (1, .zero) }
-        let fit = min((bounds.width - 64) / size.width, (bounds.height - 64) / size.height)
-        let scale = max(0.02, fit) * zoom
-        let limitX = max(0, size.width * scale - bounds.width) / 2
-        let limitY = max(0, size.height * scale - bounds.height) / 2
-        let held = CGPoint(x: min(max(pan.x, -limitX), limitX), y: min(max(pan.y, -limitY), limitY))
-        let origin = CGPoint(x: (bounds.width - size.width * scale) / 2 + held.x, y: (bounds.height - size.height * scale) / 2 + held.y)
-        return (scale, origin)
+        guard size.width > 1, size.height > 1 else { return (1, .zero) }
+        let scale = currentScale()
+        if mode == .fit {
+            return (scale, CGPoint(x: (bounds.width - size.width * scale) / 2, y: (bounds.height - size.height * scale) / 2))
+        }
+        return (scale, pan)
+    }
+
+    private func canvasHandles(in rect: CGRect) -> [(CanvasEdge, CGPoint)] {
+        [
+            (.nw, CGPoint(x: rect.minX, y: rect.minY)),
+            (.n, CGPoint(x: rect.midX, y: rect.minY)),
+            (.ne, CGPoint(x: rect.maxX, y: rect.minY)),
+            (.e, CGPoint(x: rect.maxX, y: rect.midY)),
+            (.se, CGPoint(x: rect.maxX, y: rect.maxY)),
+            (.s, CGPoint(x: rect.midX, y: rect.maxY)),
+            (.sw, CGPoint(x: rect.minX, y: rect.maxY)),
+            (.w, CGPoint(x: rect.minX, y: rect.midY)),
+        ]
+    }
+
+    private func hitCanvasHandle(_ point: CGPoint) -> CanvasEdge? {
+        guard model.picture != nil else { return nil }
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let place = placement(for: layout.size)
+        let rect = CGRect(x: place.origin.x, y: place.origin.y, width: layout.size.width * place.scale, height: layout.size.height * place.scale)
+        for item in canvasHandles(in: rect).reversed() {
+            if hypot(item.1.x - point.x, item.1.y - point.y) <= 9 { return item.0 }
+        }
+        return nil
+    }
+
+    private func resizeCanvas(edge: CanvasEdge, from start: CGPoint, to point: CGPoint, size: CGSize, scale: CGFloat, ratio: CGFloat?) {
+        let dx = (point.x - start.x) / max(scale, 0.05)
+        let dy = (point.y - start.y) / max(scale, 0.05)
+        var width = size.width
+        var height = size.height
+        switch edge {
+        case .e, .ne, .se: width += dx
+        case .w, .nw, .sw: width -= dx
+        case .n, .s: break
+        }
+        switch edge {
+        case .s, .se, .sw: height += dy
+        case .n, .ne, .nw: height -= dy
+        case .e, .w: break
+        }
+        let minimum = contentSize(picture: model.picture, crop: model.crop, style: model.style)
+        if let ratio, ratio > 0 {
+            if edge == .n || edge == .s { width = height * ratio }
+            else { height = width / ratio }
+        }
+        width = max(minimum.width, width.rounded())
+        height = max(minimum.height, height.rounded())
+        if let ratio, ratio > 0 {
+            if edge == .n || edge == .s { width = max(minimum.width, (height * ratio).rounded()) }
+            else { height = max(minimum.height, (width / ratio).rounded()) }
+        }
+        model.setCanvasSize(width: width, height: height)
     }
 
     private func imagePoint(from viewPoint: CGPoint) -> CGPoint? {

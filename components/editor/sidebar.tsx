@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { backgroundCss, COLORS, FONT_SIZES, GRADIENTS, INK_COLORS, PRESETS, SCENES, STROKE_WIDTHS, stylesMatch, WALLPAPERS } from "@/lib/presets";
+import { CANVASES, backgroundCss, COLORS, FONT_SIZES, GRADIENTS, INK_COLORS, PRESETS, SCENES, STROKE_WIDTHS, stylesMatch, WALLPAPERS } from "@/lib/presets";
+import { compositionOf } from "@/lib/layout";
 import { drawScene, isScene, type SceneId } from "@/lib/scenes";
 import type { Annotation, Brush, Doc, FrameStyle, Style, Tool, WallpaperId } from "@/lib/types";
 import { Segmented, SliderField, Swatches } from "./ui";
@@ -64,7 +65,8 @@ export function Sidebar({
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3.5">
-        <div className="min-[1100px]:hidden">
+        <CanvasControls doc={doc} onStyleLive={onStyleLive} onGestureStart={onGestureStart} onGestureEnd={onGestureEnd} />
+        <div className="mt-5 min-[1100px]:hidden">
           <div className="text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Look</div>
           <div className="mt-2">
             <LookGrid doc={doc} onPreset={onPreset} />
@@ -284,6 +286,94 @@ export function Sidebar({
       </div>
     </aside>
   );
+}
+
+function CanvasControls({
+  doc,
+  onStyleLive,
+  onGestureStart,
+  onGestureEnd,
+}: {
+  doc: Doc;
+  onStyleLive: (patch: Partial<Style>) => void;
+  onGestureStart: () => void;
+  onGestureEnd: () => void;
+}) {
+  const frame = compositionOf(doc);
+  const custom = doc.style.canvasWidth > 0 && doc.style.canvasHeight > 0;
+  return (
+    <div>
+      <div className="text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">Canvas</div>
+      <div className="mt-2 grid grid-cols-5 gap-1">
+        {CANVASES.map((item) => {
+          const active = !custom && doc.style.canvas === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={active}
+              className={`h-7 rounded-md text-[11px] ${active ? "bg-accent font-semibold text-white" : "bg-black/5 text-ink hover:bg-black/10"}`}
+              onClick={() => {
+                onGestureStart();
+                onStyleLive({ canvas: item.id, canvasWidth: 0, canvasHeight: 0 });
+                onGestureEnd();
+              }}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <SizeInput
+          label="Width"
+          value={Math.round(frame.compW)}
+          onCommit={(width) => {
+            onGestureStart();
+            onStyleLive({ canvasWidth: width, canvasHeight: Math.round(frame.compH) });
+            onGestureEnd();
+          }}
+        />
+        <SizeInput
+          label="Height"
+          value={Math.round(frame.compH)}
+          onCommit={(height) => {
+            onGestureStart();
+            onStyleLive({ canvasWidth: Math.round(frame.compW), canvasHeight: height });
+            onGestureEnd();
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SizeInput({ label, value, onCommit }: { label: string; value: number; onCommit: (value: number) => void }) {
+  return (
+    <label className="flex h-8 items-center gap-1.5 rounded-lg border border-black/10 bg-white px-2 text-[12px] text-muted">
+      {label === "Width" ? "W" : "H"}
+      <input
+        aria-label={`Canvas ${label.toLowerCase()}`}
+        defaultValue={value}
+        key={value}
+        inputMode="numeric"
+        className="w-full bg-transparent text-ink outline-none"
+        onBlur={(event) => commitSize(event.currentTarget.value, value, onCommit)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commitSize(event.currentTarget.value, value, onCommit);
+          }
+        }}
+      />
+    </label>
+  );
+}
+
+function commitSize(raw: string, fallback: number, onCommit: (value: number) => void) {
+  const next = Math.round(Number(raw));
+  if (!Number.isFinite(next) || next < 32 || next === fallback) return;
+  onCommit(next);
 }
 
 export function LookRail({ doc, onPreset }: { doc: Doc; onPreset: (style: Style) => void }) {

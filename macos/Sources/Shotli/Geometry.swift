@@ -12,11 +12,36 @@ func composition(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> 
     let height = cropRect?.height ?? 0
     let pad = style.padding
     let chrome: CGFloat = style.frame == .none ? 0 : chromeHeight
+    let contentW = max(1, width + pad * 2)
+    let contentH = max(1, height + chrome + pad * 2)
+    var compW = contentW
+    var compH = contentH
+    if style.canvasWidth > 0, style.canvasHeight > 0 {
+        compW = max(contentW, style.canvasWidth)
+        compH = max(contentH, style.canvasHeight)
+    } else if let ratio = style.canvas.ratio, compH > 0 {
+        let current = compW / compH
+        if current > ratio {
+            compH = compW / ratio
+        } else if current < ratio {
+            compW = compH * ratio
+        }
+    }
+    let extraX = max(0, compW - contentW)
+    let extraY = max(0, compH - contentH)
     return Composition(
-        image: CGRect(x: pad, y: pad + chrome, width: width, height: height),
-        window: CGRect(x: pad, y: pad, width: width, height: height + chrome),
-        size: CGSize(width: max(1, width + pad * 2), height: max(1, height + chrome + pad * 2))
+        image: CGRect(x: pad + extraX / 2, y: pad + chrome + extraY / 2, width: width, height: height),
+        window: CGRect(x: pad + extraX / 2, y: pad + extraY / 2, width: width, height: height + chrome),
+        size: CGSize(width: compW, height: compH)
     )
+}
+
+func contentSize(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> CGSize {
+    let cropRect = activeCrop(picture: picture, crop: crop)
+    let width = cropRect?.width ?? 0
+    let height = cropRect?.height ?? 0
+    let chrome: CGFloat = style.frame == .none ? 0 : chromeHeight
+    return CGSize(width: max(1, width + style.padding * 2), height: max(1, height + chrome + style.padding * 2))
 }
 
 func activeCrop(picture: LoadedPicture?, crop: CGRect?) -> CGRect? {
