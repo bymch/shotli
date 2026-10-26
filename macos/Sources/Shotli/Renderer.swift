@@ -58,6 +58,9 @@ private func renderFlat(
     guard let context = bitmapContext(layout.size) else { return nil }
     let painter = Painter(context: context, height: layout.size.height)
     let cropRect = activeCrop(picture: picture, crop: crop) ?? .zero
+    var style = style
+    let span = min(layout.image.width, layout.image.height)
+    style.radius = cornerRadius(style.radius, span: span)
     let radius = style.radius
 
     func paintMarks() {

@@ -688,8 +688,10 @@ struct EditorView: View {
                     .fill(on ? Color.white : Color.clear)
                     .shadow(color: on ? Color.black.opacity(0.08) : .clear, radius: 4, y: 1)
             )
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
+        .help(title)
     }
 
     private func cornerIsOn(_ radius: CGFloat) -> Bool {
