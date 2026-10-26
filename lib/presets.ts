@@ -1,4 +1,4 @@
-import type { Background, CanvasRatio, Style, WallpaperId } from "./types";
+import type { Background, CanvasRatio, CardStyle, Style, WallpaperId } from "./types";
 
 export type Preset = {
   id: string;
@@ -72,9 +72,48 @@ function makeStyle(
   frame: Style["frame"],
   background: Background,
   canvas: CanvasRatio = "auto",
+  card: CardStyle = "default",
+  tilt = 0,
+  borderWidth = 0,
 ): Style {
-  return { padding, radius, shadow, frame, canvas, canvasWidth: 0, canvasHeight: 0, background };
+  return {
+    padding,
+    radius,
+    shadow,
+    frame,
+    canvas,
+    canvasWidth: 0,
+    canvasHeight: 0,
+    card,
+    tilt,
+    borderWidth,
+    background,
+  };
 }
+
+export const CARD_STYLES: { id: CardStyle; name: string; radius: number; shadow: number; borderWidth: number }[] = [
+  { id: "default", name: "Default", radius: 22, shadow: 36, borderWidth: 0 },
+  { id: "glass-light", name: "Glass Light", radius: 28, shadow: 28, borderWidth: 0 },
+  { id: "glass-dark", name: "Glass Dark", radius: 28, shadow: 34, borderWidth: 0 },
+  { id: "liquid", name: "Liquid Glass", radius: 32, shadow: 22, borderWidth: 0 },
+  { id: "inset-light", name: "Inset Light", radius: 24, shadow: 8, borderWidth: 0 },
+  { id: "inset-dark", name: "Inset Dark", radius: 24, shadow: 8, borderWidth: 0 },
+  { id: "outline", name: "Outline", radius: 18, shadow: 0, borderWidth: 3 },
+  { id: "border", name: "Border", radius: 16, shadow: 18, borderWidth: 8 },
+];
+
+export const LAYOUTS: { id: string; name: string; style: Style }[] = [
+  { id: "daylight", name: "Daylight", style: makeStyle(78, 28, 42, "none", { kind: "gradient", from: "#F7F7F7", to: "#D9DEE7", angle: 180 }, "16:9", "default", 8) },
+  { id: "iris", name: "Iris", style: makeStyle(84, 26, 48, "none", { kind: "gradient", from: "#3478F6", to: "#C4B5FD", angle: 135 }, "16:9", "default", 12) },
+  { id: "dusk", name: "Dusk city", style: makeStyle(72, 24, 40, "none", { kind: "wallpaper", id: "dusk" }, "16:9", "glass-light", 10) },
+  { id: "night", name: "Night", style: makeStyle(76, 28, 36, "none", { kind: "wallpaper", id: "night" }, "4:3", "glass-dark", 14) },
+  { id: "sorbet", name: "Sorbet", style: makeStyle(88, 32, 30, "none", { kind: "wallpaper", id: "sorbet" }, "auto", "liquid", 6) },
+  { id: "hills", name: "Hills", style: makeStyle(80, 22, 38, "none", { kind: "wallpaper", id: "hills" }, "3:2", "default", 11) },
+  { id: "harbour", name: "Harbour", style: makeStyle(70, 18, 44, "none", { kind: "wallpaper", id: "harbour" }, "16:9", "inset-light", 9) },
+  { id: "ink", name: "Ink", style: makeStyle(64, 14, 20, "none", { kind: "color", color: "#111827" }, "1:1", "outline", 0) },
+  { id: "studio", name: "Studio", style: makeStyle(90, 20, 46, "browser", { kind: "gradient", from: "#E0F2FE", to: "#D1FAE5", angle: 160 }, "16:9", "default", 7) },
+  { id: "aurora", name: "Aurora", style: makeStyle(82, 30, 34, "none", { kind: "wallpaper", id: "aurora" }, "16:9", "glass-dark", 13) },
+];
 
 export const PRESETS: Preset[] = [
   {

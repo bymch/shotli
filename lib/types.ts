@@ -14,6 +14,16 @@ export type Tool =
 
 export type FrameStyle = "none" | "browser" | "desktop";
 
+export type CardStyle =
+  | "default"
+  | "glass-light"
+  | "glass-dark"
+  | "liquid"
+  | "inset-light"
+  | "inset-dark"
+  | "outline"
+  | "border";
+
 export type CanvasRatio = "auto" | "1:1" | "4:3" | "3:2" | "16:9";
 
 export type WallpaperId =
@@ -43,6 +53,9 @@ export type Style = {
   canvas: CanvasRatio;
   canvasWidth: number;
   canvasHeight: number;
+  card: CardStyle;
+  tilt: number;
+  borderWidth: number;
   background: Background;
 };
 
