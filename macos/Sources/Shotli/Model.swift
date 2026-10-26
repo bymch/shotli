@@ -78,12 +78,15 @@ enum CanvasRatio: String, CaseIterable, Identifiable {
 enum WallpaperID: String, CaseIterable, Identifiable {
     case dots, grid, diagonal, stripes, mesh, cross
     case dusk, night, harbour, hills, aurora, sorbet
+    case studio, porcelain, bloom, tide, sand, ink, citrus, glacier, clay, moss
     static let patterns: [WallpaperID] = [.dots, .grid, .diagonal, .stripes, .mesh, .cross]
     static let scenes: [WallpaperID] = [.dusk, .night, .harbour, .hills, .aurora, .sorbet]
+    static let backdrops: [WallpaperID] = [.studio, .porcelain, .bloom, .tide, .sand, .ink, .citrus, .glacier, .clay, .moss]
     var id: String { rawValue }
     var isScene: Bool {
         switch self {
         case .dusk, .night, .harbour, .hills, .aurora, .sorbet: return true
+        case .studio, .porcelain, .bloom, .tide, .sand, .ink, .citrus, .glacier, .clay, .moss: return true
         default: return false
         }
     }
@@ -101,6 +104,16 @@ enum WallpaperID: String, CaseIterable, Identifiable {
         case .hills: return "Hills"
         case .aurora: return "Aurora"
         case .sorbet: return "Sorbet"
+        case .studio: return "Studio"
+        case .porcelain: return "Porcelain"
+        case .bloom: return "Bloom"
+        case .tide: return "Tide"
+        case .sand: return "Sand"
+        case .ink: return "Ink"
+        case .citrus: return "Citrus"
+        case .glacier: return "Glacier"
+        case .clay: return "Clay"
+        case .moss: return "Moss"
         }
     }
 }
@@ -154,6 +167,10 @@ struct ShotliStyle: Equatable {
     var shadowOpacity: CGFloat = 40
     var light: CGFloat = 0
     var hideMockup: Bool = false
+    var tiltX: CGFloat = 0
+    var tiltY: CGFloat = 0
+    var shiftX: CGFloat = 0
+    var shiftY: CGFloat = 0
 }
 
 struct Brush: Equatable {
@@ -279,17 +296,89 @@ enum Presets {
 
     static let all: [Preset] = [
         Preset(id: "clean", name: "Clean", style: style(56, 14, 28, .none, .color("#FFFFFF"))),
-        Preset(id: "studio", name: "Studio", style: style(80, 16, 42, .none, .gradient(from: "#F0F0EB", mid: "#CCE0F0", to: "#F2C2B2", angle: 135))),
-        Preset(id: "soft", name: "Soft", style: style(68, 22, 30, .none, .color("#F4F1EC"))),
-        Preset(id: "browser", name: "Browser", style: style(60, 12, 36, .browser, .color("#E8EEF7"))),
+        Preset(id: "studio", name: "Studio", style: style(80, 16, 42, .none, .wallpaper(.studio))),
+        Preset(id: "soft", name: "Soft", style: style(68, 22, 30, .none, .wallpaper(.porcelain))),
+        Preset(id: "browser", name: "Browser", style: style(60, 12, 36, .browser, .wallpaper(.tide))),
         Preset(id: "window", name: "Window", style: style(52, 10, 24, .desktop, .wallpaper(.dots))),
-        Preset(id: "pastel", name: "Pastel", style: style(84, 24, 34, .none, .gradient(from: "#FA9EC4", mid: "#FAD178", to: "#6BB5F5", angle: 315))),
-        Preset(id: "signal", name: "Signal", style: style(76, 18, 48, .none, .gradient(from: "#0A0D80", mid: "#4230ED", to: "#6BABFA", angle: 153))),
-        Preset(id: "midnight", name: "Midnight", style: style(68, 14, 50, .browser, .color("#16181D"))),
+        Preset(id: "pastel", name: "Pastel", style: style(84, 24, 34, .none, .wallpaper(.glacier))),
+        Preset(id: "signal", name: "Signal", style: style(76, 18, 48, .none, .wallpaper(.bloom))),
+        Preset(id: "midnight", name: "Midnight", style: style(68, 14, 50, .browser, .wallpaper(.ink))),
     ]
 
     static func style(_ padding: CGFloat, _ radius: CGFloat, _ shadow: CGFloat, _ frame: FrameStyle, _ background: Background) -> ShotliStyle {
         ShotliStyle(padding: padding, radius: radius, shadow: shadow, frame: frame, canvas: .auto, canvasWidth: 0, canvasHeight: 0, background: background)
+    }
+}
+
+enum TemplateKind: String {
+    case image, angled
+}
+
+struct ShotTemplate: Identifiable, Equatable {
+    var id: String
+    var name: String
+    var group: String
+    var kind: TemplateKind
+    var style: ShotliStyle
+}
+
+enum TemplateLibrary {
+    static let groups = ["Product promotion", "Abstract colour"]
+
+    static let all: [ShotTemplate] = [
+        shot("stage", "Screenshot", "Product promotion", .image, 108, 18, 40, .none, .wallpaper(.studio), .sixteenNine, 0, 0, 0.28, 0),
+        shot("lean", "Screenshot", "Product promotion", .angled, 96, 22, 44, .none, .wallpaper(.porcelain), .sixteenNine, 10, -18, 0.16, 0),
+        shot("hero", "Screenshot", "Product promotion", .angled, 112, 16, 36, .none, .wallpaper(.sand), .threeTwo, 8, 16, -0.18, 0.04),
+        shot("quiet", "Screenshot", "Product promotion", .image, 120, 26, 28, .none, .wallpaper(.glacier), .sixteenNine, 0, 0, 0, 0, card: .glassLight),
+        shot("spotlight", "Screenshot", "Product promotion", .image, 100, 20, 48, .none, .wallpaper(.ink), .sixteenNine, 0, 0, 0, -0.08),
+        shot("bloom", "Screenshot", "Abstract colour", .image, 100, 24, 34, .none, .wallpaper(.bloom), .sixteenNine, 0, 0, 0.22, 0),
+        shot("bloom-lean", "Screenshot", "Abstract colour", .angled, 92, 22, 38, .none, .wallpaper(.bloom), .sixteenNine, 12, -20, 0.08, 0),
+        shot("tide", "Browser", "Abstract colour", .image, 84, 14, 32, .browser, .wallpaper(.tide), .sixteenNine, 0, 0, 0, 0),
+        shot("tide-lean", "Browser", "Abstract colour", .angled, 88, 14, 36, .browser, .wallpaper(.tide), .sixteenNine, 8, 14, 0.1, 0),
+        shot("citrus", "Screenshot", "Abstract colour", .angled, 104, 22, 34, .none, .wallpaper(.citrus), .sixteenNine, 6, -16, -0.12, 0),
+        shot("clay", "Screenshot", "Abstract colour", .image, 110, 18, 30, .none, .wallpaper(.clay), .threeTwo, 0, 0, -0.2, 0),
+        shot("moss", "Screenshot", "Abstract colour", .angled, 96, 20, 40, .none, .wallpaper(.moss), .sixteenNine, 8, 18, 0.12, 0),
+    ]
+
+    static func inGroup(_ group: String, kind: TemplateKind?) -> [ShotTemplate] {
+        all.filter { $0.group == group && (kind == nil || $0.kind == kind) }
+    }
+
+    private static func shot(
+        _ id: String,
+        _ name: String,
+        _ group: String,
+        _ kind: TemplateKind,
+        _ padding: CGFloat,
+        _ radius: CGFloat,
+        _ shadow: CGFloat,
+        _ frame: FrameStyle,
+        _ background: Background,
+        _ canvas: CanvasRatio,
+        _ tiltX: CGFloat,
+        _ tiltY: CGFloat,
+        _ shiftX: CGFloat,
+        _ shiftY: CGFloat,
+        card: CardStyle = .default
+    ) -> ShotTemplate {
+        var style = ShotliStyle(
+            padding: padding,
+            radius: radius,
+            shadow: shadow,
+            frame: frame,
+            canvas: canvas,
+            canvasWidth: 0,
+            canvasHeight: 0,
+            background: background
+        )
+        style.card = card
+        style.shadowKind = shadow > 0 ? .spread : .none
+        style.shadowOpacity = 46
+        style.tiltX = tiltX
+        style.tiltY = tiltY
+        style.shiftX = shiftX
+        style.shiftY = shiftY
+        return ShotTemplate(id: id, name: name, group: group, kind: kind, style: style)
     }
 }
 
@@ -434,6 +523,22 @@ final class EditorModel: ObservableObject {
         guard preset.style != style else { return }
         pushUndo()
         style = preset.style
+    }
+
+    func applyTemplate(_ template: ShotTemplate) {
+        guard template.style != style else { return }
+        pushUndo()
+        style = template.style
+    }
+
+    func setTilt(x: CGFloat, y: CGFloat) {
+        guard abs(style.tiltX - x) > 0.1 || abs(style.tiltY - y) > 0.1 else { return }
+        edit {
+            var next = style
+            next.tiltX = x
+            next.tiltY = y
+            style = next
+        }
     }
 
     func edit(_ apply: () -> Void) {

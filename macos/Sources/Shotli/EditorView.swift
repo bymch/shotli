@@ -22,9 +22,9 @@ struct EditorView: View {
     @ObservedObject var model: EditorModel
     @State private var dropTarget = false
     @State private var didConfigure = false
-    @State private var tilted = false
     @State private var animatePop = false
     @State private var adjustingLight = false
+    @State private var showTemplates = false
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
@@ -51,7 +51,6 @@ struct EditorView: View {
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         .scaleEffect(animatePop ? 1.015 : 1)
-                        .rotation3DEffect(.degrees(tilted ? 7 : 0), axis: (x: 0.55, y: 0.85, z: 0), perspective: 0.45)
                         Button(action: playAnimate) {
                             HStack(spacing: 6) {
                                 Image(systemName: "chevron.left.forwardslash.chevron.right")
@@ -77,6 +76,11 @@ struct EditorView: View {
             }
         }
         .background(workspace)
+        .overlay {
+            if showTemplates {
+                TemplatesPanel(model: model, shot: shotImage) { showTemplates = false }
+            }
+        }
         .onAppear(perform: configureWindow)
     }
 
@@ -93,11 +97,7 @@ struct EditorView: View {
                 .buttonStyle(.plain)
                 .help("Library")
                 .disabled(model.picture == nil)
-                Menu {
-                    ForEach(Presets.all) { preset in
-                        Button(preset.name) { model.applyPreset(preset) }
-                    }
-                } label: {
+                Button(action: { showTemplates = true }) {
                     HStack(spacing: 6) {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: "#F78529")!), Color(nsColor: NSColor(hex: "#7A42E8")!)], startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -110,7 +110,7 @@ struct EditorView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
                 .fixedSize()
                 Spacer(minLength: 8)
                 if model.picture != nil {
@@ -226,14 +226,15 @@ struct EditorView: View {
                         .frame(width: 36, alignment: .trailing)
                 }
                 HStack(spacing: 8) {
-                    Button(action: { tilted = true }) {
+                    let tilted = abs(model.style.tiltX) + abs(model.style.tiltY) > 0.5
+                    Button(action: { model.setTilt(x: 8, y: -14) }) {
                         Text("Tilt")
                             .font(.system(size: 12, weight: tilted ? .semibold : .regular))
                             .foregroundColor(tilted ? ink : .secondary)
                     }
                     .buttonStyle(.plain)
                     Spacer()
-                    Button(action: { tilted = false }) {
+                    Button(action: { model.setTilt(x: 0, y: 0) }) {
                         HStack(spacing: 6) {
                             Image(systemName: tilted ? "circle" : "circle.inset.filled")
                                 .font(.system(size: 11))
@@ -1043,7 +1044,7 @@ struct EditorView: View {
         case .stripes: Color(nsColor: NSColor(hex: "#F4F1EC")!)
         case .mesh: Color(nsColor: NSColor(hex: "#F6F7F8")!)
         case .cross: Color(nsColor: NSColor(hex: "#F4F7FB")!)
-        case .dusk, .night, .harbour, .hills, .aurora, .sorbet:
+        case .dusk, .night, .harbour, .hills, .aurora, .sorbet, .studio, .porcelain, .bloom, .tide, .sand, .ink, .citrus, .glacier, .clay, .moss:
             if let image = SceneThumbs.image(id) {
                 Image(nsImage: image)
                     .resizable()
@@ -1368,6 +1369,247 @@ private struct ShadowStudy: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+private enum TemplateFilter: String, CaseIterable {
+    case all, image, angled
+    var title: String {
+        switch self {
+        case .all: return "All"
+        case .image: return "Image"
+        case .angled: return "Angled"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .all: return "square.grid.2x2.fill"
+        case .image: return "photo"
+        case .angled: return "rotate.right"
+        }
+    }
+    var kind: TemplateKind? {
+        switch self {
+        case .all: return nil
+        case .image: return .image
+        case .angled: return .angled
+        }
+    }
+}
+
+private struct TemplatesPanel: View {
+    @ObservedObject var model: EditorModel
+    var shot: NSImage?
+    var onClose: () -> Void
+    @State private var filter: TemplateFilter = .all
+    @State private var group: String?
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.22)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onClose)
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                filters
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 8)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
+                        if let group {
+                            section(group, templates: TemplateLibrary.inGroup(group, kind: filter.kind), limit: nil)
+                        } else {
+                            ForEach(TemplateLibrary.groups, id: \.self) { name in
+                                let items = TemplateLibrary.inGroup(name, kind: filter.kind)
+                                if !items.isEmpty {
+                                    section(name, templates: items, limit: 2)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 22)
+                }
+            }
+            .frame(width: 720, height: 620)
+            .background(Color(nsColor: NSColor(srgbRed: 0.95, green: 0.95, blue: 0.96, alpha: 1)))
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .shadow(color: Color.black.opacity(0.18), radius: 30, y: 12)
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            if group != nil {
+                Button(action: { group = nil }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(ink)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+            }
+            Text(group ?? "Templates")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(ink)
+            Spacer()
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(ink)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.black.opacity(0.06)))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 20)
+        .padding(.bottom, 14)
+    }
+
+    private var filters: some View {
+        HStack(spacing: 8) {
+            ForEach(TemplateFilter.allCases, id: \.self) { item in
+                let on = filter == item
+                Button(action: { filter = item }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: item.symbol)
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(item.title)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundColor(on ? .white : ink)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(on ? Color.black : Color.clear))
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+    }
+
+    private func section(_ name: String, templates: [ShotTemplate], limit: Int?) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(name)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(ink)
+                Spacer()
+                if limit != nil, templates.count > 2 {
+                    Button(action: { group = name }) {
+                        Text("See all")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(ink)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Color.black.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            let shown = limit == nil ? templates : Array(templates.prefix(limit ?? templates.count))
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
+                ForEach(shown) { template in
+                    Button(action: {
+                        model.applyTemplate(template)
+                        onClose()
+                    }) {
+                        VStack(spacing: 8) {
+                            TemplateCard(template: template, shot: shot)
+                            Text(template.name)
+                                .font(.system(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+private struct TemplateCard: View {
+    let template: ShotTemplate
+    let shot: NSImage?
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            TemplateBackground(background: template.style.background)
+            shotFace
+                .frame(width: 168)
+                .rotation3DEffect(.degrees(template.style.tiltX), axis: (x: 1, y: 0, z: 0), perspective: 0.55)
+                .rotation3DEffect(.degrees(template.style.tiltY), axis: (x: 0, y: 1, z: 0), perspective: 0.55)
+                .offset(x: template.style.shiftX * 28, y: template.style.shiftY * 14)
+                .shadow(color: Color.black.opacity(0.22), radius: 14, y: 8)
+            if template.kind == .angled {
+                Image(systemName: "rotate.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(ink)
+                    .frame(width: 22, height: 22)
+                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.white.opacity(0.92)))
+                    .padding(8)
+            }
+        }
+        .frame(height: 168)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var shotFace: some View {
+        VStack(spacing: 0) {
+            if template.style.frame != .none {
+                HStack(spacing: 3) {
+                    Circle().fill(Color(nsColor: NSColor(hex: "#FF5F57")!)).frame(width: 6, height: 6)
+                    Circle().fill(Color(nsColor: NSColor(hex: "#FEBC2E")!)).frame(width: 6, height: 6)
+                    Circle().fill(Color(nsColor: NSColor(hex: "#28C840")!)).frame(width: 6, height: 6)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 18)
+                .frame(maxWidth: .infinity)
+                .background(template.style.frame == .browser ? Color(nsColor: NSColor(hex: "#F3F3F3")!) : Color(nsColor: NSColor(hex: "#ECECEC")!))
+            }
+            if let shot {
+                Image(nsImage: shot)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Color.white
+                    .aspectRatio(16.0 / 10.0, contentMode: .fit)
+            }
+        }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct TemplateBackground: View {
+    let background: Background
+
+    var body: some View {
+        switch background {
+        case .color(let hex):
+            Color(nsColor: NSColor(hex: hex) ?? .white)
+        case .gradient(let from, let mid, let to, _):
+            LinearGradient(
+                colors: [Color(nsColor: NSColor(hex: from)!), Color(nsColor: NSColor(hex: mid ?? to)!), Color(nsColor: NSColor(hex: to)!)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .wallpaper(let id):
+            Color.clear
+                .overlay {
+                    if let image = SceneThumbs.image(id) {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Color(nsColor: NSColor(srgbRed: 0.93, green: 0.93, blue: 0.94, alpha: 1))
+                    }
+                }
+                .clipped()
+        }
     }
 }
 

@@ -10,7 +10,7 @@ func composition(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> 
     let cropRect = activeCrop(picture: picture, crop: crop)
     let width = cropRect?.width ?? 0
     let height = cropRect?.height ?? 0
-    let pad = style.hideMockup ? 0 : style.padding
+    let pad = stagePad(style, span: max(width, height))
     let chrome: CGFloat = style.hideMockup || style.frame == .none ? 0 : chromeHeight
     let rim = cardRim(style)
     let contentW = max(1, width + pad * 2 + rim * 2)
@@ -30,11 +30,26 @@ func composition(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> 
     }
     let extraX = max(0, compW - contentW)
     let extraY = max(0, compH - contentH)
+    let nx = min(1, max(0, 0.5 + style.shiftX * 0.42))
+    let ny = min(1, max(0, 0.5 + style.shiftY * 0.42))
+    let originX = pad + extraX * nx
+    let originY = pad + extraY * ny
     return Composition(
-        image: CGRect(x: pad + rim + extraX / 2, y: pad + chrome + rim + extraY / 2, width: width, height: height),
-        window: CGRect(x: pad + extraX / 2, y: pad + extraY / 2, width: width + rim * 2, height: height + chrome + rim * 2),
+        image: CGRect(x: originX + rim, y: originY + chrome + rim, width: width, height: height),
+        window: CGRect(x: originX, y: originY, width: width + rim * 2, height: height + chrome + rim * 2),
         size: CGSize(width: compW, height: compH)
     )
+}
+
+func tiltMargin(_ span: CGFloat) -> CGFloat {
+    max(160, span * 0.22)
+}
+
+func stagePad(_ style: ShotliStyle, span: CGFloat) -> CGFloat {
+    if style.hideMockup { return 0 }
+    let tilt = abs(style.tiltX) + abs(style.tiltY)
+    if tilt < 0.5 { return style.padding }
+    return max(style.padding, tiltMargin(span) + 16)
 }
 
 func contentSize(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> CGSize {
@@ -42,7 +57,7 @@ func contentSize(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> 
     let width = cropRect?.width ?? 0
     let height = cropRect?.height ?? 0
     let chrome: CGFloat = style.hideMockup || style.frame == .none ? 0 : chromeHeight
-    let pad = style.hideMockup ? 0 : style.padding
+    let pad = stagePad(style, span: max(width, height))
     let rim = cardRim(style)
     return CGSize(width: max(1, width + pad * 2 + rim * 2), height: max(1, height + chrome + pad * 2 + rim * 2))
 }
