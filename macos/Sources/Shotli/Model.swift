@@ -519,6 +519,21 @@ final class EditorModel: ObservableObject {
         }
     }
 
+    func copyPNG() {
+        guard picture != nil else { return }
+        guard let image = renderComposition(picture: picture, crop: crop, style: style, annotations: annotations, draft: nil, interactive: false),
+              let png = pngData(image) else {
+            notice = "Couldn't copy the picture."
+            return
+        }
+        let board = NSPasteboard.general
+        board.clearContents()
+        let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        board.writeObjects([nsImage])
+        board.setData(png, forType: .png)
+        notice = "Copied"
+    }
+
     func applyPreset(_ preset: Preset) {
         guard preset.style != style else { return }
         pushUndo()
@@ -899,6 +914,14 @@ private func decodeImage(_ data: Data, name: String) -> LoadedPicture? {
     ]
     guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
     return LoadedPicture(image: image, name: name, scaled: originalEdge > maxEdge)
+}
+
+private func pngData(_ image: CGImage) -> Data? {
+    let data = NSMutableData()
+    guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { return nil }
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else { return nil }
+    return data as Data
 }
 
 private func writePNG(_ image: CGImage, to url: URL) throws {

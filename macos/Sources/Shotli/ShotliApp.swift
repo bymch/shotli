@@ -59,6 +59,9 @@ struct ShotliCommands: Commands {
             Button("Export PNG") { model.exportPNG() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(model.picture == nil)
+            Button("Copy PNG") { model.copyPNG() }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(model.picture == nil)
             Divider()
             Button("Use Sample Screenshot") { model.useSample() }
         }
@@ -107,6 +110,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "e":
                 EditorModel.shared.exportPNG()
+                return nil
+            case "c":
+                if NSApp.keyWindow?.firstResponder is NSTextField { return event }
+                EditorModel.shared.copyPNG()
                 return nil
             case "y":
                 EditorModel.shared.redo()
@@ -206,6 +213,7 @@ private func showShortcuts() {
     Open ⌘O
     Library ⌘L
     Export ⌘S, or ⌘E
+    Copy ⌘C, or ⌘⇧C
     Paste an image ⌘V
     Fit ⌘0
     Delete Backspace
