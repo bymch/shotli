@@ -37,7 +37,8 @@ struct EditorView: View {
             } else {
                 HStack(alignment: .top, spacing: 12) {
                     leftRail
-                        .frame(width: 252)
+                        .frame(width: 280)
+                        .fixedSize(horizontal: true, vertical: false)
                         .frame(maxHeight: .infinity)
                     VStack(spacing: 12) {
                         stage {
@@ -65,7 +66,8 @@ struct EditorView: View {
                     }
                     .frame(maxHeight: .infinity)
                     rightRail
-                        .frame(width: 276)
+                        .frame(width: 292)
+                        .fixedSize(horizontal: true, vertical: false)
                         .frame(maxHeight: .infinity)
                 }
                 .padding(.horizontal, 12)
@@ -188,6 +190,7 @@ struct EditorView: View {
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundColor(ink)
                                     .lineLimit(1)
+                                    .truncationMode(.middle)
                                 Text("Adapts to media")
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)
@@ -268,9 +271,9 @@ struct EditorView: View {
     private var rightRail: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 2) {
-                densityButton("rectangle", padding: 28, help: "Tight")
-                densityButton("rectangle.split.2x1", padding: 72, help: "Balanced")
-                densityButton("square.grid.2x2", padding: 120, help: "Airy")
+                densityButton("Tight", padding: 28)
+                densityButton("Even", padding: 72)
+                densityButton("Airy", padding: 120)
             }
             .padding(3)
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.05)))
@@ -307,26 +310,21 @@ struct EditorView: View {
                 }
             }
             .padding(.horizontal, 12)
-            Button(action: { model.fit() }) {
-                layoutCard(model.style, height: 92)
-                    .overlay(
-                        HStack {
-                            Text("Zoom")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text("Fit")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(ink)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 6),
-                        alignment: .bottom
-                    )
+            layoutCard(model.style)
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+            HStack {
+                Text("This picture")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(ink)
+                Spacer()
+                Button("Fit") { model.fit() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(accent)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
+            .padding(.horizontal, 14)
+            .padding(.top, 6)
             caption("Layout presets")
                 .padding(.horizontal, 14)
                 .padding(.top, 14)
@@ -336,10 +334,10 @@ struct EditorView: View {
                         let active = preset.style == model.style
                         Button(action: { model.applyPreset(preset) }) {
                             VStack(alignment: .leading, spacing: 4) {
-                                layoutCard(preset.style, height: 108)
-                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(active ? accent : Color.clear, lineWidth: 2))
+                                layoutCard(preset.style)
+                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(active ? accent : Color.clear, lineWidth: 2))
                                 Text(preset.name)
-                                    .font(.system(size: 11, weight: active ? .semibold : .regular))
+                                    .font(.system(size: 12, weight: active ? .semibold : .medium))
                                     .foregroundColor(active ? ink : .secondary)
                                     .padding(.leading, 2)
                             }
@@ -387,46 +385,74 @@ struct EditorView: View {
         .buttonStyle(.plain)
     }
 
-    private func densityButton(_ symbol: String, padding: CGFloat, help: String) -> some View {
+    private func densityButton(_ title: String, padding: CGFloat) -> some View {
         let on = abs(model.style.padding - padding) < 8
         return Button(action: {
             model.beginGesture()
             model.setPadding(padding)
             model.endGesture()
         }) {
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .medium))
+            Text(title)
+                .font(.system(size: 11, weight: on ? .semibold : .medium))
                 .foregroundColor(on ? ink : .secondary)
                 .frame(maxWidth: .infinity)
-                .frame(height: 30)
+                .frame(height: 28)
                 .background(RoundedRectangle(cornerRadius: 8).fill(on ? Color.white : Color.clear).shadow(color: on ? Color.black.opacity(0.08) : .clear, radius: 3, y: 1))
         }
         .buttonStyle(.plain)
-        .help(help)
+        .help("\(title) padding")
     }
 
-    private func layoutCard(_ style: ShotliStyle, height: CGFloat) -> some View {
-        ZStack {
+    private var pictureAspect: CGFloat {
+        guard let picture = model.picture, picture.height > 1 else { return 16.0 / 10.0 }
+        let crop = model.crop ?? CGRect(x: 0, y: 0, width: picture.width, height: picture.height)
+        return max(0.2, crop.width / max(crop.height, 1))
+    }
+
+    private var shotImage: NSImage? {
+        guard let picture = model.picture else { return nil }
+        return NSImage(cgImage: picture.image, size: NSSize(width: picture.width, height: picture.height))
+    }
+
+    private func layoutCard(_ style: ShotliStyle) -> some View {
+        let inset = 8 + min(style.padding, 140) / 18
+        return ZStack {
             presetPreview(style.background)
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.white.opacity(0.92))
-                .shadow(color: Color.black.opacity(0.18), radius: 8, y: 6)
-                .padding(.horizontal, 28)
-                .padding(.vertical, 22)
-            if style.frame != .none {
-                HStack(spacing: 3) {
-                    Circle().fill(Color(nsColor: NSColor(hex: "#FF5F57")!)).frame(width: 5, height: 5)
-                    Circle().fill(Color(nsColor: NSColor(hex: "#FEBC2E")!)).frame(width: 5, height: 5)
-                    Circle().fill(Color(nsColor: NSColor(hex: "#28C840")!)).frame(width: 5, height: 5)
-                    Spacer(minLength: 0)
+            Group {
+                if let shotImage {
+                    Image(nsImage: shotImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                } else {
+                    Color.white
+                        .aspectRatio(pictureAspect, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
-                .padding(.leading, 34)
-                .padding(.top, 26)
+            }
+            .padding(inset)
+            .shadow(color: Color.black.opacity(0.16), radius: 5, y: 3)
+            if style.frame != .none {
+                HStack(spacing: 2) {
+                    Circle().fill(Color(nsColor: NSColor(hex: "#FF5F57")!)).frame(width: 4, height: 4)
+                    Circle().fill(Color(nsColor: NSColor(hex: "#FEBC2E")!)).frame(width: 4, height: 4)
+                    Circle().fill(Color(nsColor: NSColor(hex: "#28C840")!)).frame(width: 4, height: 4)
+                    Text(style.frame.label)
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 5)
+                .padding(.vertical, 3)
+                .background(Color.white.opacity(0.94))
+                .clipShape(Capsule())
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(8)
             }
         }
-        .frame(height: height)
+        .aspectRatio(16.0 / 10.0, contentMode: .fit)
+        .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.black.opacity(0.06), lineWidth: 1))
     }
 
     private func stage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -450,40 +476,20 @@ struct EditorView: View {
 
 
     private var lookRow: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 8) {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 10) {
             ForEach(Presets.all) { preset in
                 let active = preset.style == model.style
                 Button(action: { model.applyPreset(preset) }) {
-                    VStack(spacing: 5) {
-                        ZStack {
-                            presetPreview(preset.style.background)
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.white)
-                                .shadow(color: Color.black.opacity(0.16), radius: 3, y: 2)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                            if preset.style.frame != .none {
-                                HStack(spacing: 2) {
-                                    Circle().fill(Color(nsColor: NSColor(hex: "#FF5F57")!)).frame(width: 3.5, height: 3.5)
-                                    Circle().fill(Color(nsColor: NSColor(hex: "#FEBC2E")!)).frame(width: 3.5, height: 3.5)
-                                    Circle().fill(Color(nsColor: NSColor(hex: "#28C840")!)).frame(width: 3.5, height: 3.5)
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.leading, 16)
-                                .padding(.top, 12)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                            }
-                        }
-                        .frame(height: 42)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1)
-                        )
+                    VStack(spacing: 4) {
+                        layoutCard(preset.style)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(active ? accent : Color.clear, lineWidth: 2)
+                            )
                         Text(preset.name)
-                            .font(.system(size: 9, weight: active ? .semibold : .regular))
-                            .lineLimit(1)
+                            .font(.system(size: 11, weight: active ? .semibold : .medium))
                             .foregroundColor(active ? ink : .secondary)
+                            .lineLimit(1)
                     }
                 }
                 .buttonStyle(.plain)

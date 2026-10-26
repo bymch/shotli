@@ -114,8 +114,17 @@ final class EditorCanvas: NSView {
         ) else { return }
         let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
         let place = placement(for: layout.size)
-        let dest = CGRect(x: place.origin.x, y: place.origin.y, width: layout.size.width * place.scale, height: layout.size.height * place.scale)
-        NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)).draw(in: dest)
+        let pixel = CGSize(width: CGFloat(image.width), height: CGFloat(image.height))
+        let aspect = pixel.width / max(pixel.height, 1)
+        let box = CGSize(width: layout.size.width * place.scale, height: layout.size.height * place.scale)
+        let fitted = fittedDrawSize(aspect: aspect, in: box)
+        let dest = CGRect(
+            x: place.origin.x + (box.width - fitted.width) / 2,
+            y: place.origin.y + (box.height - fitted.height) / 2,
+            width: fitted.width,
+            height: fitted.height
+        )
+        NSImage(cgImage: image, size: NSSize(width: pixel.width, height: pixel.height)).draw(in: dest)
     }
 
     private func drawStage() {
@@ -399,11 +408,19 @@ final class EditorCanvas: NSView {
         return CGRect(x: 0, y: 0, width: max(1, boxW), height: max(1, boxH))
     }
 
+    private func fittedDrawSize(aspect: CGFloat, in box: CGSize) -> CGSize {
+        guard aspect > 0, box.width > 1, box.height > 1 else { return box }
+        if box.width / box.height > aspect {
+            return CGSize(width: box.height * aspect, height: box.height)
+        }
+        return CGSize(width: box.width, height: box.width / aspect)
+    }
+
     private func fitScale(_ size: CGSize) -> CGFloat {
         let box = stageBox()
         guard size.width > 1, size.height > 1, box.width > 80, box.height > 80 else { return 1 }
-        let availW = box.width - 20
-        let availH = box.height - 20
+        let availW = box.width - 36
+        let availH = box.height - 36
         guard availW > 40, availH > 40 else { return 1 }
         return max(0.02, min(availW / size.width, availH / size.height))
     }
