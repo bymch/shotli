@@ -6,7 +6,6 @@ export type Preset = {
   style: Style;
 };
 
-// Solid colours and three-stop gradients from Screendrop, which is CC0.
 export const COLORS = [
   "#050506",
   "#F5F5F0",
