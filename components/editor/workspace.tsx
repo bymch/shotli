@@ -15,9 +15,9 @@ import {
   resizeAnnotation,
   translateAnnotation,
 } from "@/lib/geometry";
-import { activeCrop, compositionOf } from "@/lib/layout";
-import { renderComposition } from "@/lib/render";
-import type { Annotation, Brush, Doc, Handle, Rect, Tool } from "@/lib/types";
+import { activeCrop, compositionOf, contentSize } from "@/lib/layout";
+import { paintBackground, renderComposition } from "@/lib/render";
+import type { Annotation, Background, Brush, Doc, Handle, Rect, Tool } from "@/lib/types";
 import { pictureChanged, snapshot, type Snapshot } from "@/lib/types";
 import { ToolIcon } from "./icons";
 
@@ -126,6 +126,7 @@ export function Workspace({
       draft,
       cropDraft,
       hideTextId: session?.id ?? null,
+      background: false,
     });
   }, [doc, draft, cropDraft, scale, session?.id, composition.compW, composition.compH]);
 
@@ -137,6 +138,19 @@ export function Workspace({
 
   const fit = useCallback(() => {
     const next = { mode: "fit" as const, zoom: 1, panX: 0, panY: 0 };
+    viewRef.current = next;
+    setView(next);
+  }, []);
+
+  const actualSize = useCallback(() => {
+    const frame = compositionOf(docRef.current);
+    const box = sizeRef.current;
+    const next = {
+      mode: "manual" as const,
+      zoom: 1,
+      panX: (box.w - frame.compW) / 2,
+      panY: (box.h - frame.compH) / 2,
+    };
     viewRef.current = next;
     setView(next);
   }, []);
@@ -190,6 +204,9 @@ export function Workspace({
       } else if (meta && event.key === "0") {
         event.preventDefault();
         fit();
+      } else if (meta && event.key === "1") {
+        event.preventDefault();
+        actualSize();
       } else if (meta && (event.key === "=" || event.key === "+")) {
         event.preventDefault();
         zoomAt(1.1, sizeRef.current.w / 2, sizeRef.current.h / 2);
@@ -207,7 +224,7 @@ export function Workspace({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [fit, zoomAt]);
+  }, [actualSize, fit, zoomAt]);
 
   function commitText() {
     const nextSession = sessionRef.current;
@@ -317,12 +334,14 @@ export function Workspace({
 
     const currentTool = toolRef.current;
     const slop = 8 / scaleRef.current;
-    if ((currentTool === "select" || currentTool === "crop") && !insideImage(point) && event.target === workspaceRef.current) {
-      const frame = compositionOf(docRef.current);
-      const current = scaleRef.current;
-      const placement = computePan(viewRef.current, sizeRef.current, frame.compW, frame.compH, current);
-      dragRef.current = { kind: "pan", sx: event.clientX, sy: event.clientY, panX: placement.x, panY: placement.y, zoom: current };
-      event.currentTarget.setPointerCapture(event.pointerId);
+    if (!insideImage(point) && (currentTool === "select" || currentTool === "crop")) {
+      if (currentTool === "select") {
+        const frame = compositionOf(docRef.current);
+        const current = scaleRef.current;
+        const placement = computePan(viewRef.current, sizeRef.current, frame.compW, frame.compH, current);
+        dragRef.current = { kind: "pan", sx: event.clientX, sy: event.clientY, panX: placement.x, panY: placement.y, zoom: current };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
       return;
     }
 
@@ -549,6 +568,48 @@ export function Workspace({
     setSession(next);
   }
 
+  function onCanvasResize(event: React.PointerEvent<HTMLButtonElement>, handle: CanvasHandle) {
+    event.stopPropagation();
+    event.preventDefault();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const before = snapshot(docRef.current);
+    const frame = compositionOf(docRef.current);
+    const min = contentSize(docRef.current);
+    const scaleNow = Math.max(scaleRef.current, 0.05);
+    const ratio = ratioFor(docRef.current.style.canvas);
+    const move = (ev: PointerEvent) => {
+      const dw = (ev.clientX - startX) / scaleNow;
+      const dh = (ev.clientY - startY) / scaleNow;
+      let width = frame.compW;
+      let height = frame.compH;
+      if (handle === "e" || handle === "ne" || handle === "se") width += dw;
+      if (handle === "w" || handle === "nw" || handle === "sw") width -= dw;
+      if (handle === "s" || handle === "se" || handle === "sw") height += dh;
+      if (handle === "n" || handle === "ne" || handle === "nw") height -= dh;
+      if (ratio) {
+        if (handle === "n" || handle === "s") width = height * ratio;
+        else height = width / ratio;
+      }
+      width = Math.max(min.contentW, Math.round(width));
+      height = Math.max(min.contentH, Math.round(height));
+      if (ratio && (handle === "n" || handle === "s")) width = Math.max(min.contentW, Math.round(height * ratio));
+      if (ratio && handle !== "n" && handle !== "s") height = Math.max(min.contentH, Math.round(width / ratio));
+      onLive({
+        ...docRef.current,
+        style: { ...docRef.current.style, canvasWidth: width, canvasHeight: height },
+      });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const next = docRef.current;
+      if (pictureChanged(before, snapshot(next))) onCommit(next, before);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
   const crop = doc.image ? activeCrop(doc) : null;
   const textStyle =
     session && crop
@@ -590,7 +651,7 @@ export function Workspace({
 
       {doc.image ? (
         <div
-          className="absolute top-0 left-0"
+          className="absolute top-0 left-0 shadow-[0_16px_40px_rgba(0,0,0,0.16)] ring-1 ring-black/10"
           style={{
             width: composition.compW,
             height: composition.compH,
@@ -598,13 +659,30 @@ export function Workspace({
             transformOrigin: "top left",
           }}
         >
+          <BackgroundLayer background={doc.style.background} width={composition.compW} height={composition.compH} />
           <canvas
             ref={canvasRef}
             data-testid="composition"
             role="img"
             aria-label="Screenshot composition"
+            className="relative block"
             style={{ width: composition.compW, height: composition.compH }}
           />
+          {tool === "select"
+            ? CANVAS_HANDLES.map((handle) => (
+                <button
+                  key={handle}
+                  type="button"
+                  aria-label={`Resize canvas ${handle}`}
+                  className="absolute z-10 h-2.5 w-2.5 rounded-[2px] border border-white bg-accent"
+                  style={{
+                    ...canvasHandleStyle(handle, composition.compW, composition.compH),
+                    transform: `translate(-50%, -50%) scale(${1 / Math.max(scale, 0.05)})`,
+                  }}
+                  onPointerDown={(event) => onCanvasResize(event, handle)}
+                />
+              ))
+            : null}
           {textStyle ? (
             <textarea
               ref={textRef}
@@ -663,16 +741,18 @@ export function Workspace({
             <button type="button" className="h-7 w-7 rounded-full text-[14px] text-ink hover:bg-surface" aria-label="Zoom out" onClick={() => zoomAt(1 / 1.1, size.w / 2, size.h / 2)}>
               −
             </button>
-            <button
-              type="button"
-              className="h-7 min-w-12 rounded-full px-1.5 text-[12px] text-ink tabular-nums hover:bg-surface"
-              aria-label="Fit to workspace"
-              onClick={fit}
-            >
-              <span aria-live="polite">{Math.round(scale * 100)}%</span>
-            </button>
+            <span aria-live="polite" className="min-w-12 px-1 text-center text-[12px] text-ink tabular-nums">
+              {Math.round(scale * 100)}%
+            </span>
             <button type="button" className="h-7 w-7 rounded-full text-[14px] text-ink hover:bg-surface" aria-label="Zoom in" onClick={() => zoomAt(1.1, size.w / 2, size.h / 2)}>
               +
+            </button>
+            <span className="mx-1 h-4 w-px bg-line" />
+            <button type="button" className="h-7 rounded-full px-2 text-[12px] text-ink hover:bg-surface" onClick={fit}>
+              Fit
+            </button>
+            <button type="button" className="h-7 rounded-full px-2 text-[12px] text-ink hover:bg-surface" onClick={actualSize}>
+              100%
             </button>
           </div>
           <div
@@ -702,6 +782,48 @@ export function Workspace({
   );
 }
 
+const CANVAS_HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
+type CanvasHandle = (typeof CANVAS_HANDLES)[number];
+
+function canvasHandleStyle(handle: CanvasHandle, width: number, height: number): React.CSSProperties {
+  const x = handle.includes("w") ? 0 : handle.includes("e") ? width : width / 2;
+  const y = handle.includes("n") ? 0 : handle.includes("s") ? height : height / 2;
+  const cursor =
+    handle === "n" || handle === "s"
+      ? "ns-resize"
+      : handle === "e" || handle === "w"
+        ? "ew-resize"
+        : handle === "nw" || handle === "se"
+          ? "nwse-resize"
+          : "nesw-resize";
+  return { left: x, top: y, cursor };
+}
+
+function ratioFor(canvas: Doc["style"]["canvas"]) {
+  if (canvas === "1:1") return 1;
+  if (canvas === "4:3") return 4 / 3;
+  if (canvas === "3:2") return 3 / 2;
+  if (canvas === "16:9") return 16 / 9;
+  return null;
+}
+
+function BackgroundLayer({ background, width, height }: { background: Background; width: number; height: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const longest = Math.max(width, height, 1);
+    const factor = Math.min(1, 1400 / longest);
+    canvas.width = Math.max(1, Math.round(width * factor));
+    canvas.height = Math.max(1, Math.round(height * factor));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(factor, 0, 0, factor, 0, 0);
+    paintBackground(ctx, background, width, height);
+  }, [background, width, height]);
+  return <canvas ref={ref} aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" />;
+}
+
 const DOCK_TOOLS: Tool[] = [
   "select",
   "rect",
@@ -719,7 +841,7 @@ const DOCK_TOOLS: Tool[] = [
 
 function computeScale(view: View, size: { w: number; h: number }, compW: number, compH: number) {
   if (size.w < 8 || size.h < 8) return 1;
-  const fit = Math.min((size.w - 48) / compW, (size.h - 80) / compH);
+  const fit = Math.min((size.w - 28) / compW, (size.h - 88) / compH);
   const fitted = clampZoom(fit);
   return view.mode === "fit" ? fitted : view.zoom;
 }
@@ -728,15 +850,7 @@ function computePan(view: View, size: { w: number; h: number }, compW: number, c
   if (view.mode === "fit") {
     return { x: (size.w - compW * scale) / 2, y: (size.h - compH * scale) / 2 };
   }
-  return {
-    x: holdInFrame(view.panX, compW * scale, size.w),
-    y: holdInFrame(view.panY, compH * scale, size.h),
-  };
-}
-
-function holdInFrame(origin: number, drawn: number, view: number) {
-  if (drawn <= view) return (view - drawn) / 2;
-  return Math.min(0, Math.max(view - drawn, origin));
+  return { x: view.panX, y: view.panY };
 }
 
 function clampZoom(value: number) {

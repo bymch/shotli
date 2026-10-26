@@ -10,6 +10,7 @@ export type RenderOptions = {
   draft?: Annotation | null;
   cropDraft?: Rect | null;
   hideTextId?: string | null;
+  background?: boolean;
 };
 
 const tileCache = new Map<WallpaperId, HTMLCanvasElement>();
@@ -25,7 +26,9 @@ export function renderComposition(
 
   ctx.save();
   ctx.clearRect(0, 0, composition.compW, composition.compH);
-  drawBackground(ctx, doc.style.background, composition.compW, composition.compH);
+  if (options.background !== false) {
+    paintBackground(ctx, doc.style.background, composition.compW, composition.compH);
+  }
 
   if (!doc.image) {
     ctx.restore();
@@ -105,7 +108,7 @@ export function renderComposition(
   ctx.restore();
 }
 
-function drawBackground(ctx: CanvasRenderingContext2D, background: Background, width: number, height: number) {
+export function paintBackground(ctx: CanvasRenderingContext2D, background: Background, width: number, height: number) {
   if (background.kind === "color") {
     if (background.color === "transparent") return;
     ctx.fillStyle = background.color;

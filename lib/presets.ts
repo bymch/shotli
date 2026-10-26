@@ -1,4 +1,4 @@
-import type { Background, Style, WallpaperId } from "./types";
+import type { Background, CanvasRatio, Style, WallpaperId } from "./types";
 
 export type Preset = {
   id: string;
@@ -57,14 +57,23 @@ export const STROKE_WIDTHS = [2, 4, 6, 8];
 
 export const FONT_SIZES = [18, 24, 32, 44];
 
+export const CANVASES: { id: CanvasRatio; label: string }[] = [
+  { id: "auto", label: "Auto" },
+  { id: "1:1", label: "1:1" },
+  { id: "4:3", label: "4:3" },
+  { id: "3:2", label: "3:2" },
+  { id: "16:9", label: "16:9" },
+];
+
 function makeStyle(
   padding: number,
   radius: number,
   shadow: number,
   frame: Style["frame"],
   background: Background,
+  canvas: CanvasRatio = "auto",
 ): Style {
-  return { padding, radius, shadow, frame, background };
+  return { padding, radius, shadow, frame, canvas, canvasWidth: 0, canvasHeight: 0, background };
 }
 
 export const PRESETS: Preset[] = [

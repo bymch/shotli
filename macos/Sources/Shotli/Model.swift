@@ -52,6 +52,29 @@ enum FrameStyle: String, CaseIterable, Identifiable {
     }
 }
 
+enum CanvasRatio: String, CaseIterable, Identifiable {
+    case auto, square, fourThree, threeTwo, sixteenNine
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .auto: return "Auto"
+        case .square: return "1:1"
+        case .fourThree: return "4:3"
+        case .threeTwo: return "3:2"
+        case .sixteenNine: return "16:9"
+        }
+    }
+    var ratio: CGFloat? {
+        switch self {
+        case .auto: return nil
+        case .square: return 1
+        case .fourThree: return 4.0 / 3.0
+        case .threeTwo: return 3.0 / 2.0
+        case .sixteenNine: return 16.0 / 9.0
+        }
+    }
+}
+
 enum WallpaperID: String, CaseIterable, Identifiable {
     case dots, grid, diagonal, stripes, mesh, cross
     case dusk, night, harbour, hills, aurora, sorbet
@@ -93,6 +116,9 @@ struct ShotliStyle: Equatable {
     var radius: CGFloat
     var shadow: CGFloat
     var frame: FrameStyle
+    var canvas: CanvasRatio
+    var canvasWidth: CGFloat
+    var canvasHeight: CGFloat
     var background: Background
 }
 
@@ -224,7 +250,7 @@ enum Presets {
     ]
 
     static func style(_ padding: CGFloat, _ radius: CGFloat, _ shadow: CGFloat, _ frame: FrameStyle, _ background: Background) -> ShotliStyle {
-        ShotliStyle(padding: padding, radius: radius, shadow: shadow, frame: frame, background: background)
+        ShotliStyle(padding: padding, radius: radius, shadow: shadow, frame: frame, canvas: .auto, canvasWidth: 0, canvasHeight: 0, background: background)
     }
 }
 
@@ -253,6 +279,10 @@ final class EditorModel: ObservableObject {
     @Published var canUndo = false
     @Published var canRedo = false
     @Published var fitRequest = 0
+    @Published var actualRequest = 0
+    @Published var zoomInRequest = 0
+    @Published var zoomOutRequest = 0
+    @Published var zoomPercent = 100
 
     private var undoStack: [Snapshot] = []
     private var redoStack: [Snapshot] = []
@@ -392,6 +422,24 @@ final class EditorModel: ObservableObject {
         style = next
     }
 
+    func setCanvas(_ canvas: CanvasRatio) {
+        guard style.canvas != canvas || style.canvasWidth != 0 || style.canvasHeight != 0 else { return }
+        edit {
+            var next = style
+            next.canvas = canvas
+            next.canvasWidth = 0
+            next.canvasHeight = 0
+            style = next
+        }
+    }
+
+    func setCanvasSize(width: CGFloat, height: CGFloat) {
+        var next = style
+        next.canvasWidth = max(1, width)
+        next.canvasHeight = max(1, height)
+        style = next
+    }
+
     func setFrame(_ frame: FrameStyle) {
         guard style.frame != frame else { return }
         edit {
@@ -412,6 +460,18 @@ final class EditorModel: ObservableObject {
 
     func fit() {
         fitRequest += 1
+    }
+
+    func actualSize() {
+        actualRequest += 1
+    }
+
+    func zoomIn() {
+        zoomInRequest += 1
+    }
+
+    func zoomOut() {
+        zoomOutRequest += 1
     }
 
     func replaceSelectedText(_ text: String) {
