@@ -212,7 +212,7 @@ private func showShortcuts() {
 
     V select, R rectangle, F fill, C circle, L line, A arrow, D draw, T text, N number, P pixelate, B blur, K crop
 
-    Hold Shift to keep a line or box square. Scroll to pan. Pinch, or hold ⌘ and scroll, to zoom.
+    Hold Shift to keep a line or box square. The picture stays in the frame. Pinch, or hold ⌘ and scroll, to zoom. Space-drag to move it once it is larger than the window.
     """
     alert.addButton(withTitle: "OK")
     alert.runModal()

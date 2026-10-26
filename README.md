@@ -61,7 +61,7 @@ Images larger than 25 MB are refused. Images longer than 4096px on the long edge
 | Paste image | ⌘ V |
 | Fit | ⌘ 0 |
 | Zoom | Pinch, or ⌘ scroll |
-| Pan | Space-drag, middle-drag, or scroll |
+| Pan | Space-drag or middle-drag, once the picture is larger than the window |
 | Delete | Delete or Backspace |
 | Tools | V select, R rectangle, F fill, C circle, L line, A arrow, D draw, T text, N number, P pixelate, B blur, K crop |
 

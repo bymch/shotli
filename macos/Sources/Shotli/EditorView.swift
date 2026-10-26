@@ -34,6 +34,10 @@ struct EditorView: View {
                 }
             } else {
                 HStack(spacing: 0) {
+                    lookPanel
+                        .frame(width: 250)
+                        .padding(.init(top: 10, leading: 10, bottom: 10, trailing: 0))
+                        .background(workspace)
                     stage {
                         CanvasView(model: model)
                     }
@@ -134,12 +138,6 @@ struct EditorView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    caption("Look")
-                        .padding(.horizontal, 14)
-                        .padding(.top, 14)
-                    lookRow
-                        .padding(.horizontal, 14)
-                        .padding(.top, 8)
                     section("Background") { backgroundControls }
                     if showsText || showsStroke || showsPixel || showsBlur || model.selected != nil {
                         section("Mark") { markControls }
@@ -161,6 +159,20 @@ struct EditorView: View {
             .padding(.top, 8)
             .padding(.bottom, 14)
         }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color.black.opacity(0.06), radius: 16, y: 4)
+    }
+
+    private var lookPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Look")
+            ScrollView {
+                lookRow
+            }
+        }
+        .padding(14)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: Color.black.opacity(0.06), radius: 16, y: 4)
@@ -692,7 +704,7 @@ struct EditorView: View {
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
             window.isMovableByWindowBackground = false
-            window.minSize = NSSize(width: 980, height: 680)
+            window.minSize = NSSize(width: 1100, height: 680)
             window.backgroundColor = NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)
             if window.contentRect(forFrameRect: window.frame).width < 1000 {
                 window.setContentSize(NSSize(width: 1180, height: 760))
