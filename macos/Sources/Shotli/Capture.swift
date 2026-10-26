@@ -8,6 +8,7 @@ enum CaptureMode {
 
 final class ScreenCapture {
     static let shared = ScreenCapture()
+    weak var editorWindow: NSWindow?
     private var task: Process?
 
     func capture(_ mode: CaptureMode) {
@@ -15,7 +16,12 @@ final class ScreenCapture {
         guard ensureCaptureAllowed() else { return }
         if mode == .area {
             hideWindows()
-            AreaSelector.shared.begin()
+            // The status-item menu is still closing here. Starting the overlay
+            // immediately lets macOS hand keyboard focus back to the previous app,
+            // so Return never reaches the selector.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                AreaSelector.shared.begin()
+            }
             return
         }
         let url = FileManager.default.temporaryDirectory
@@ -53,19 +59,19 @@ final class ScreenCapture {
     }
 
     func adopt(_ url: URL) {
+        revealEditor()
         let saved = LibraryFolders.archive(url)
         EditorModel.shared.load(url: saved)
         if saved != url { try? FileManager.default.removeItem(at: url) }
         LibraryModel.shared.refresh()
-        revealEditor()
     }
 
     func revealEditor() {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        let windows = NSApp.windows.filter { $0.canBecomeMain }
-        let window = windows.first(where: { $0.isVisible }) ?? windows.first
+        let window = editorWindow ?? NSApp.windows.first { $0.canBecomeMain }
         window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
     }
 
     private func finish(_ process: Process, url: URL) {

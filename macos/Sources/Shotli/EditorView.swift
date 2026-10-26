@@ -1329,6 +1329,7 @@ struct EditorView: View {
             guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
             window.title = "Shotli"
             window.isReleasedWhenClosed = false
+            ScreenCapture.shared.editorWindow = window
             window.delegate = WindowKeeper.shared
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
