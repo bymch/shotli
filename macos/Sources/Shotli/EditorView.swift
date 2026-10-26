@@ -1,4 +1,5 @@
 import AppKit
+import ObjectiveC
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -85,34 +86,32 @@ struct EditorView: View {
     }
 
     private var studioBar: some View {
-        ZStack {
-            WindowDrag()
-            HStack(spacing: 10) {
-                Button(action: { model.showLibrary() }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(ink)
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-                .help("Library")
-                .disabled(model.picture == nil)
+        HStack(spacing: 12) {
+            HStack(spacing: 6) {
+                iconButton("chevron.left", help: "Library") { model.showLibrary() }
+                    .disabled(model.picture == nil)
                 Button(action: { showTemplates = true }) {
                     HStack(spacing: 6) {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: "#F78529")!), Color(nsColor: NSColor(hex: "#7A42E8")!)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 18, height: 18)
+                            .frame(width: 16, height: 16)
                         Text("Templates")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(ink)
                         Image(systemName: "chevron.down")
                             .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.secondary)
                     }
+                    .foregroundColor(ink)
+                    .padding(.horizontal, 4)
+                    .frame(height: 32)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .fixedSize()
-                Spacer(minLength: 8)
+                .help("Templates")
+            }
+            .frame(width: 280, alignment: .leading)
+
+            HStack(spacing: 8) {
                 if model.picture != nil {
                     HStack(spacing: 2) {
                         iconButton("arrow.uturn.backward", help: "Undo") { model.undo() }
@@ -120,44 +119,52 @@ struct EditorView: View {
                         iconButton("arrow.uturn.forward", help: "Redo") { model.redo() }
                             .disabled(!model.canRedo)
                     }
-                    Button(action: { model.startOver() }) {
-                        Text("Start Over")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(ink)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.08), radius: 6, y: 2))
-                    }
-                    .buttonStyle(.plain)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        toolDock
-                    }
-                    .frame(width: 340)
+                    barCapsule("Start Over", action: { model.startOver() })
+                    toolDock
                 }
-                Spacer(minLength: 8)
-                Button(action: { model.exportPNG() }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("Export")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("1× PNG")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-                    .foregroundColor(ink)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.1), radius: 8, y: 2))
-                }
-                .buttonStyle(.plain)
-                .disabled(model.picture == nil)
-                .help("Export PNG (⌘S)")
             }
-            .padding(.leading, 78)
-            .padding(.trailing, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+
+            exportButton
+                .frame(width: 292, alignment: .trailing)
         }
-        .frame(height: 54)
+        .padding(.horizontal, 12)
+        .frame(height: 52)
+    }
+
+    private var exportButton: some View {
+        Button(action: { model.exportPNG() }) {
+            HStack(spacing: 8) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Export")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("1× PNG")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .foregroundColor(ink)
+            .padding(.horizontal, 12)
+            .frame(height: 32)
+            .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.1), radius: 8, y: 2))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.picture == nil)
+        .help("Export PNG (⌘S)")
+    }
+
+    private func barCapsule(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .padding(.horizontal, 12)
+                .frame(height: 32)
+                .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.08), radius: 6, y: 2))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private var leftRail: some View {
@@ -716,20 +723,19 @@ struct EditorView: View {
     }
 
     private var toolDock: some View {
-        HStack(spacing: 1) {
+        HStack(spacing: 0) {
             ForEach(Array(dockTools.enumerated()), id: \.element) { index, tool in
                 if index == 4 || index == 7 || index == 9 || index == 11 {
-                    Rectangle().fill(line).frame(width: 1, height: 16).padding(.horizontal, 4)
+                    Rectangle().fill(line).frame(width: 1, height: 14).padding(.horizontal, 3)
                 }
                 toolButton(tool, help: "\(tool.label) (\(shortcut(for: tool)))")
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 16, y: 6)
-        )
+        .padding(.horizontal, 4)
+        .frame(height: 32)
+        .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 8, y: 2))
         .overlay(Capsule().stroke(Color.black.opacity(0.08), lineWidth: 1))
+        .fixedSize(horizontal: true, vertical: true)
     }
 
     private var markControls: some View {
@@ -934,11 +940,12 @@ struct EditorView: View {
         let active = model.tool == tool
         return Button(action: { model.tool = tool }) {
             Image(systemName: tool.symbol)
-                .font(.system(size: 14))
+                .font(.system(size: 13, weight: active ? .semibold : .regular))
                 .frame(maxWidth: wide ? .infinity : nil)
-                .frame(width: wide ? nil : 28, height: 28)
-                .foregroundColor(ink)
-                .background(RoundedRectangle(cornerRadius: 6).fill(active ? accent.opacity(0.14) : Color.clear))
+                .frame(width: wide ? nil : 26, height: 26)
+                .foregroundColor(active ? accent : ink)
+                .background(RoundedRectangle(cornerRadius: 6).fill(active ? accent.opacity(0.16) : Color.clear))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)
@@ -947,8 +954,10 @@ struct EditorView: View {
     private func iconButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 13))
-                .frame(width: 28, height: 28)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(ink)
+                .frame(width: 28, height: 32)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)
@@ -1188,7 +1197,9 @@ struct EditorView: View {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
+            window.titlebarSeparatorStyle = .none
             window.isMovableByWindowBackground = false
+            TitlebarClicks.install(on: window)
             window.minSize = NSSize(width: 1100, height: 720)
             window.backgroundColor = NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)
             if window.contentRect(forFrameRect: window.frame).width < 1000 {
@@ -1612,14 +1623,25 @@ private struct TemplateBackground: View {
     }
 }
 
-private struct WindowDrag: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { DragView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
+private enum TitlebarClicks {
+    private static var installed = false
 
-private final class DragView: NSView {
-    override var mouseDownCanMoveWindow: Bool { true }
-    override func mouseDown(with event: NSEvent) {
-        window?.performDrag(with: event)
+    static func install(on window: NSWindow) {
+        _ = window.standardWindowButton(.closeButton)
+        guard !installed, let cls = NSClassFromString("NSTitlebarContainerView") else { return }
+        let selector = #selector(NSView.hitTest(_:))
+        guard let method = class_getInstanceMethod(cls, selector) else { return }
+        installed = true
+        let block: @convention(block) (AnyObject, NSPoint) -> NSView? = { object, point in
+            guard let view = object as? NSView else { return nil }
+            let local = view.convert(point, from: view.superview)
+            for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                guard let button = view.window?.standardWindowButton(kind), !button.isHidden else { continue }
+                let inButton = button.convert(local, from: view)
+                if button.bounds.insetBy(dx: -6, dy: -6).contains(inButton) { return button }
+            }
+            return nil
+        }
+        method_setImplementation(method, imp_implementationWithBlock(block))
     }
 }
