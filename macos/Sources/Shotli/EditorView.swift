@@ -34,12 +34,9 @@ struct EditorView: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    lookPanel
-                        .frame(width: 250)
-                        .padding(.init(top: 10, leading: 10, bottom: 10, trailing: 0))
-                        .background(workspace)
                     stage {
                         CanvasView(model: model)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .overlay(alignment: .topLeading) {
                         Button(action: { model.showLibrary() }) {
@@ -64,6 +61,11 @@ struct EditorView: View {
                     }
                     .overlay(alignment: .bottom) {
                         toolDock
+                            .padding(.bottom, 16)
+                    }
+                    .overlay(alignment: .bottomLeading) {
+                        zoomControls
+                            .padding(.leading, 16)
                             .padding(.bottom, 16)
                     }
                     inspector
@@ -138,6 +140,21 @@ struct EditorView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    caption("Canvas")
+                        .padding(.horizontal, 14)
+                        .padding(.top, 14)
+                    canvasRow
+                        .padding(.horizontal, 14)
+                        .padding(.top, 8)
+                    canvasSizeFields
+                        .padding(.horizontal, 14)
+                        .padding(.top, 8)
+                    caption("Look")
+                        .padding(.horizontal, 14)
+                        .padding(.top, 16)
+                    lookRow
+                        .padding(.horizontal, 14)
+                        .padding(.top, 8)
                     section("Background") { backgroundControls }
                     if showsText || showsStroke || showsPixel || showsBlur || model.selected != nil {
                         section("Mark") { markControls }
@@ -164,18 +181,72 @@ struct EditorView: View {
         .shadow(color: Color.black.opacity(0.06), radius: 16, y: 4)
     }
 
-    private var lookPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            caption("Look")
-            ScrollView {
-                lookRow
+    private var canvasRow: some View {
+        HStack(spacing: 4) {
+            ForEach(CanvasRatio.allCases) { ratio in
+                let active = model.style.canvas == ratio && model.style.canvasWidth == 0 && model.style.canvasHeight == 0
+                Button(action: { model.setCanvas(ratio) }) {
+                    Text(ratio.label)
+                        .font(.system(size: 11, weight: active ? .semibold : .medium))
+                        .foregroundColor(active ? .white : ink)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 28)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(active ? accent : Color.black.opacity(0.05)))
+                }
+                .buttonStyle(.plain)
             }
         }
-        .padding(14)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: Color.black.opacity(0.06), radius: 16, y: 4)
+    }
+
+    private var canvasSizeFields: some View {
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        return HStack(spacing: 8) {
+            CanvasSizeField(label: "W", value: layout.size.width) { width in
+                model.beginGesture()
+                model.setCanvasSize(width: width, height: layout.size.height)
+                model.endGesture()
+            }
+            CanvasSizeField(label: "H", value: layout.size.height) { height in
+                model.beginGesture()
+                model.setCanvasSize(width: layout.size.width, height: height)
+                model.endGesture()
+            }
+        }
+    }
+
+    private var zoomControls: some View {
+        HStack(spacing: 2) {
+            zoomButton("minus") { model.zoomOut() }
+            Text("\(model.zoomPercent)%")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .frame(minWidth: 44)
+            zoomButton("plus") { model.zoomIn() }
+            Rectangle().fill(line).frame(width: 1, height: 14).padding(.horizontal, 4)
+            Button("Fit") { model.fit() }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .padding(.horizontal, 6)
+            Button("100%") { model.actualSize() }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .padding(.horizontal, 6)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 10, y: 3))
+    }
+
+    private func zoomButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(ink)
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.plain)
     }
 
     private var lookRow: some View {
@@ -704,13 +775,49 @@ struct EditorView: View {
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
             window.isMovableByWindowBackground = false
-            window.minSize = NSSize(width: 1100, height: 680)
+            window.minSize = NSSize(width: 980, height: 680)
             window.backgroundColor = NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)
             if window.contentRect(forFrameRect: window.frame).width < 1000 {
                 window.setContentSize(NSSize(width: 1180, height: 760))
                 window.center()
             }
         }
+    }
+}
+
+private struct CanvasSizeField: View {
+    var label: String
+    var value: CGFloat
+    var onCommit: (CGFloat) -> Void
+    @State private var text = ""
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary)
+            TextField(label, text: $text, onCommit: commit)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+        }
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity)
+        .frame(height: 28)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.05)))
+        .onAppear { text = String(Int(value.rounded())) }
+        .onChange(of: Int(value.rounded())) { next in
+            text = String(next)
+        }
+    }
+
+    private func commit() {
+        guard let number = Double(text), number >= 32 else {
+            text = String(Int(value.rounded()))
+            return
+        }
+        let rounded = CGFloat(number.rounded())
+        if abs(rounded - value) < 0.5 { return }
+        onCommit(rounded)
     }
 }
 

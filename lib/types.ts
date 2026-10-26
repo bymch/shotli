@@ -14,6 +14,8 @@ export type Tool =
 
 export type FrameStyle = "none" | "browser" | "desktop";
 
+export type CanvasRatio = "auto" | "1:1" | "4:3" | "3:2" | "16:9";
+
 export type WallpaperId =
   | "dots"
   | "grid"
@@ -38,6 +40,9 @@ export type Style = {
   radius: number;
   shadow: number;
   frame: FrameStyle;
+  canvas: CanvasRatio;
+  canvasWidth: number;
+  canvasHeight: number;
   background: Background;
 };
 
