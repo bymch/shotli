@@ -467,7 +467,7 @@ private enum AreaGrab {
             width: max(1, (points.width * scale).rounded()),
             height: max(1, (points.height * scale).rounded())
         )
-        guard let image = CGDisplayCreateImageForRect(displayID, pixel) else { return nil }
+        guard let image = CGDisplayCreateImage(displayID, rect: pixel) else { return nil }
         if image.width < 2 || image.height < 2 { return nil }
         return image
     }
