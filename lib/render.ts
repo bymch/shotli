@@ -30,6 +30,8 @@ export function renderComposition(
     paintBackground(ctx, doc.style.background, composition.compW, composition.compH);
   }
 
+  paintCard(ctx, composition.window, doc.style);
+
   if (!doc.image) {
     ctx.restore();
     return;
@@ -38,14 +40,6 @@ export function renderComposition(
   const crop = activeCrop(doc)!;
   const radius = doc.style.radius;
   const framed = doc.style.frame !== "none";
-  const card = framed ? "#F4F4F4" : "#FFFFFF";
-
-  ctx.save();
-  if (doc.style.shadow > 0) applyShadow(ctx, doc.style.shadow);
-  traceRoundRect(ctx, composition.window.x, composition.window.y, composition.window.w, composition.window.h, radius);
-  ctx.fillStyle = card;
-  ctx.fill();
-  ctx.restore();
 
   if (doc.style.frame === "browser") {
     drawBrowserChrome(ctx, composition.window, radius, doc.image.name, fontFamily);
@@ -220,6 +214,50 @@ function drawMesh(ctx: CanvasRenderingContext2D, width: number, height: number) 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
   }
+}
+
+function paintCard(ctx: CanvasRenderingContext2D, rect: Rect, style: Doc["style"]) {
+  const radius = style.radius;
+  const card = style.card ?? "default";
+  ctx.save();
+  traceRoundRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+  if (card === "outline") {
+    ctx.strokeStyle = "#222222";
+    ctx.lineWidth = style.borderWidth || 3;
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  if (style.shadow > 0 && card !== "inset-light" && card !== "inset-dark") applyShadow(ctx, style.shadow);
+  if (card === "glass-light") ctx.fillStyle = "rgba(255,255,255,0.72)";
+  else if (card === "glass-dark") ctx.fillStyle = "rgba(16,18,27,0.62)";
+  else if (card === "liquid") ctx.fillStyle = "rgba(255,255,255,0.4)";
+  else if (card === "inset-dark") ctx.fillStyle = "#16171c";
+  else if (card === "inset-light") ctx.fillStyle = "#f3f3f4";
+  else ctx.fillStyle = style.frame === "none" ? "#FFFFFF" : "#F4F4F4";
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  if (card === "glass-light" || card === "liquid" || card === "glass-dark") {
+    ctx.strokeStyle = card === "glass-dark" ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 2;
+    traceRoundRect(ctx, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, Math.max(0, radius - 1));
+    ctx.stroke();
+  } else if (card === "border") {
+    ctx.strokeStyle = "#171717";
+    ctx.lineWidth = style.borderWidth || 8;
+    traceRoundRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.stroke();
+  } else if (card === "inset-light" || card === "inset-dark") {
+    ctx.save();
+    traceRoundRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.clip();
+    ctx.strokeStyle = card === "inset-dark" ? "rgba(0,0,0,0.65)" : "rgba(0,0,0,0.16)";
+    ctx.lineWidth = 18;
+    traceRoundRect(ctx, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, radius);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
 }
 
 function applyShadow(ctx: CanvasRenderingContext2D, intensity: number) {

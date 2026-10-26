@@ -18,9 +18,12 @@ export async function loadImageFile(file: File): Promise<{ image: LoadedImage } 
   if (file.size > MAX_BYTES) {
     return { error: "That image is over 25 MB. Choose a smaller file." };
   }
+  if (file.type.startsWith("video/")) {
+    return loadVideoFrame(file);
+  }
   const type = sniffType(file);
   if (!TYPES.has(type)) {
-    return { error: "Use a PNG, JPEG, or WebP image." };
+    return { error: "Use a PNG, JPEG, WebP, or a short video." };
   }
 
   try {
@@ -56,6 +59,30 @@ export async function loadImageFile(file: File): Promise<{ image: LoadedImage } 
     };
   } catch {
     return { error: "Couldn't read that image." };
+  }
+}
+
+async function loadVideoFrame(file: File): Promise<{ image: LoadedImage } | { error: string }> {
+  const url = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  video.preload = "auto";
+  video.muted = true;
+  video.src = url;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      video.onloadeddata = () => resolve();
+      video.onerror = () => reject(new Error("unreadable"));
+    });
+    video.currentTime = Math.min(0.1, (video.duration || 0.1) / 2);
+    await new Promise<void>((resolve) => {
+      video.onseeked = () => resolve();
+    });
+    const bitmap = await createImageBitmap(video);
+    URL.revokeObjectURL(url);
+    return { image: { bitmap, width: bitmap.width, height: bitmap.height, name: file.name || "video.mp4", scaled: false } };
+  } catch {
+    URL.revokeObjectURL(url);
+    return { error: "Couldn't read a frame from that video." };
   }
 }
 

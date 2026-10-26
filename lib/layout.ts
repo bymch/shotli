@@ -16,10 +16,12 @@ export type Composition = {
   compH: number;
 };
 
+const EMPTY_PICTURE = { w: 960, h: 600 };
+
 export function contentSize(doc: Doc) {
   const crop = activeCrop(doc);
-  const width = crop?.w ?? 0;
-  const height = crop?.h ?? 0;
+  const width = crop?.w ?? (doc.image ? 0 : EMPTY_PICTURE.w);
+  const height = crop?.h ?? (doc.image ? 0 : EMPTY_PICTURE.h);
   const pad = doc.style.padding;
   const chrome = doc.style.frame === "none" ? 0 : CHROME_HEIGHT;
   return {

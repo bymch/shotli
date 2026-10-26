@@ -17,7 +17,7 @@ import {
 } from "@/lib/geometry";
 import { activeCrop, compositionOf, contentSize } from "@/lib/layout";
 import { paintBackground, renderComposition } from "@/lib/render";
-import type { Annotation, Background, Brush, Doc, Handle, Rect, Tool } from "@/lib/types";
+import type { Annotation, Background, Brush, Doc, Handle, Rect, Style, Tool } from "@/lib/types";
 import { pictureChanged, snapshot, type Snapshot } from "@/lib/types";
 import { ToolIcon } from "./icons";
 
@@ -41,26 +41,38 @@ type TextSession = {
   before: Snapshot | null;
 };
 
+export type ZoomCommand = { id: number; kind: "fit" | "percent"; percent?: number };
+
 export function Workspace({
   doc,
   tool,
   brush,
   notice,
   fileDrag,
+  zoomCommand,
+  tiltMode,
+  animateToken,
   onNotice,
   onCommit,
   onLive,
   onTool,
+  onZoom,
+  onRequestFile,
 }: {
   doc: Doc;
   tool: Tool;
   brush: Brush;
   notice: string | null;
   fileDrag: boolean;
+  zoomCommand?: ZoomCommand | null;
+  tiltMode?: boolean;
+  animateToken?: number;
   onNotice: (message: string | null) => void;
   onCommit: (next: Doc, before: Snapshot) => void;
   onLive: (next: Doc) => void;
   onTool: (tool: Tool) => void;
+  onZoom?: (info: { percent: number; mode: "fit" | "manual" }) => void;
+  onRequestFile?: () => void;
 }) {
   const workspaceRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -77,6 +89,7 @@ export function Workspace({
   const [draft, setDraft] = useState<Annotation | null>(null);
   const [cropDraft, setCropDraft] = useState<Rect | null>(null);
   const [session, setSession] = useState<TextSession | null>(null);
+  const [playing, setPlaying] = useState(false);
   const sessionRef = useRef<TextSession | null>(null);
   const textOpenedAt = useRef(0);
 
@@ -111,7 +124,7 @@ export function Workspace({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !doc.image) return;
+    if (!canvas) return;
     const dpr = composition.compW * composition.compH > 4_000_000 ? 1 : Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.max(1, Math.round(composition.compW * dpr));
     canvas.height = Math.max(1, Math.round(composition.compH * dpr));
@@ -130,6 +143,17 @@ export function Workspace({
     });
   }, [doc, draft, cropDraft, scale, session?.id, composition.compW, composition.compH]);
 
+  useEffect(() => {
+    onZoom?.({ percent: Math.round(scale * 100), mode: view.mode });
+  }, [onZoom, scale, view.mode]);
+
+  useEffect(() => {
+    if (!animateToken) return;
+    setPlaying(true);
+    const timer = window.setTimeout(() => setPlaying(false), 1000);
+    return () => window.clearTimeout(timer);
+  }, [animateToken]);
+
   const textToken = session?.token ?? 0;
   useEffect(() => {
     if (!textToken) return;
@@ -141,6 +165,25 @@ export function Workspace({
     viewRef.current = next;
     setView(next);
   }, []);
+
+  useEffect(() => {
+    if (!zoomCommand) return;
+    if (zoomCommand.kind === "fit") {
+      fit();
+      return;
+    }
+    const frame = compositionOf(docRef.current);
+    const box = sizeRef.current;
+    const nextZoom = clampZoom((zoomCommand.percent ?? 100) / 100);
+    const next = {
+      mode: "manual" as const,
+      zoom: nextZoom,
+      panX: (box.w - frame.compW * nextZoom) / 2,
+      panY: (box.h - frame.compH * nextZoom) / 2,
+    };
+    viewRef.current = next;
+    setView(next);
+  }, [fit, zoomCommand]);
 
   const actualSize = useCallback(() => {
     const frame = compositionOf(docRef.current);
@@ -649,9 +692,9 @@ export function Workspace({
         </div>
       ) : null}
 
-      {doc.image ? (
+      {composition.compW > 1 ? (
         <div
-          className="absolute top-0 left-0 shadow-[0_16px_40px_rgba(0,0,0,0.16)] ring-1 ring-black/10"
+          className={`absolute top-0 left-0 shadow-[0_24px_70px_rgba(0,0,0,0.12)] ring-1 ring-black/10 ${playing ? "shotli-play" : ""}`}
           style={{
             width: composition.compW,
             height: composition.compH,
@@ -660,6 +703,15 @@ export function Workspace({
           }}
         >
           <BackgroundLayer background={doc.style.background} width={composition.compW} height={composition.compH} />
+          <div
+            className="absolute inset-0"
+            style={{
+              transform: tiltMode
+                ? `perspective(1200px) rotateX(${(doc.style.tilt || 8) * 0.55}deg) rotateY(${(doc.style.tilt || 8) * 0.35}deg)`
+                : undefined,
+              transformOrigin: "center center",
+            }}
+          >
           <canvas
             ref={canvasRef}
             data-testid="composition"
@@ -668,21 +720,42 @@ export function Workspace({
             className="relative block"
             style={{ width: composition.compW, height: composition.compH }}
           />
-          {tool === "select"
-            ? CANVAS_HANDLES.map((handle) => (
-                <button
-                  key={handle}
-                  type="button"
-                  aria-label={`Resize canvas ${handle}`}
-                  className="absolute z-10 h-2.5 w-2.5 rounded-[2px] border border-white bg-accent"
+          {!doc.image ? (
+            <button
+              type="button"
+              className="absolute flex flex-col items-center justify-center"
+              style={{
+                left: composition.window.x,
+                top: composition.window.y,
+                width: composition.window.w,
+                height: composition.window.h,
+                borderRadius: doc.style.radius,
+                color: placeholderInk(doc.style),
+              }}
+              onClick={onRequestFile}
+            >
+              <span
+                className="flex flex-col items-center"
+                style={{
+                  gap: Math.max(8, headlineSize(composition.window.w, scale) * 0.28),
+                }}
+              >
+                <span
+                  className="flex items-center justify-center rounded-2xl bg-current/10"
                   style={{
-                    ...canvasHandleStyle(handle, composition.compW, composition.compH),
-                    transform: `translate(-50%, -50%) scale(${1 / Math.max(scale, 0.05)})`,
+                    width: headlineSize(composition.window.w, scale) * 1.7,
+                    height: headlineSize(composition.window.w, scale) * 1.7,
                   }}
-                  onPointerDown={(event) => onCanvasResize(event, handle)}
-                />
-              ))
-            : null}
+                >
+                  <DropIcon />
+                </span>
+                <span className="font-semibold tracking-tight" style={{ fontSize: headlineSize(composition.window.w, scale) }}>
+                  Drop or Paste
+                </span>
+                <span style={{ fontSize: headlineSize(composition.window.w, scale) * 0.48, opacity: 0.72 }}>Images & Videos</span>
+              </span>
+            </button>
+          ) : null}
           {textStyle ? (
             <textarea
               ref={textRef}
@@ -732,33 +805,31 @@ export function Workspace({
               }}
             />
           ) : null}
+          </div>
+          {tool === "select"
+            ? CANVAS_HANDLES.map((handle) => (
+                <button
+                  key={handle}
+                  type="button"
+                  aria-label={`Resize canvas ${handle}`}
+                  className="absolute z-10 h-2.5 w-2.5 rounded-[2px] border border-white bg-accent"
+                  style={{
+                    ...canvasHandleStyle(handle, composition.compW, composition.compH),
+                    transform: `translate(-50%, -50%) scale(${1 / Math.max(scale, 0.05)})`,
+                  }}
+                  onPointerDown={(event) => onCanvasResize(event, handle)}
+                />
+              ))
+            : null}
         </div>
       ) : null}
 
       {doc.image ? (
         <>
-          <div className="absolute bottom-3 left-3 z-10 flex items-center rounded-full border border-line bg-panel px-1 py-1 shadow-sm">
-            <button type="button" className="h-7 w-7 rounded-full text-[14px] text-ink hover:bg-surface" aria-label="Zoom out" onClick={() => zoomAt(1 / 1.1, size.w / 2, size.h / 2)}>
-              −
-            </button>
-            <span aria-live="polite" className="min-w-12 px-1 text-center text-[12px] text-ink tabular-nums">
-              {Math.round(scale * 100)}%
-            </span>
-            <button type="button" className="h-7 w-7 rounded-full text-[14px] text-ink hover:bg-surface" aria-label="Zoom in" onClick={() => zoomAt(1.1, size.w / 2, size.h / 2)}>
-              +
-            </button>
-            <span className="mx-1 h-4 w-px bg-line" />
-            <button type="button" className="h-7 rounded-full px-2 text-[12px] text-ink hover:bg-surface" onClick={fit}>
-              Fit
-            </button>
-            <button type="button" className="h-7 rounded-full px-2 text-[12px] text-ink hover:bg-surface" onClick={actualSize}>
-              100%
-            </button>
-          </div>
           <div
             role="toolbar"
             aria-label="Annotation tools"
-            className="absolute bottom-3 left-1/2 z-10 flex max-w-[calc(100%-8rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-full border border-black/10 bg-white px-1.5 py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+            className="absolute bottom-24 left-1/2 z-10 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-full border border-black/10 bg-white px-1.5 py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
           >
             {DOCK_TOOLS.map((item, index) => (
               <span key={item} className="contents">
@@ -841,7 +912,7 @@ const DOCK_TOOLS: Tool[] = [
 
 function computeScale(view: View, size: { w: number; h: number }, compW: number, compH: number) {
   if (size.w < 8 || size.h < 8) return 1;
-  const fit = Math.min((size.w - 28) / compW, (size.h - 88) / compH);
+  const fit = Math.min((size.w - 160) / compW, (size.h - 180) / compH);
   const fitted = clampZoom(fit);
   return view.mode === "fit" ? fitted : view.zoom;
 }
@@ -913,4 +984,41 @@ function isTyping(target: EventTarget | null) {
 
 function isUiTarget(target: EventTarget | null) {
   return target instanceof HTMLElement && Boolean(target.closest("textarea, input, button, a"));
+}
+
+function headlineSize(cardWidth: number, scale: number) {
+  const screen = 26 / Math.max(scale, 0.12);
+  return Math.min(cardWidth * 0.062, screen);
+}
+
+function placeholderInk(style: Style) {
+  const darkCard = style.card === "glass-dark" || style.card === "inset-dark";
+  if (darkCard || ((style.card === "outline" || style.card === "border") && backgroundIsDark(style.background))) return "#f7f7f7";
+  return "#222222";
+}
+
+function backgroundIsDark(background: Background) {
+  if (background.kind === "color") return luminance(background.color) < 0.42;
+  if (background.kind === "gradient") return luminance(background.to) < 0.42 && luminance(background.from) < 0.55;
+  return background.id === "night" || background.id === "dusk" || background.id === "aurora" || background.id === "harbour";
+}
+
+function luminance(color: string) {
+  const hex = color.trim();
+  if (!hex.startsWith("#") || (hex.length !== 7 && hex.length !== 4)) return 1;
+  const full = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
+  const r = Number.parseInt(full.slice(1, 3), 16);
+  const g = Number.parseInt(full.slice(3, 5), 16);
+  const b = Number.parseInt(full.slice(5, 7), 16);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
+function DropIcon() {
+  return (
+    <svg className="h-1/2 w-1/2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M12 4v10" strokeLinecap="round" />
+      <path d="M8 8l4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 14.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3.5" strokeLinecap="round" />
+    </svg>
+  );
 }
