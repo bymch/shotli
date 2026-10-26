@@ -26,6 +26,9 @@ struct EditorView: View {
     @State private var animatePop = false
     @State private var adjustingLight = false
     @State private var showTemplates = false
+    @State private var showMagic = false
+    @State private var magicColors: [MagicColor] = []
+    @State private var magicBackgrounds: [MagicBackground] = []
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
@@ -82,7 +85,11 @@ struct EditorView: View {
                 TemplatesPanel(model: model, shot: shotImage) { showTemplates = false }
             }
         }
-        .onAppear(perform: configureWindow)
+        .onAppear {
+            refreshMagic()
+            configureWindow()
+        }
+        .onChange(of: pictureKey) { _ in refreshMagic() }
     }
 
     private var studioBar: some View {
@@ -305,16 +312,37 @@ struct EditorView: View {
         }
     }
 
-    private func cyclePreset(_ step: Int) {
-        let presets = Presets.all
-        guard !presets.isEmpty else { return }
-        let current = presets.firstIndex { $0.style == model.style } ?? 0
-        let next = (current + step + presets.count) % presets.count
-        model.applyPreset(presets[next])
+    private var pictureKey: String {
+        guard let picture = model.picture else { return "" }
+        return "\(UInt(bitPattern: Unmanaged.passUnretained(picture.image).toOpaque()))"
     }
 
-    private var presetName: String {
-        Presets.all.first { $0.style == model.style }?.name ?? "Custom"
+    private func refreshMagic() {
+        guard let image = model.picture?.image else {
+            magicColors = []
+            magicBackgrounds = []
+            return
+        }
+        let reading = MagicPalette.read(image)
+        magicColors = reading.colors
+        magicBackgrounds = reading.backgrounds
+    }
+
+    private func cycleMagic(_ step: Int) {
+        if magicBackgrounds.isEmpty { refreshMagic() }
+        guard !magicBackgrounds.isEmpty else {
+            showMagic = true
+            return
+        }
+        let current = magicBackgrounds.firstIndex { $0.background == model.style.background } ?? -1
+        let next: Int
+        if current < 0 {
+            next = step < 0 ? magicBackgrounds.count - 1 : 0
+        } else {
+            next = (current + step + magicBackgrounds.count) % magicBackgrounds.count
+        }
+        model.setBackground(magicBackgrounds[next].background)
+        showMagic = true
     }
 
     private func tabButton(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
@@ -461,37 +489,119 @@ struct EditorView: View {
     }
 
     private var magicPresetRow: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color(nsColor: NSColor(srgbRed: 0.93, green: 0.35, blue: 0.62, alpha: 1)))
-                Text("Magic Preset")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(ink)
-                Spacer(minLength: 0)
-                Button(action: { cyclePreset(-1) }) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 4) {
+                Button(action: {
+                    refreshMagic()
+                    showMagic.toggle()
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Color(nsColor: NSColor(srgbRed: 0.93, green: 0.35, blue: 0.62, alpha: 1)))
+                        Text("Magic Preset")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(ink)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Recommended backgrounds from this picture")
+                Button(action: { cycleMagic(-1) }) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
                         .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                Button(action: { cyclePreset(1) }) {
+                .help("Previous recommended background")
+                Button(action: { cycleMagic(1) }) {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
                         .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .help("Next recommended background")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.045)))
-            .help(presetName)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(showMagic ? 0.07 : 0.045)))
+            if showMagic {
+                magicPanel
+            }
             Rectangle()
                 .fill(Color.black.opacity(0.08))
                 .frame(height: 1)
+        }
+    }
+
+    private var magicPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if magicBackgrounds.isEmpty {
+                Text("Open a screenshot and Shotli will pick backgrounds from its colours.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Colours in this picture")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                HStack(spacing: 8) {
+                    ForEach(magicColors) { color in
+                        Button(action: { model.setBackground(color.wash) }) {
+                            VStack(spacing: 4) {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color(nsColor: NSColor(hex: color.hex) ?? .gray))
+                                    .frame(width: 28, height: 28)
+                                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.12), lineWidth: 1))
+                                Text(color.name)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help("Use a \(color.name.lowercased()) background")
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text("Recommended")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                    ForEach(magicBackgrounds) { item in
+                        let active = item.background == model.style.background
+                        Button(action: { model.setBackground(item.background) }) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ZStack {
+                                    presetPreview(item.background)
+                                    if let shotImage {
+                                        Image(nsImage: shotImage)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                            .padding(8)
+                                            .shadow(color: Color.black.opacity(0.18), radius: 3, y: 2)
+                                    }
+                                }
+                                .frame(height: 68)
+                                .frame(maxWidth: .infinity)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1))
+                                Text(item.name)
+                                    .font(.system(size: 11, weight: active ? .semibold : .medium))
+                                    .foregroundColor(active ? ink : .secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
         }
     }
 
