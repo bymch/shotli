@@ -107,7 +107,7 @@ enum WallpaperID: String, CaseIterable, Identifiable {
 
 enum Background: Equatable {
     case color(String)
-    case gradient(from: String, to: String, angle: CGFloat)
+    case gradient(from: String, mid: String?, to: String, angle: CGFloat)
     case wallpaper(WallpaperID)
 }
 
@@ -222,30 +222,35 @@ struct Preset: Identifiable, Equatable {
 }
 
 enum Presets {
-    static let colors = ["#FFFFFF", "#F1F1F1", "#E7E5E4", "#E8EEF7", "#FDE2E4", "#E7F5EE", "#FFF6D8", "#1F2937", "#111827", "transparent"]
+    static let colors = ["#050506", "#F5F5F0", "#2B2E36", "#F03B47", "#F78529", "#F5BA3B", "#3B9C5C", "#2980E0", "#7A42E8", "#EDA89E", "#A8E6BA", "#A1C9F0", "#CCC2EB", "#FACCB0", "#BDD1B2", "#E8DEC2", "transparent"]
     static let inks = ["#E5484D", "#F5A524", "#3478F6", "#30A46C", "#8E4EC6", "#222222", "#FFFFFF"]
-    static let gradients: [(String, String, String, CGFloat)] = [
-        ("Fog", "#F7F7F7", "#D9DEE7", 180),
-        ("Dawn", "#FDE2E4", "#E0E7FF", 140),
-        ("Sea", "#E0F2FE", "#D1FAE5", 160),
-        ("Citrus", "#FEF3C7", "#FBCFE8", 150),
-        ("Iris", "#3478F6", "#C4B5FD", 135),
-        ("Ink", "#243044", "#111827", 180),
-        ("Ember", "#FB923C", "#7C3AED", 150),
-        ("Lagoon", "#22D3EE", "#6366F1", 160),
-        ("Flamingo", "#FB7185", "#FBBF24", 140),
-        ("Grove", "#34D399", "#0EA5E9", 155),
-        ("Plum", "#F472B6", "#312E81", 165),
+    static let gradients: [(name: String, from: String, mid: String, to: String, angle: CGFloat)] = [
+        ("Aurora", "#FA4F94", "#6652F2", "#4AD6CC", 135),
+        ("Cobalt", "#0A0D80", "#4230ED", "#6BABFA", 153),
+        ("Peach", "#FA615C", "#FCB55C", "#E654A6", 135),
+        ("Glass", "#DEF2F0", "#75C4DB", "#4087ED", 135),
+        ("Plasma", "#140538", "#591FD6", "#F2426B", 225),
+        ("Mango", "#FCBF33", "#F55436", "#AB30E3", 135),
+        ("Mist", "#F0F0EB", "#CCE0F0", "#F2C2B2", 135),
+        ("Lagoon", "#144C8A", "#40A3B8", "#B2EBC7", 315),
+        ("Ember", "#2E0814", "#DB2B2E", "#FFAB40", 135),
+        ("Violet", "#3D1482", "#9638F0", "#F56BBD", 153),
+        ("Sea Glass", "#6EDBBF", "#409ECC", "#3859BF", 135),
+        ("Citrus", "#FCE84C", "#70C74A", "#1F946B", 225),
+        ("Amethyst", "#1A1447", "#5926A6", "#C263F2", 315),
+        ("Sorbet", "#FF7D82", "#FFBD7A", "#8FC7FA", 135),
+        ("Mineral", "#EDF5F2", "#A3B8D1", "#546B8C", 135),
+        ("Dawn", "#FA9EC4", "#FAD178", "#6BB5F5", 315),
     ]
 
     static let all: [Preset] = [
         Preset(id: "clean", name: "Clean", style: style(56, 14, 28, .none, .color("#FFFFFF"))),
-        Preset(id: "studio", name: "Studio", style: style(80, 16, 42, .none, .gradient(from: "#F7F7F7", to: "#D9DEE7", angle: 180))),
+        Preset(id: "studio", name: "Studio", style: style(80, 16, 42, .none, .gradient(from: "#F0F0EB", mid: "#CCE0F0", to: "#F2C2B2", angle: 135))),
         Preset(id: "soft", name: "Soft", style: style(68, 22, 30, .none, .color("#F4F1EC"))),
         Preset(id: "browser", name: "Browser", style: style(60, 12, 36, .browser, .color("#E8EEF7"))),
         Preset(id: "window", name: "Window", style: style(52, 10, 24, .desktop, .wallpaper(.dots))),
-        Preset(id: "pastel", name: "Pastel", style: style(84, 24, 34, .none, .gradient(from: "#FDE2E4", to: "#E0E7FF", angle: 140))),
-        Preset(id: "signal", name: "Signal", style: style(76, 18, 48, .none, .gradient(from: "#3478F6", to: "#C4B5FD", angle: 135))),
+        Preset(id: "pastel", name: "Pastel", style: style(84, 24, 34, .none, .gradient(from: "#FA9EC4", mid: "#FAD178", to: "#6BB5F5", angle: 315))),
+        Preset(id: "signal", name: "Signal", style: style(76, 18, 48, .none, .gradient(from: "#0A0D80", mid: "#4230ED", to: "#6BABFA", angle: 153))),
         Preset(id: "midnight", name: "Midnight", style: style(68, 14, 50, .browser, .color("#16181D"))),
     ]
 

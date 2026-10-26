@@ -88,6 +88,7 @@ export function Sidebar({
             const active =
               doc.style.background.kind === "gradient" &&
               doc.style.background.from === gradient.from &&
+              doc.style.background.mid === gradient.mid &&
               doc.style.background.to === gradient.to;
             return (
               <button
@@ -97,8 +98,8 @@ export function Sidebar({
                 aria-pressed={active}
                 title={gradient.name}
                 className={`h-12 rounded-[10px] border-2 ${active ? "border-accent" : "border-black/10"}`}
-                style={{ background: `linear-gradient(${gradient.angle}deg, ${gradient.from}, ${gradient.to})` }}
-                onClick={() => onBackground({ kind: "gradient", from: gradient.from, to: gradient.to, angle: gradient.angle })}
+                style={{ background: `linear-gradient(${gradient.angle}deg, ${gradient.from}, ${gradient.mid}, ${gradient.to})` }}
+                onClick={() => onBackground({ kind: "gradient", from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle })}
               />
             );
           })}

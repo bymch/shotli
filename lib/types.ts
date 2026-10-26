@@ -42,7 +42,7 @@ export type WallpaperId =
 
 export type Background =
   | { kind: "color"; color: string }
-  | { kind: "gradient"; from: string; to: string; angle: number }
+  | { kind: "gradient"; from: string; to: string; angle: number; mid?: string }
   | { kind: "wallpaper"; id: WallpaperId };
 
 export type Style = {
