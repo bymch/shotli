@@ -97,7 +97,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu?
 
+    override init() {
+        super.init()
+        guard CommandLine.arguments.contains("--verify-motion") else { return }
+        let code = MotionVerify.run()
+        fflush(stdout)
+        fflush(stderr)
+        exit(Int32(code))
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if CommandLine.arguments.contains("--verify-motion") {
+            let code = MotionVerify.run()
+            fflush(stdout)
+            fflush(stderr)
+            exit(Int32(code))
+        }
         NSWindow.allowsAutomaticWindowTabbing = false
         ShotShortcuts.shared.install()
         setMenuBarVisible(ShotliSettings.shared.showMenuBar)

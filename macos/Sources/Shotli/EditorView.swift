@@ -66,7 +66,7 @@ struct EditorView: View {
     @ObservedObject var model: EditorModel
     @State private var dropTarget = false
     @State private var didConfigure = false
-    @State private var animatePop = false
+    @State private var showMotion = false
     @State private var adjustingLight = false
     @State private var showTemplates = false
     @State private var backgroundShelf: BackgroundShelf?
@@ -79,7 +79,6 @@ struct EditorView: View {
     @State private var magicBackgrounds: [MagicBackground] = []
     @State private var settingsSheet = false
     @ObservedObject private var settings = ShotliSettings.shared
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
@@ -90,6 +89,9 @@ struct EditorView: View {
                 stage {
                     LibraryHome(onOpen: { model.openPanel() })
                 }
+            } else if showMotion {
+                MotionStudio(model: model) { showMotion = false }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 studioBar
                 HStack(alignment: .top, spacing: 12) {
@@ -109,12 +111,11 @@ struct EditorView: View {
                                 .stroke(Color.black.opacity(0.06), lineWidth: 1)
                                 .allowsHitTesting(false)
                         )
-                        .scaleEffect(animatePop ? 1.012 : 1)
-                        Button(action: playAnimate) {
+                        Button(action: { showMotion = true }) {
                             HStack(spacing: 6) {
-                                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                                Image(systemName: "move.3d")
                                     .font(.system(size: 11, weight: .semibold))
-                                Text("Animate")
+                                Text("Motion")
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .foregroundColor(ink)
@@ -124,8 +125,8 @@ struct EditorView: View {
                         }
                         .buttonStyle(PressFadeButtonStyle())
                         .fixedSize(horizontal: true, vertical: true)
-                        .help("Preview a short motion")
-                        .accessibilityLabel("Animate")
+                        .help("Open Motion Studio")
+                        .accessibilityLabel("Motion")
                     }
                     .frame(minWidth: 360, idealWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
                     .layoutPriority(1)
@@ -155,6 +156,7 @@ struct EditorView: View {
             refreshMagic()
             if model.picture == nil {
                 showTemplates = false
+                showMotion = false
                 backgroundShelf = nil
                 gradientPopover = nil
             }
@@ -503,14 +505,6 @@ struct EditorView: View {
         .help(preset.name)
         .accessibilityLabel("\(preset.name) layout")
         .accessibilityAddTraits(active ? .isSelected : AccessibilityTraits())
-    }
-
-    private func playAnimate() {
-        guard !reduceMotion else { return }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.62)) { animatePop = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { animatePop = false }
-        }
     }
 
     private var pictureKey: String {
@@ -1849,7 +1843,7 @@ struct EditorView: View {
     }
 }
 
-private struct PressFadeButtonStyle: ButtonStyle {
+struct PressFadeButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {

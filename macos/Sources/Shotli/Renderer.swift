@@ -11,14 +11,17 @@ func renderComposition(
     draft: Annotation?,
     interactive: Bool,
     cropDraft: CGRect? = nil,
-    selectedID: String? = nil
+    selectedID: String? = nil,
+    omitBackground: Bool = false
 ) -> CGImage? {
     guard let picture else { return nil }
     let layout = composition(picture: picture, crop: crop, style: style)
     let tilted = !style.hideMockup && (abs(style.tiltX) > 0.4 || abs(style.tiltY) > 0.4)
     if tilted, let context = bitmapContext(layout.size) {
         let painter = Painter(context: context, height: layout.size.height)
-        painter.drawBackground(style.background, layout.size)
+        if !omitBackground {
+            painter.drawBackground(style.background, layout.size)
+        }
         let placed = shiftedCardLayout(layout)
         if let layer = renderFlat(
             picture: picture, crop: crop, style: style, annotations: annotations, draft: draft,
@@ -39,8 +42,19 @@ func renderComposition(
     return renderFlat(
         picture: picture, crop: crop, style: style, annotations: annotations, draft: draft,
         interactive: interactive, cropDraft: cropDraft, selectedID: selectedID,
-        layout: layout, paintBackground: true
+        layout: layout, paintBackground: !omitBackground
     )
+}
+
+func renderBackdrop(_ background: Background, size: CGSize) -> CGImage? {
+    guard let context = bitmapContext(size) else { return nil }
+    Painter(context: context, height: size.height).drawBackground(background, size)
+    return context.makeImage()
+}
+
+func warpMotionCard(_ image: CGImage, tiltX: CGFloat, tiltY: CGFloat) -> CGImage {
+    if abs(tiltX) < 0.15, abs(tiltY) < 0.15 { return image }
+    return warpCard(image, tiltX: tiltX, tiltY: tiltY)
 }
 
 private func renderFlat(

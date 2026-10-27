@@ -27,7 +27,7 @@ echo "Compiling arm64…"
 swiftc -swift-version 5 -O -parse-as-library \
   -target arm64-apple-macos12.0 \
   $FM_DEFINE \
-  -framework AppKit -framework SwiftUI -framework Carbon -framework ImageIO -framework UniformTypeIdentifiers -framework CoreImage -framework Vision \
+  -framework AppKit -framework SwiftUI -framework Carbon -framework ImageIO -framework UniformTypeIdentifiers -framework CoreImage -framework Vision -framework AVFoundation \
   -Xlinker -weak_framework -Xlinker ScreenCaptureKit \
   $FM_LINK \
   -o "$ROOT/build/Shotli-arm64" \
@@ -37,7 +37,7 @@ echo "Compiling x86_64…"
 swiftc -swift-version 5 -O -parse-as-library \
   -target x86_64-apple-macos12.0 \
   $FM_DEFINE \
-  -framework AppKit -framework SwiftUI -framework Carbon -framework ImageIO -framework UniformTypeIdentifiers -framework CoreImage -framework Vision \
+  -framework AppKit -framework SwiftUI -framework Carbon -framework ImageIO -framework UniformTypeIdentifiers -framework CoreImage -framework Vision -framework AVFoundation \
   -Xlinker -weak_framework -Xlinker ScreenCaptureKit \
   $FM_LINK \
   -o "$ROOT/build/Shotli-x64" \
@@ -63,6 +63,31 @@ sips -z 512 512 "$ROOT/desktop/icon.png" --out "$ICONSET/icon_512x512.png" >/dev
 sips -z 1024 1024 "$ROOT/desktop/icon.png" --out "$ICONSET/icon_512x512@2x.png" >/dev/null
 iconutil -c icns "$ICONSET" -o "$ROOT/build/Shotli.app/Contents/Resources/AppIcon.icns"
 cp "$ROOT/build/Shotli.app/Contents/Resources/AppIcon.icns" "$ROOT/build/VolumeIcon.icns"
+
+echo "Checking motion export…"
+verify_log="$ROOT/build/motion-verify.log"
+"$ROOT/build/Shotli.app/Contents/MacOS/Shotli" --verify-motion >"$verify_log" 2>&1 &
+verify_pid=$!
+verify_code=1
+for _ in $(seq 1 45); do
+  if ! kill -0 "$verify_pid" 2>/dev/null; then
+    verify_code=0
+    wait "$verify_pid" || verify_code=$?
+    break
+  fi
+  sleep 1
+done
+if kill -0 "$verify_pid" 2>/dev/null; then
+  kill "$verify_pid" 2>/dev/null || true
+  echo "Motion export check timed out" >&2
+  cat "$verify_log" >&2
+  exit 1
+fi
+cat "$verify_log"
+if [ "$verify_code" -ne 0 ]; then
+  echo "Motion export check failed" >&2
+  exit "$verify_code"
+fi
 
 # Screen Recording is tied to the signing identity. Ad-hoc signing changes on
 # every build, so macOS asks again after each update. A release imports the
