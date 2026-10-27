@@ -480,7 +480,7 @@ struct SettingsPane: View {
 
     private func plainButton(_ title: String, fill: Color? = nil, action: @escaping () -> Void) -> some View {
         let plate = fill ?? ShotliGlass.surface(colorScheme)
-        Button(action: action) {
+        return Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(ink)
