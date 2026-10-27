@@ -95,9 +95,11 @@ struct ShotliCommands: Commands {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: Any?
     private var statusItem: NSStatusItem?
+    private var statusMenu: NSMenu?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        ShotShortcuts.shared.install()
         setMenuBarVisible(ShotliSettings.shared.showMenuBar)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             AppUpdate.shared.checkOnLaunch()
@@ -157,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if let statusItem {
             NSStatusBar.system.removeStatusItem(statusItem)
             self.statusItem = nil
+            self.statusMenu = nil
         }
     }
 
@@ -183,6 +186,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem("Quit Shotli", #selector(quit)))
         item.menu = menu
         statusItem = item
+        statusMenu = menu
+        refreshCaptureShortcuts()
+    }
+
+    func refreshCaptureShortcuts() {
+        if let statusMenu { ShotShortcuts.shared.apply(to: statusMenu) }
+        if let main = NSApp.mainMenu { ShotShortcuts.shared.apply(to: main) }
+        statusItem?.button?.toolTip = ShotShortcuts.shared.statusTip
     }
 
     private func menuItem(_ title: String, _ action: Selector) -> NSMenuItem {
