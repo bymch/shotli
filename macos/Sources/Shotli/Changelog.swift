@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.45", notes: [
+            "The editor chrome is floating glass: toolbar, side panels, and the panels that open over the picture. The exported image is unchanged.",
+        ]),
         ChangelogEntry(version: "0.2.44", notes: [
             "Renaming a screenshot keeps its category and the words Shotli already read.",
         ]),

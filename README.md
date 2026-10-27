@@ -45,12 +45,12 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - Presets set the background, padding, corner radius, shadow and frame together.
 - The library shows larger screenshots. The number of columns follows the window. Sort from the toolbar, and right-click a thumbnail to rename it or show it in Finder.
 - Backgrounds stay at the top of the mockup panel. Each row shows three, and the headings collapse. More opens the rest of that set over the picture. The plus on a linear gradient applies one of its colours as a flat background.
-- The editor is three columns. The left side is the mockup: card style, corners, shadow, light, and hide mockup. The picture sits in the middle on its background. Zoom and layout presets are on the right. Drawing tools are along the top. The back arrow returns to your screenshots.
+- The editor is three columns on a cool workspace. The toolbar, side panels, and overlays are translucent glass. The picture in the middle is not. The left side is the mockup: card style, corners, shadow, light, and hide mockup. Zoom and layout presets are on the right. Drawing tools are along the top. The back arrow returns to your screenshots.
 - Templates, at the top left, opens a gallery. Each one sets a background, a position, and an angle. Product shots use studio sweeps. Abstract colour uses bloom, tide, citrus, and the rest. Angled ones lean the screenshot so the background stays in frame.
 - Fit keeps the whole screenshot in the window, with the background around it. The picture stays put until you zoom in past the window. Canvas width and height are in the panel.
 - Pixelate and blur paint into the exported image. They are not a separate overlay.
 - Crop from the toolbar, then drag on the screenshot. Reset crop is in Layout.
-- **Export PNG** asks where to save. The file is the composition only: background, frame, shadow, annotations and redactions. The editor grid is not included.
+- **Export PNG** asks where to save. The file is the composition only: background, frame, shadow, annotations and redactions. The glass toolbar and panels are not included.
 
 Images larger than 25 MB are refused. Images longer than 4096px on the long edge are scaled down before editing, and export uses that scaled size.
 
