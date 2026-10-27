@@ -297,7 +297,10 @@ struct EditorView: View {
     }
 
     private var saveProjectButton: some View {
-        Button(action: { model.showSaveProjects = true }) {
+        Button(action: {
+            model.prepareSavePopover()
+            model.showSaveProjects = true
+        }) {
             HStack(spacing: 6) {
                 Image(systemName: "folder.badge.plus")
                     .font(.system(size: 12, weight: .semibold))

@@ -28,8 +28,9 @@ final class ProjectPrompt: ObservableObject {
     }
 
     func updateDraft(_ value: String) {
-        draft = value
-        issue = ProjectStore.validationError(for: value, excluding: excluding)
+        if draft != value { draft = value }
+        let next = ProjectStore.validationError(for: value, excluding: excluding)
+        if next != issue { issue = next }
     }
 
     func commit() {
@@ -96,6 +97,7 @@ struct SaveProjectPopover: View {
     @ObservedObject var model: EditorModel
     @State private var query = ""
     @State private var projects: [ProjectRecord] = []
+    @State private var hoveredID: String?
 
     private var filtered: [ProjectRecord] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -103,16 +105,30 @@ struct SaveProjectPopover: View {
         return matched.sorted { $0.modified > $1.modified }
     }
 
+    private var saving: Bool { model.popoverSave.isSaving }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Save to Project")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(ShotliGlass.ink)
+                    .foregroundColor(.primary)
                 Text("Saves the composition and a copy of the screenshot. Export and Copy are unchanged.")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if let status = statusLine {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: status.symbol)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(status.isError ? Color(nsColor: .systemRed) : ShotliGlass.accent)
+                    Text(status.text)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(status.isError ? Color(nsColor: .systemRed) : .primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
             }
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
@@ -125,18 +141,30 @@ struct SaveProjectPopover: View {
             .padding(.horizontal, 8)
             .frame(height: 30)
             .shotliGlass(.compact, radius: 10, shadow: false)
-            ScrollView {
-                if filtered.isEmpty {
-                    Text(projects.isEmpty ? "No projects yet." : "Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”.")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 8)
-                } else {
-                    VStack(spacing: 4) {
-                        ForEach(filtered) { project in
-                            projectRow(project)
+            GeometryReader { geo in
+                ScrollView {
+                    if filtered.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(projects.isEmpty ? "No projects yet" : "Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”.")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.primary)
+                            if projects.isEmpty {
+                                Text("Create a project and this screenshot is saved into it.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
+                        .frame(width: geo.size.width, alignment: .leading)
+                        .padding(.vertical, 8)
+                    } else {
+                        VStack(spacing: 4) {
+                            ForEach(filtered) { project in
+                                projectRow(project)
+                                    .frame(width: geo.size.width, alignment: .leading)
+                            }
+                        }
+                        .padding(.vertical, 2)
                     }
                 }
             }
@@ -154,55 +182,133 @@ struct SaveProjectPopover: View {
                 .background(Capsule().fill(ShotliGlass.accent))
             }
             .buttonStyle(PressFadeButtonStyle())
+            .disabled(saving)
+            .opacity(saving ? 0.5 : 1)
             .help("Name a project, then save this screenshot into it")
             .accessibilityLabel("Create New Project")
         }
         .padding(16)
         .frame(width: 340, height: 460)
         .onAppear { projects = ProjectStore.list() }
+        .onChange(of: model.showSaveProjects) { shown in
+            if shown {
+                projects = ProjectStore.list()
+                return
+            }
+            if model.popoverSave.isSaving {
+                model.showSaveProjects = true
+                return
+            }
+            model.notePopoverClosed()
+        }
+        .onChange(of: model.popoverSave.phase) { _ in
+            projects = ProjectStore.list()
+        }
+    }
+
+    private var statusLine: (symbol: String, text: String, isError: Bool)? {
+        switch model.popoverSave.phase {
+        case .success(_, let name):
+            return ("checkmark.circle.fill", "Saved to \(name)", false)
+        case .failure(_, let message):
+            return ("exclamationmark.triangle.fill", message, true)
+        default:
+            return nil
+        }
     }
 
     private func projectRow(_ project: ProjectRecord) -> some View {
-        HStack(spacing: 10) {
-            thumb(project)
-                .frame(width: 36, height: 46)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(project.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(ShotliGlass.ink)
-                    .lineLimit(1)
-                Text(detail(project))
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+        let active = model.popoverSave.phase.savingID == project.id
+        return Button(action: { model.saveCurrent(into: project.folder, recordID: project.id) }) {
+            HStack(alignment: .center, spacing: 10) {
+                thumbnail(project)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(project.name)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(detail(project))
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                rowMarker(savingThis: active, savedThis: saved(project))
             }
-            Spacer(minLength: 4)
-            Button("Save") { save(project) }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .accessibilityLabel("Save to \(project.name)")
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .center)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
+        .buttonStyle(SaveRowStyle(hovered: hoveredID == project.id))
+        .disabled(saving)
+        .opacity(saving && !active ? 0.45 : 1)
+        .onHover { inside in
+            if inside {
+                hoveredID = project.id
+            } else if hoveredID == project.id {
+                hoveredID = nil
+            }
+        }
+        .help("Save to \(project.name)")
+        .accessibilityLabel("\(project.name), \(detail(project))")
+        .accessibilityHint("Saves the current composition into this project")
     }
 
-    private func thumb(_ project: ProjectRecord) -> some View {
+    private func saved(_ project: ProjectRecord) -> Bool {
+        if case .success(let id, _) = model.popoverSave.phase { return id == project.id }
+        return false
+    }
+
+    private func rowMarker(savingThis: Bool, savedThis: Bool) -> some View {
         Group {
-            if let url = project.thumbnail, let image = NSImage(contentsOf: url) {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
+            if savingThis {
+                ProgressView()
+                    .controlSize(.small)
+            } else if savedThis {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(ShotliGlass.accent)
             } else {
-                Image(systemName: "photo")
-                    .font(.system(size: 13, weight: .regular))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.white.opacity(0.5))
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
+        .frame(width: 16, height: 16)
+        .accessibilityHidden(true)
+    }
+
+    private func thumbnail(_ project: ProjectRecord) -> some View {
+        Color.clear
+            .frame(width: 48, height: 36)
+            .overlay(thumbnailImage(project))
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+            )
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func thumbnailImage(_ project: ProjectRecord) -> some View {
+        if let url = project.thumbnail, let data = try? Data(contentsOf: url), let image = NSImage(data: data) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 48, height: 36)
+        } else {
+            ZStack {
+                Color.primary.opacity(0.06)
+                Image(systemName: "photo")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(.secondary)
+            }
+            .frame(width: 48, height: 36)
+        }
     }
 
     private func detail(_ project: ProjectRecord) -> String {
@@ -211,17 +317,35 @@ struct SaveProjectPopover: View {
         return "\(count) \(noun)"
     }
 
-    private func save(_ project: ProjectRecord) {
-        model.showSaveProjects = false
-        model.saveCurrent(into: project.folder)
-    }
-
     private func create() {
+        guard !saving else { return }
         model.showSaveProjects = false
         DispatchQueue.main.async {
             ProjectPrompt.shared.ask { folder in
-                model.saveCurrent(into: folder)
+                model.saveCurrent(into: folder, removeFolderOnFailure: true)
             }
         }
+    }
+}
+
+private struct SaveRowStyle: ButtonStyle {
+    var hovered: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(fill(pressed: configuration.isPressed))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.primary.opacity(configuration.isPressed || hovered ? 0.14 : 0.06), lineWidth: 1)
+            )
+    }
+
+    private func fill(pressed: Bool) -> Color {
+        if pressed { return ShotliGlass.accent.opacity(0.16) }
+        if hovered { return ShotliGlass.accent.opacity(0.08) }
+        return Color.primary.opacity(0.04)
     }
 }

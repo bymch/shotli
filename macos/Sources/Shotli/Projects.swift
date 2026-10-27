@@ -36,6 +36,13 @@ struct ProjectRecord: Identifiable, Equatable {
     var thumbnail: URL?
 }
 
+struct CompositionRecord: Identifiable, Equatable {
+    var id: String
+    var name: String
+    var modified: Date
+    var previewURL: URL?
+}
+
 struct ProjectAsset: Codable, Equatable {
     var path: String
     var sha256: String
@@ -547,7 +554,7 @@ enum ProjectStore {
             modified: now,
             source: relative,
             sourceSHA256: sha,
-            thumbnail: draft.thumbnail == nil ? nil : "thumb.png",
+            thumbnail: draft.thumbnail == nil ? nil : thumbnailRelative(id),
             crop: draft.crop.map(CropFile.init),
             style: StyleFile(draft.style),
             annotations: draft.annotations.map(AnnotationFile.init)
@@ -562,7 +569,14 @@ enum ProjectStore {
         file.modified = now
         if let thumbnail = draft.thumbnail {
             do {
+                if let relative = thumbnailRelative(id) {
+                    let dest = try resolve(relative, in: folder)
+                    try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try writePNG(thumbnail, to: dest)
+                }
                 try writePNG(thumbnail, to: folder.appendingPathComponent("thumb.png"))
+            } catch let error as ProjectError {
+                throw error
             } catch {
                 throw ProjectError.writeFailed("Shotli couldn't update the project thumbnail.")
             }
@@ -670,6 +684,69 @@ enum ProjectStore {
         ShotliProjects.rootOverride != nil
     }
 
+    static func compositionRecords(in folder: URL) -> [CompositionRecord] {
+        guard let file = try? read(folder) else { return [] }
+        let sorted = file.compositions.sorted { date($0.modified) > date($1.modified) }
+        return sorted.enumerated().map { index, composition in
+            CompositionRecord(
+                id: composition.id,
+                name: composition.name,
+                modified: date(composition.modified),
+                previewURL: previewURL(for: composition, in: folder, preferCover: index == 0)
+            )
+        }
+    }
+
+    static func renderMissingThumbnails(in folder: URL) throws {
+        var file = try read(folder)
+        var changed = false
+        for index in file.compositions.indices {
+            let composition = file.compositions[index]
+            if let relative = composition.thumbnail,
+               relative != "thumb.png",
+               let existing = try? resolve(relative, in: folder),
+               FileManager.default.fileExists(atPath: existing.path) {
+                continue
+            }
+            guard let relative = thumbnailRelative(composition.id) else { continue }
+            let dest = try resolve(relative, in: folder)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                if file.compositions[index].thumbnail != relative {
+                    file.compositions[index].thumbnail = relative
+                    changed = true
+                }
+                continue
+            }
+            guard let source = composition.source,
+                  let sourceURL = try? resolve(source, in: folder),
+                  let data = try? Data(contentsOf: sourceURL),
+                  let image = imageForThumbnail(data) else { continue }
+            let picture = LoadedPicture(image: image, name: sourceURL.lastPathComponent, scaled: false)
+            let marks = composition.annotations.compactMap(\.annotation)
+            guard let rendered = renderComposition(
+                picture: picture,
+                crop: composition.crop?.rect,
+                style: composition.style.style,
+                annotations: marks,
+                draft: nil,
+                interactive: false
+            ) else { continue }
+            try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try writePNG(rendered, to: dest)
+            file.compositions[index].thumbnail = relative
+            changed = true
+        }
+        if changed {
+            try write(file, to: folder)
+        }
+    }
+
+    static func thumbnailRelative(_ id: String) -> String? {
+        let cleaned = String(String.UnicodeScalarView(id.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || $0 == "-" }))
+        guard !cleaned.isEmpty, cleaned.count < 80 else { return nil }
+        return "Thumbnails/\(cleaned).png"
+    }
+
     static func resolve(_ relative: String, in folder: URL) throws -> URL {
         if relative.hasPrefix("/") || relative.contains("\\") || relative.contains("..") {
             throw ProjectError.unreadable("The project refers to a file outside its folder.")
@@ -679,6 +756,40 @@ enum ProjectStore {
             throw ProjectError.unreadable("The project refers to a file outside its folder.")
         }
         return parts.reduce(folder) { $0.appendingPathComponent($1) }
+    }
+
+    private static func previewURL(for composition: CompositionFile, in folder: URL, preferCover: Bool) -> URL? {
+        if let relative = composition.thumbnail,
+           relative != "thumb.png",
+           let url = try? resolve(relative, in: folder),
+           FileManager.default.fileExists(atPath: url.path) {
+            return url
+        }
+        if let relative = thumbnailRelative(composition.id),
+           let url = try? resolve(relative, in: folder),
+           FileManager.default.fileExists(atPath: url.path) {
+            return url
+        }
+        if let source = composition.source,
+           let url = try? resolve(source, in: folder),
+           FileManager.default.fileExists(atPath: url.path) {
+            return url
+        }
+        if preferCover {
+            let cover = folder.appendingPathComponent("thumb.png")
+            if FileManager.default.fileExists(atPath: cover.path) { return cover }
+        }
+        return nil
+    }
+
+    private static func imageForThumbnail(_ data: Data) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 1600,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
     private static func importData(
@@ -891,6 +1002,8 @@ enum ProjectVerify {
         if screenshotsAfter.count != 1 { throw Failure("second save duplicated the screenshot") }
         let two = try ProjectStore.read(folder)
         if two.compositions.count != 2 || two.assets.count != 1 { throw Failure("second composition") }
+        let thumbs = try files(in: folder.appendingPathComponent("Thumbnails"))
+        if thumbs.count != 2 { throw Failure("composition thumbnails \(thumbs.count)") }
         if two.compositions[0].source != two.compositions[1].source { throw Failure("compositions do not share the asset") }
 
         var updated = draft
@@ -939,6 +1052,62 @@ enum ProjectVerify {
         } catch is ProjectError {
         }
         try? FileManager.default.removeItem(at: original)
+        try checkPopoverSave()
+        try checkLibraryKeys()
+    }
+
+    private static func checkPopoverSave() throws {
+        var session = PopoverSaveSession()
+        guard let first = session.begin(projectID: "project-a") else { throw Failure("save did not start") }
+        if session.begin(projectID: "project-b") != nil { throw Failure("duplicate save started") }
+        if session.succeed(projectID: "project-a", name: "bm", generation: first + 9) { throw Failure("stale success") }
+        if session.fail(projectID: "project-b", message: "no", generation: first) { throw Failure("wrong project failed") }
+        if !session.succeed(projectID: "project-a", name: "bm", generation: first) { throw Failure("success rejected") }
+        if case .success(let id, let name) = session.phase, id == "project-a", name == "bm" {} else {
+            throw Failure("success state")
+        }
+        let token = session.armDismiss()
+        if !session.shouldDismiss(token: token) { throw Failure("success did not arm dismiss") }
+        session.invalidateDismiss()
+        if session.shouldDismiss(token: token) { throw Failure("cancelled dismiss still active") }
+        session.clearFinished()
+        if session.phase != .idle { throw Failure("clear left a phase") }
+        guard let failed = session.begin(projectID: "project-a") else { throw Failure("retry did not start") }
+        let message = "Couldn't save this project. Try again."
+        if !session.fail(projectID: "project-a", message: message, generation: failed) { throw Failure("failure rejected") }
+        if case .failure(let id, let text) = session.phase, id == "project-a", text == message {} else {
+            throw Failure("failure state")
+        }
+        if session.shouldDismiss(token: session.armDismiss()) { throw Failure("failure armed a dismiss") }
+        guard let retry = session.begin(projectID: "project-a") else { throw Failure("retry after failure blocked") }
+        if session.generation != retry || session.phase.savingID != "project-a" { throw Failure("retry state") }
+    }
+
+    private static func checkLibraryKeys() throws {
+        if !LibraryKeyGate.shouldPassThrough(modalPresented: true, namingSheet: false, savePopover: false, hostHasSheet: false, eventOnHost: true, hostIsKey: true, editingText: false) {
+            throw Failure("modal swallowed keys")
+        }
+        if !LibraryKeyGate.shouldPassThrough(modalPresented: false, namingSheet: true, savePopover: false, hostHasSheet: false, eventOnHost: true, hostIsKey: true, editingText: false) {
+            throw Failure("new project sheet swallowed keys")
+        }
+        if !LibraryKeyGate.shouldPassThrough(modalPresented: false, namingSheet: false, savePopover: true, hostHasSheet: false, eventOnHost: true, hostIsKey: true, editingText: false) {
+            throw Failure("save popover swallowed keys")
+        }
+        if !LibraryKeyGate.shouldPassThrough(modalPresented: false, namingSheet: false, savePopover: false, hostHasSheet: true, eventOnHost: true, hostIsKey: true, editingText: false) {
+            throw Failure("attached sheet swallowed keys")
+        }
+        if !LibraryKeyGate.shouldPassThrough(modalPresented: false, namingSheet: false, savePopover: false, hostHasSheet: false, eventOnHost: false, hostIsKey: true, editingText: false) {
+            throw Failure("other window swallowed keys")
+        }
+        if !LibraryKeyGate.shouldPassThrough(modalPresented: false, namingSheet: false, savePopover: false, hostHasSheet: false, eventOnHost: true, hostIsKey: false, editingText: false) {
+            throw Failure("inactive window swallowed keys")
+        }
+        if !LibraryKeyGate.shouldPassThrough(modalPresented: false, namingSheet: false, savePopover: false, hostHasSheet: false, eventOnHost: true, hostIsKey: true, editingText: true) {
+            throw Failure("text field swallowed keys")
+        }
+        if LibraryKeyGate.shouldPassThrough(modalPresented: false, namingSheet: false, savePopover: false, hostHasSheet: false, eventOnHost: true, hostIsKey: true, editingText: false) {
+            throw Failure("library delete was not handled")
+        }
     }
 
     private static func folders(in root: URL) throws -> Int {
@@ -982,6 +1151,75 @@ enum ProjectVerify {
         var message: String
         var errorDescription: String? { message }
         init(_ message: String) { self.message = message }
+    }
+}
+
+enum PopoverSavePhase: Equatable {
+    case idle
+    case saving(String)
+    case success(id: String, name: String)
+    case failure(id: String, message: String)
+
+    var isSaving: Bool {
+        if case .saving = self { return true }
+        return false
+    }
+
+    var isSuccess: Bool {
+        if case .success = self { return true }
+        return false
+    }
+
+    var savingID: String? {
+        if case .saving(let id) = self { return id }
+        return nil
+    }
+}
+
+struct PopoverSaveSession: Equatable {
+    private(set) var phase: PopoverSavePhase = .idle
+    private(set) var generation = 0
+    private(set) var dismissToken = 0
+
+    var isSaving: Bool { phase.isSaving }
+
+    mutating func begin(projectID: String) -> Int? {
+        if phase.isSaving { return nil }
+        generation += 1
+        dismissToken += 1
+        phase = .saving(projectID)
+        return generation
+    }
+
+    mutating func succeed(projectID: String, name: String, generation: Int) -> Bool {
+        guard self.generation == generation, case .saving(let current) = phase, current == projectID else { return false }
+        phase = .success(id: projectID, name: name)
+        return true
+    }
+
+    mutating func fail(projectID: String, message: String, generation: Int) -> Bool {
+        guard self.generation == generation, case .saving(let current) = phase, current == projectID else { return false }
+        phase = .failure(id: projectID, message: message)
+        return true
+    }
+
+    mutating func armDismiss() -> Int {
+        dismissToken += 1
+        return dismissToken
+    }
+
+    func shouldDismiss(token: Int) -> Bool {
+        token == dismissToken && phase.isSuccess
+    }
+
+    mutating func invalidateDismiss() {
+        dismissToken += 1
+    }
+
+    mutating func clearFinished() {
+        if phase.isSaving { return }
+        invalidateDismiss()
+        phase = .idle
     }
 }
 

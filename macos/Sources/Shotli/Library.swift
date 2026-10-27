@@ -90,6 +90,9 @@ final class LibraryModel: ObservableObject {
     @Published var showingProjects = true
     @Published var projects: [ProjectRecord] = []
     @Published var visibleProjects: [ProjectRecord] = []
+    @Published var openedProject: ProjectRecord?
+    @Published var compositions: [CompositionRecord] = []
+    @Published var visibleCompositions: [CompositionRecord] = []
 
     private var cache: [LibrarySource: [LibraryShot]] = [:]
     private var notes: [LibrarySource: String] = [:]
@@ -105,6 +108,8 @@ final class LibraryModel: ObservableObject {
         showingSettings = false
         kindFilter = nil
         showingProjects = false
+        openedProject = nil
+        compositions = []
         guard source != self.source || leavingSettings else { return }
         self.source = source
         clearSelection()
@@ -113,12 +118,45 @@ final class LibraryModel: ObservableObject {
     }
 
     func showProjects() {
-        let leaving = !showingProjects || showingSettings || kindFilter != nil
+        let leaving = !showingProjects || showingSettings || kindFilter != nil || openedProject != nil
         showingSettings = false
         kindFilter = nil
         showingProjects = true
+        openedProject = nil
+        compositions = []
         if leaving { clearSelection() }
         apply()
+    }
+
+    func openContents(_ project: ProjectRecord) {
+        let records = ProjectStore.compositionRecords(in: project.folder)
+        if records.count < 2 {
+            EditorModel.shared.openProject(at: project.folder)
+            return
+        }
+        showingSettings = false
+        kindFilter = nil
+        showingProjects = true
+        openedProject = project
+        compositions = records
+        query = ""
+        clearSelection()
+        apply()
+        warmCompositions(refreshToken)
+        fillThumbnails(in: project.folder)
+    }
+
+    func closeContents() {
+        openedProject = nil
+        compositions = []
+        visibleCompositions = []
+        clearSelection()
+        apply()
+    }
+
+    func selectedComposition() -> CompositionRecord? {
+        if let anchor = selectionAnchor, let item = visibleCompositions.first(where: { $0.id == anchor }) { return item }
+        return visibleCompositions.first { selected.contains($0.id) }
     }
 
     func showSettings() {
@@ -132,6 +170,8 @@ final class LibraryModel: ObservableObject {
         let same = kindFilter == kind && !showingSettings && !showingProjects
         showingSettings = false
         showingProjects = false
+        openedProject = nil
+        compositions = []
         kindFilter = kind
         clearSelection()
         if same { return }
@@ -207,9 +247,19 @@ final class LibraryModel: ObservableObject {
                 self.counts = Dictionary(uniqueKeysWithValues: LibrarySource.allCases.map { source in
                     (source, catalog.shots[source]?.count ?? 0)
                 })
+                if let opened = self.openedProject {
+                    if let match = listed.first(where: { $0.folder.standardizedFileURL.path == opened.folder.standardizedFileURL.path }) {
+                        self.openedProject = match
+                        self.compositions = ProjectStore.compositionRecords(in: match.folder)
+                    } else {
+                        self.openedProject = nil
+                        self.compositions = []
+                    }
+                }
                 let keep = Set(catalog.shots.values.flatMap { $0.map(\.id) })
                 let projectIDs = Set(listed.map(\.id))
-                self.previews = self.previews.filter { keep.contains($0.key) || projectIDs.contains($0.key) }
+                let compositionIDs = Set(self.compositions.map(\.id))
+                self.previews = self.previews.filter { keep.contains($0.key) || projectIDs.contains($0.key) || compositionIDs.contains($0.key) }
                 let everything = self.allShots()
                 let readings = ShotSorter.shared.knownReadings(in: everything)
                 self.kinds = Dictionary(uniqueKeysWithValues: readings.map { ($0.key, $0.value.kind) })
@@ -220,6 +270,7 @@ final class LibraryModel: ObservableObject {
                 self.apply()
                 self.warm(token)
                 self.warmProjects(token)
+                self.warmCompositions(token)
                 ShotSorter.shared.schedule(everything)
             }
         }
@@ -230,6 +281,19 @@ final class LibraryModel: ObservableObject {
         applyProjects()
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if showingProjects && kindFilter == nil && !showingSettings {
+            if openedProject != nil {
+                let matched = needle.isEmpty ? compositions : compositions.filter { $0.name.lowercased().contains(needle) }
+                visibleCompositions = orderedCompositions(matched)
+                if !needle.isEmpty {
+                    message = visibleCompositions.isEmpty ? "Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”." : nil
+                } else {
+                    message = visibleCompositions.isEmpty ? "Nothing saved in this project yet." : nil
+                }
+                let visible = Set(visibleCompositions.map(\.id))
+                selected = selected.intersection(visible)
+                if let anchor = selectionAnchor, !visible.contains(anchor) { selectionAnchor = selected.first }
+                return
+            }
             if !needle.isEmpty {
                 message = visibleProjects.isEmpty ? "Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”." : nil
             } else {
@@ -266,6 +330,17 @@ final class LibraryModel: ObservableObject {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let matched = needle.isEmpty ? projects : projects.filter { $0.name.lowercased().contains(needle) }
         visibleProjects = orderedProjects(matched)
+    }
+
+    private func orderedCompositions(_ items: [CompositionRecord]) -> [CompositionRecord] {
+        switch order {
+        case .newest:
+            return items.sorted { $0.modified > $1.modified }
+        case .oldest:
+            return items.sorted { $0.modified < $1.modified }
+        case .name:
+            return items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
     }
 
     private func orderedProjects(_ items: [ProjectRecord]) -> [ProjectRecord] {
@@ -420,6 +495,11 @@ final class LibraryModel: ObservableObject {
     }
 
     func selectAll() {
+        if openedProject != nil && showingProjects && kindFilter == nil && !showingSettings {
+            selected = Set(visibleCompositions.map(\.id))
+            if selectionAnchor == nil { selectionAnchor = visibleCompositions.first?.id }
+            return
+        }
         if showingProjects && kindFilter == nil && !showingSettings {
             selected = Set(visibleProjects.map(\.id))
             if selectionAnchor == nil { selectionAnchor = visibleProjects.first?.id }
@@ -481,6 +561,7 @@ final class LibraryModel: ObservableObject {
     }
 
     func deleteSelected() {
+        if openedProject != nil { return }
         if showingProjects && kindFilter == nil && !showingSettings {
             deleteSelectedProjects()
             return
@@ -573,6 +654,35 @@ final class LibraryModel: ObservableObject {
                     guard token == self.refreshToken else { return }
                     self.previews[project.id] = preview
                 }
+            }
+        }
+    }
+
+    private func warmCompositions(_ token: Int) {
+        let listed = visibleCompositions
+        DispatchQueue.global(qos: .utility).async {
+            for item in listed {
+                guard token == self.refreshToken else { return }
+                guard let url = item.previewURL, let preview = LibraryScan.preview(url) else { continue }
+                DispatchQueue.main.async {
+                    guard token == self.refreshToken else { return }
+                    self.previews[item.id] = preview
+                }
+            }
+        }
+    }
+
+    private func fillThumbnails(in folder: URL) {
+        let token = refreshToken
+        DispatchQueue.global(qos: .userInitiated).async {
+            try? ProjectStore.renderMissingThumbnails(in: folder)
+            let listed = ProjectStore.compositionRecords(in: folder)
+            DispatchQueue.main.async {
+                guard token == self.refreshToken else { return }
+                guard self.openedProject?.folder.standardizedFileURL.path == folder.standardizedFileURL.path else { return }
+                self.compositions = listed
+                self.apply()
+                self.warmCompositions(token)
             }
         }
     }
@@ -784,9 +894,14 @@ struct LibraryHome: View {
                 onClear: { if !library.showingSettings { library.clearSelection() } },
                 onOpen: {
                     guard !library.showingSettings else { return false }
+                    if library.openedProject != nil {
+                        guard let item = library.selectedComposition(), let folder = library.openedProject?.folder else { return false }
+                        EditorModel.shared.openComposition(item.id, in: folder)
+                        return true
+                    }
                     if library.showingProjects && library.kindFilter == nil {
                         guard let project = library.selectedProject() else { return false }
-                        EditorModel.shared.openProject(at: project.folder)
+                        library.openContents(project)
                         return true
                     }
                     guard let shot = library.selectedShot() else { return false }
@@ -916,7 +1031,13 @@ struct LibraryHome: View {
             libraryToolbar
             Group {
                 if library.showingProjects && library.kindFilter == nil {
-                    if library.visibleProjects.isEmpty {
+                    if library.openedProject != nil {
+                        if library.visibleCompositions.isEmpty {
+                            empty
+                        } else {
+                            browserScroll { compositionBrowser }
+                        }
+                    } else if library.visibleProjects.isEmpty {
                         empty
                     } else {
                         browserScroll { projectBrowser }
@@ -927,8 +1048,8 @@ struct LibraryHome: View {
                     browserScroll { shotBrowser }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .id(library.showingProjects ? "projects" : (library.kindFilter?.rawValue ?? library.source.rawValue))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: libraryIsEmpty ? .center : .topLeading)
+            .id(library.openedProject?.id ?? (library.showingProjects ? "projects" : (library.kindFilter?.rawValue ?? library.source.rawValue)))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ShotliWorkspaceWash())
@@ -937,6 +1058,18 @@ struct LibraryHome: View {
     private var libraryToolbar: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
+                if library.openedProject != nil && library.showingProjects && library.kindFilter == nil {
+                    Button(action: { library.closeContents() }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(ShotliGlass.ink)
+                            .frame(width: 28, height: 28)
+                            .shotliCapsuleChip()
+                    }
+                    .buttonStyle(.plain)
+                    .help("All projects")
+                    .accessibilityLabel("Back to projects")
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(libraryTitle)
                         .font(.system(size: 20, weight: .semibold))
@@ -959,7 +1092,9 @@ struct LibraryHome: View {
                 Spacer(minLength: 8)
                 if !library.selected.isEmpty {
                     headerButton("Deselect") { library.clearSelection() }
-                    headerButton("Delete", prominent: true) { library.deleteSelected() }
+                    if library.openedProject == nil {
+                        headerButton("Delete", prominent: true) { library.deleteSelected() }
+                    }
                 }
             }
         }
@@ -969,6 +1104,7 @@ struct LibraryHome: View {
     }
 
     private var libraryTitle: String {
+        if let project = library.openedProject, library.showingProjects && library.kindFilter == nil { return project.name }
         if library.showingProjects && library.kindFilter == nil { return "Projects" }
         return library.kindFilter?.title ?? library.source.title
     }
@@ -1156,7 +1292,7 @@ struct LibraryHome: View {
                 layout: layout,
                 onChoose: { library.choose(project.id) },
                 onToggle: { library.toggle(project.id) },
-                onOpen: { EditorModel.shared.openProject(at: project.folder) },
+                onOpen: { library.openContents(project) },
                 onRename: { library.renameProject(project) },
                 onDuplicate: { library.duplicateProject(project) },
                 onDelete: {
@@ -1195,7 +1331,46 @@ struct LibraryHome: View {
         }
     }
 
+    private var compositionBrowser: some View {
+        let width = max(browserWidth - 44, 180)
+        let metrics = gridMetrics(for: width)
+        return Group {
+            if layout == .grid {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(metrics.card), spacing: cardGap), count: metrics.columns), alignment: .leading, spacing: 36) {
+                    compositionList()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    compositionList()
+                }
+            }
+        }
+    }
+
+    private func compositionList() -> some View {
+        ForEach(library.visibleCompositions) { item in
+            CompositionCard(
+                item: item,
+                preview: library.previews[item.id],
+                selected: library.selected.contains(item.id),
+                layout: layout,
+                onChoose: { library.choose(item.id) },
+                onOpen: {
+                    guard let folder = library.openedProject?.folder else { return }
+                    EditorModel.shared.openComposition(item.id, in: folder)
+                }
+            )
+        }
+    }
+
     private var headerDetail: String {
+        if library.openedProject != nil && library.showingProjects && library.kindFilter == nil {
+            let count = library.visibleCompositions.count
+            let noun = count == 1 ? "composition" : "compositions"
+            if !library.selected.isEmpty { return "\(library.selected.count) selected · \(count) \(noun)" }
+            return "\(count) \(noun)"
+        }
         if library.showingProjects && library.kindFilter == nil {
             let count = library.visibleProjects.count
             let noun = count == 1 ? "project" : "projects"
@@ -1253,36 +1428,59 @@ struct LibraryHome: View {
         .help("Search names and text Shotli has read")
     }
 
-    private var empty: some View {
-        VStack(spacing: 10) {
-            if library.query.isEmpty {
-                Image(systemName: "photo.on.rectangle.angled")
-                    .font(.system(size: 28, weight: .regular))
-                    .foregroundColor(.secondary)
-                Text(library.message ?? "Nothing here yet.")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(ShotliGlass.ink)
-                    .multilineTextAlignment(.center)
-                Text(library.showingProjects && library.kindFilter == nil
-                     ? "Create a project, or open a screenshot and choose Save to Project."
-                     : "Drop a PNG, JPEG, or WebP here, or open one from your Mac.")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                HStack(spacing: 8) {
-                    openButton
-                    newProjectButton
-                }
-                .padding(.top, 4)
-            } else {
-                Text(library.message ?? "Nothing matches.")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-            }
+    private var libraryIsEmpty: Bool {
+        if library.showingProjects && library.kindFilter == nil {
+            if library.openedProject != nil { return library.visibleCompositions.isEmpty }
+            return library.visibleProjects.isEmpty
         }
-        .padding(24)
-        .frame(maxWidth: 380)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        return library.shots.isEmpty
+    }
+
+    private var emptyDetail: String {
+        if library.openedProject != nil {
+            return "Save a screenshot into this project from the editor."
+        }
+        if library.showingProjects && library.kindFilter == nil {
+            return "Create a project, or open a screenshot\nand choose Save to Project."
+        }
+        return "Drop a PNG, JPEG, or WebP here, or open one from your Mac."
+    }
+
+    private var empty: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            VStack(spacing: 14) {
+                if library.query.isEmpty {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 28, weight: .regular))
+                        .foregroundColor(.secondary)
+                    Text(library.message ?? "Nothing here yet.")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(ShotliGlass.ink)
+                        .multilineTextAlignment(.center)
+                    Text(emptyDetail)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 420)
+                    HStack(spacing: 8) {
+                        openButton
+                        newProjectButton
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 2)
+                } else {
+                    Text(library.message ?? "Nothing matches.")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .frame(maxWidth: 460)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 }
 
@@ -1459,6 +1657,87 @@ private struct ShotCard: View {
     }
 }
 
+private struct CompositionCard: View {
+    var item: CompositionRecord
+    var preview: LibraryPreview?
+    var selected: Bool
+    var layout: LibraryLayout = .grid
+    var onChoose: () -> Void
+    var onOpen: () -> Void
+    @State private var hovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if layout == .list {
+                HStack(spacing: 14) {
+                    document.frame(width: 72)
+                    Text(item.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(ShotliGlass.ink)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(rowFill))
+            } else {
+                VStack(spacing: 10) {
+                    document
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                    Text(item.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(ShotliGlass.ink)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.bottom, 8)
+            }
+        }
+        .frame(maxWidth: layout == .list ? .infinity : nil, alignment: .leading)
+        .contentShape(Rectangle())
+        .gesture(
+            TapGesture(count: 2).onEnded { onOpen() }
+                .exclusively(before: TapGesture(count: 1).onEnded { onChoose() })
+        )
+        .onHover { hovering in
+            if reduceMotion {
+                hovered = hovering
+            } else {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.74)) { hovered = hovering }
+            }
+        }
+        .contextMenu {
+            Button("Open", action: onOpen)
+        }
+        .help(item.name)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(item.name)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(selected ? .isSelected : AccessibilityTraits())
+        .accessibilityAction(.default) { onOpen() }
+    }
+
+    private var rowFill: Color {
+        if selected { return ShotliGlass.accent.opacity(0.08) }
+        if hovered { return Color.white.opacity(0.45) }
+        return Color.clear
+    }
+
+    private var document: some View {
+        GlassDocumentIcon(
+            image: preview?.image,
+            frost: preview?.frost,
+            tint: Color(nsColor: preview?.tint ?? NSColor(srgbRed: 0.80, green: 0.84, blue: 0.91, alpha: 1)),
+            style: layout == .list ? .compact : .standard,
+            lifted: hovered,
+            selected: selected
+        )
+    }
+}
+
 private struct ProjectCard: View {
     var project: ProjectRecord
     var preview: LibraryPreview?
@@ -1599,6 +1878,36 @@ private struct ProjectCard: View {
     }
 }
 
+enum LibraryKeyGate {
+    static func shouldPassThrough(
+        modalPresented: Bool,
+        namingSheet: Bool,
+        savePopover: Bool,
+        hostHasSheet: Bool,
+        eventOnHost: Bool,
+        hostIsKey: Bool,
+        editingText: Bool
+    ) -> Bool {
+        if modalPresented || namingSheet || savePopover || hostHasSheet || !eventOnHost || !hostIsKey || editingText {
+            return true
+        }
+        return false
+    }
+
+    static func isEditingText(_ responder: NSResponder?) -> Bool {
+        var current = responder
+        var depth = 0
+        while let next = current, depth < 16 {
+            if next is NSText || next is NSTextField { return true }
+            let name = String(describing: type(of: next))
+            if name.contains("TextField") || name.contains("TextView") || name.contains("FieldEditor") { return true }
+            current = next.nextResponder
+            depth += 1
+        }
+        return false
+    }
+}
+
 private struct LibraryKeys: NSViewRepresentable {
     var onUp: () -> Void
     var onDown: () -> Void
@@ -1649,9 +1958,19 @@ private struct LibraryKeys: NSViewRepresentable {
             }
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, self.window != nil, NSApp.modalWindow == nil else { return event }
-                let responder = self.window?.firstResponder
-                if responder is NSTextView || responder is NSTextField { return event }
+                guard let self, self.window != nil else { return event }
+                let editing = LibraryKeyGate.isEditingText(NSApp.keyWindow?.firstResponder)
+                    || LibraryKeyGate.isEditingText(self.window?.firstResponder)
+                let pass = LibraryKeyGate.shouldPassThrough(
+                    modalPresented: NSApp.modalWindow != nil,
+                    namingSheet: ProjectPrompt.shared.naming,
+                    savePopover: EditorModel.shared.showSaveProjects,
+                    hostHasSheet: self.window?.attachedSheet != nil,
+                    eventOnHost: event.window === self.window,
+                    hostIsKey: NSApp.keyWindow === self.window,
+                    editingText: editing
+                )
+                if pass { return event }
                 if event.keyCode == 126 {
                     self.onUp?()
                     return nil

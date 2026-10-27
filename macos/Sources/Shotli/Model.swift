@@ -1,7 +1,10 @@
 import AppKit
 import Combine
 import ImageIO
+import os
 import UniformTypeIdentifiers
+
+private let projectSaveLog = Logger(subsystem: "co.uk.bymichael.shotli", category: "projects")
 
 enum Tool: String, CaseIterable, Identifiable {
     case select, crop, rect, rectFill, circle, line, arrow, draw, text, marker, pixelate, blur
@@ -458,6 +461,7 @@ final class EditorModel: ObservableObject {
     @Published var projectName: String?
     @Published var saveState: ProjectSaveState = .idle
     @Published var showSaveProjects = false
+    @Published var popoverSave = PopoverSaveSession()
     var projectID: String?
     var compositionID: String?
 
@@ -472,6 +476,8 @@ final class EditorModel: ObservableObject {
     private var sourceRelative: String?
     private var quietUntil = Date.distantPast
     private var saveTicket = 0
+    private var saveAfterPopover = false
+    private var popoverSuccessHold = false
 
     private init() {}
 
@@ -574,6 +580,8 @@ final class EditorModel: ObservableObject {
             saveState = .failed(message)
             return
         }
+        let returnFolder = projectFolder
+        let returnName = projectName
         quietChanges()
         picture = nil
         crop = nil
@@ -597,6 +605,19 @@ final class EditorModel: ObservableObject {
         showSaveProjects = false
         refreshHistory()
         LibraryModel.shared.refresh()
+        if let returnFolder {
+            let count = (try? ProjectStore.read(returnFolder))?.compositions.count ?? 0
+            if count > 1 {
+                LibraryModel.shared.openContents(ProjectRecord(
+                    id: returnFolder.path,
+                    folder: returnFolder,
+                    name: returnName ?? returnFolder.lastPathComponent,
+                    modified: Date(),
+                    compositions: count,
+                    thumbnail: nil
+                ))
+            }
+        }
     }
 
     func exportPNG() {
@@ -1055,46 +1076,69 @@ final class EditorModel: ObservableObject {
         }
     }
 
-    func saveCurrent(into folder: URL) {
-        guard picture != nil else {
-            let message = "Open a screenshot before saving it to a project."
+    func openComposition(_ id: String, in folder: URL) {
+        if let message = flushBoundSave() {
+            notice = message
             saveState = .failed(message)
-            notice = message
             return
         }
-        let same = projectFolder?.standardizedFileURL.path == folder.standardizedFileURL.path
-        if !same, let message = flushBoundSave() {
-            notice = message
-            return
-        }
-        saveTicket += 1
         do {
             let file = try ProjectStore.read(folder)
-            guard var draft = makeDraft(id: same ? compositionID : nil, reuse: same ? sourceRelative : nil) else {
-                throw ProjectError.writeFailed("Couldn't save this screenshot.")
+            guard let composition = file.compositions.first(where: { $0.id == id }) else {
+                throw ProjectError.missingSource
             }
-            ensureSource(&draft)
-            let outcome = try ProjectStore.saveComposition(draft, in: folder)
             quietChanges()
             projectFolder = folder
             projectID = file.id
-            projectName = outcome.file.name
-            compositionID = outcome.compositionID
-            sourceRelative = outcome.relative
-            if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
-                sourceOrigin = url
-            }
-            sourceData = nil
+            projectName = file.name
+            showSaveProjects = false
+            try apply(composition, in: folder)
             saveState = .saved
-            notice = "Saved to \(outcome.file.name)"
-            LibraryModel.shared.refresh()
+            notice = nil
         } catch {
             saveState = .failed(error.localizedDescription)
             notice = error.localizedDescription
         }
     }
 
+    func prepareSavePopover() {
+        if popoverSave.isSaving { return }
+        popoverSuccessHold = false
+        var session = popoverSave
+        session.clearFinished()
+        popoverSave = session
+    }
+
+    func notePopoverClosed() {
+        if popoverSave.isSaving || popoverSuccessHold { return }
+        var session = popoverSave
+        if session.phase.isSuccess {
+            session.clearFinished()
+        } else {
+            session.invalidateDismiss()
+        }
+        popoverSave = session
+    }
+
+    func saveCurrent(into folder: URL, recordID: String? = nil, removeFolderOnFailure: Bool = false) {
+        let id = recordID ?? folder.path
+        var session = popoverSave
+        guard let generation = session.begin(projectID: id) else { return }
+        popoverSave = session
+        saveState = .saving
+        saveTicket += 1
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.showSaveProjects = true
+            self.performPopoverSave(folder: folder, recordID: id, generation: generation, removeFolderOnFailure: removeFolderOnFailure)
+        }
+    }
+
     func scheduleProjectSave() {
+        if popoverSave.isSaving {
+            saveAfterPopover = true
+            return
+        }
         if Date() < quietUntil { return }
         guard picture != nil else { return }
         guard let folder = projectFolder, let compositionID else {
@@ -1240,6 +1284,141 @@ final class EditorModel: ObservableObject {
         textUndoID = nil
         refreshHistory()
         fitRequest += 1
+    }
+
+    private func performPopoverSave(folder: URL, recordID: String, generation: Int, removeFolderOnFailure: Bool) {
+        guard popoverSave.generation == generation else { return }
+        guard picture != nil else {
+            finishPopoverSave(
+                error: ProjectError.writeFailed("Open a screenshot before saving it to a project."),
+                folder: folder,
+                recordID: recordID,
+                generation: generation,
+                removeFolderOnFailure: false
+            )
+            return
+        }
+        let started = snapshot()
+        let same = projectFolder?.standardizedFileURL.path == folder.standardizedFileURL.path
+        if !same, let message = flushBoundSave() {
+            finishPopoverSave(
+                error: ProjectError.writeFailed(message),
+                folder: folder,
+                recordID: recordID,
+                generation: generation,
+                removeFolderOnFailure: removeFolderOnFailure
+            )
+            return
+        }
+        saveState = .saving
+        guard var draft = makeDraft(id: same ? compositionID : nil, reuse: same ? sourceRelative : nil) else {
+            finishPopoverSave(
+                error: ProjectError.writeFailed("Couldn't save this screenshot."),
+                folder: folder,
+                recordID: recordID,
+                generation: generation,
+                removeFolderOnFailure: removeFolderOnFailure
+            )
+            return
+        }
+        ensureSource(&draft)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result: Result<ProjectSaveOutcome, Error>
+            do {
+                result = .success(try ProjectStore.saveComposition(draft, in: folder))
+            } catch {
+                result = .failure(error)
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let outcome):
+                    self.applyPopoverSave(outcome, folder: folder, recordID: recordID, generation: generation, started: started)
+                case .failure(let error):
+                    self.finishPopoverSave(
+                        error: error,
+                        folder: folder,
+                        recordID: recordID,
+                        generation: generation,
+                        removeFolderOnFailure: removeFolderOnFailure
+                    )
+                }
+            }
+        }
+    }
+
+    private func applyPopoverSave(_ outcome: ProjectSaveOutcome, folder: URL, recordID: String, generation: Int, started: Snapshot) {
+        var session = popoverSave
+        guard session.succeed(projectID: recordID, name: outcome.file.name, generation: generation) else { return }
+        popoverSave = session
+        let edited = snapshot() != started
+        quietChanges()
+        projectFolder = folder
+        projectID = outcome.file.id
+        projectName = outcome.file.name
+        compositionID = outcome.compositionID
+        sourceRelative = outcome.relative
+        if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
+            sourceOrigin = url
+        }
+        sourceData = nil
+        saveState = .saved
+        notice = "Saved to \(outcome.file.name)"
+        LibraryModel.shared.refresh()
+        if edited || saveAfterPopover {
+            saveAfterPopover = false
+            quietUntil = .distantPast
+            scheduleProjectSave()
+        }
+        var dismissSession = popoverSave
+        let token = dismissSession.armDismiss()
+        popoverSave = dismissSession
+        popoverSuccessHold = true
+        showSaveProjects = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+            guard let self, self.popoverSave.shouldDismiss(token: token) else { return }
+            self.showSaveProjects = false
+            self.popoverSuccessHold = false
+            var done = self.popoverSave
+            done.clearFinished()
+            self.popoverSave = done
+        }
+    }
+
+    private func finishPopoverSave(error: Error, folder: URL, recordID: String, generation: Int, removeFolderOnFailure: Bool) {
+        let message = saveFailureMessage(error)
+        projectSaveLog.error("Save to project failed: \(message, privacy: .public)")
+        if removeFolderOnFailure {
+            rollbackEmptyProject(folder)
+        }
+        var session = popoverSave
+        guard session.fail(projectID: recordID, message: message, generation: generation) else { return }
+        popoverSave = session
+        saveState = .failed(message)
+        notice = message
+        showSaveProjects = true
+        saveAfterPopover = false
+    }
+
+    private func rollbackEmptyProject(_ folder: URL) {
+        do {
+            let file = try ProjectStore.read(folder)
+            guard file.compositions.isEmpty else { return }
+            try ProjectStore.delete(folder: folder)
+            LibraryModel.shared.refresh()
+        } catch {
+            let message = saveFailureMessage(error)
+            projectSaveLog.error("Couldn't remove the unfinished project: \(message, privacy: .public)")
+        }
+    }
+
+    private func saveFailureMessage(_ error: Error) -> String {
+        let raw = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed.contains("/") || trimmed.contains("\\") || trimmed.contains(NSHomeDirectory()) {
+            return "Couldn't save this project. Try again."
+        }
+        return trimmed
     }
 
     private func makeDraft(id: String?, reuse: String?) -> CompositionDraft? {
