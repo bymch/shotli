@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.50", notes: [
+            "Zooming out keeps the background colour across the stage. The picture gets smaller, and the gray around it is gone.",
+        ]),
         ChangelogEntry(version: "0.2.49", notes: [
             "Projects open as glass document cards. The picture shows through the page, including the folded corner.",
             "New project, duplicate, and reveal in Finder are in the library. Search, sort, and grid or list stay.",
