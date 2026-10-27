@@ -567,16 +567,6 @@ struct LibraryHome: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             Spacer(minLength: 0)
-            Button(action: onOpen) {
-                Label("Open a screenshot…", systemImage: "folder")
-                    .font(.system(size: 12))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 14)
-            .padding(.top, 8)
-            .padding(.bottom, 2)
             settingsButton
                 .padding(.bottom, 12)
         }
