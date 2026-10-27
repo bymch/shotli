@@ -64,7 +64,42 @@ sips -z 1024 1024 "$ROOT/desktop/icon.png" --out "$ICONSET/icon_512x512@2x.png" 
 iconutil -c icns "$ICONSET" -o "$ROOT/build/Shotli.app/Contents/Resources/AppIcon.icns"
 cp "$ROOT/build/Shotli.app/Contents/Resources/AppIcon.icns" "$ROOT/build/VolumeIcon.icns"
 
-codesign --force --sign - "$ROOT/build/Shotli.app"
+# Screen Recording is tied to the signing identity. Ad-hoc signing changes on
+# every build, so macOS asks again after each update. A release imports the
+# same certificate and signs with it, so the permission survives the update.
+if [[ -n "${SHOTLI_P12_BASE64:-}" ]]; then
+  KEYCHAIN="$ROOT/build/shotli.keychain-db"
+  KEYCHAIN_PASSWORD="$(uuidgen)"
+  P12="$ROOT/build/shotli.p12"
+  CERT="$ROOT/build/shotli.crt"
+  printf '%s' "$SHOTLI_P12_BASE64" | base64 -D > "$P12"
+  security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+  security set-keychain-settings -lut 21600 "$KEYCHAIN"
+  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+  security import "$P12" -k "$KEYCHAIN" -P "$SHOTLI_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+  openssl pkcs12 -in "$P12" -clcerts -nokeys -out "$CERT" -passin "pass:$SHOTLI_P12_PASSWORD"
+  security add-trusted-cert -d -r trustRoot -p codeSign -k "$KEYCHAIN" "$CERT"
+  security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+  security find-identity -v -p codesigning "$KEYCHAIN"
+  rm -f "$P12" "$CERT"
+  SHOTLI_SIGN_IDENTITY="${SHOTLI_SIGN_IDENTITY:-Shotli Signing}"
+fi
+
+if [[ -n "${SHOTLI_SIGN_IDENTITY:-}" ]]; then
+  codesign --force --sign "$SHOTLI_SIGN_IDENTITY" --timestamp=none "$ROOT/build/Shotli.app"
+  requirement="$(codesign -d -r- "$ROOT/build/Shotli.app" 2>&1)"
+  printf '%s\n' "$requirement"
+  if ! printf '%s\n' "$requirement" | grep -q "certificate leaf"; then
+    echo "Shotli was not signed with the stable certificate." >&2
+    exit 1
+  fi
+elif [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+  echo "A release build must be signed with the stable certificate." >&2
+  exit 1
+else
+  codesign --force --sign - "$ROOT/build/Shotli.app"
+fi
 
 # 1600×1120 artwork at 144 dpi displays as an 800×560 point window on retina.
 cp "$ROOT/macos/dmg/background@2x.png" "$ROOT/build/background.png"
