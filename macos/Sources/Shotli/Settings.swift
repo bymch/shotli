@@ -29,7 +29,7 @@ final class ShotliSettings: ObservableObject {
     }
 
     static var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.50"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.51"
     }
 
     private init() {
@@ -230,7 +230,7 @@ struct SettingsPane: View {
                         HStack(alignment: .center, spacing: 16) {
                             copy(
                                 "Start in",
-                                "The folder selected the next time Shotli opens."
+                                "Which screenshot list is selected after you leave Projects."
                             )
                             Picker("Start in", selection: Binding(get: { settings.startIn }, set: { settings.setStartIn($0) })) {
                                 ForEach(LibrarySource.allCases) { source in

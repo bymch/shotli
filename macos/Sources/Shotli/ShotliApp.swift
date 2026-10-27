@@ -64,6 +64,9 @@ struct ShotliCommands: Commands {
             Button("Export PNG") { model.exportPNG() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(model.picture == nil)
+            Button("Save to Project…") { model.showSaveProjects = true }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .disabled(model.picture == nil)
             Button("Copy PNG") { model.copyPNG() }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 .disabled(model.picture == nil)
@@ -99,6 +102,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     override init() {
         super.init()
+        if CommandLine.arguments.contains("--verify-projects") {
+            let code = ProjectVerify.run()
+            fflush(stdout)
+            fflush(stderr)
+            exit(Int32(code))
+        }
         guard CommandLine.arguments.contains("--verify-motion") else { return }
         let code = MotionVerify.run()
         fflush(stdout)
@@ -107,6 +116,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if CommandLine.arguments.contains("--verify-projects") {
+            let code = ProjectVerify.run()
+            fflush(stdout)
+            fflush(stderr)
+            exit(Int32(code))
+        }
         if CommandLine.arguments.contains("--verify-motion") {
             let code = MotionVerify.run()
             fflush(stdout)
