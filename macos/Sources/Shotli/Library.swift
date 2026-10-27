@@ -1,7 +1,9 @@
 import AppKit
 import Combine
+import CoreImage
 import ImageIO
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum LibraryOrder: String, CaseIterable, Identifiable {
     case newest, oldest, name
@@ -56,6 +58,17 @@ struct LibraryShot: Identifiable, Equatable {
     var url: URL
     var name: String
     var modified: Date
+
+    var title: String {
+        let base = url.deletingPathExtension().lastPathComponent
+        return base.isEmpty ? name : base
+    }
+}
+
+struct LibraryPreview {
+    var image: NSImage
+    var frost: NSImage
+    var tint: NSColor
 }
 
 final class LibraryModel: ObservableObject {
@@ -69,7 +82,7 @@ final class LibraryModel: ObservableObject {
     @Published var sorting = false
     @Published var shots: [LibraryShot] = []
     @Published var counts: [LibrarySource: Int] = [:]
-    @Published var thumbs: [String: NSImage] = [:]
+    @Published var previews: [String: LibraryPreview] = [:]
     @Published var message: String?
     @Published var query = ""
     @Published var order: LibraryOrder = .newest
@@ -174,7 +187,7 @@ final class LibraryModel: ObservableObject {
                     (source, catalog.shots[source]?.count ?? 0)
                 })
                 let keep = Set(catalog.shots.values.flatMap { $0.map(\.id) })
-                self.thumbs = self.thumbs.filter { keep.contains($0.key) }
+                self.previews = self.previews.filter { keep.contains($0.key) }
                 let everything = self.allShots()
                 let readings = ShotSorter.shared.knownReadings(in: everything)
                 self.kinds = Dictionary(uniqueKeysWithValues: readings.map { ($0.key, $0.value.kind) })
@@ -275,11 +288,55 @@ final class LibraryModel: ObservableObject {
     }
 
     private func renameFailed(_ message: String) {
+        tell("Couldn't rename", message)
+    }
+
+    private func tell(_ title: String, _ message: String) {
         let alert = NSAlert()
-        alert.messageText = "Couldn't rename"
+        alert.messageText = title
         alert.informativeText = message
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    func duplicate(_ shot: LibraryShot) {
+        let folder = shot.url.deletingLastPathComponent()
+        let base = shot.url.deletingPathExtension().lastPathComponent
+        let ext = shot.url.pathExtension
+        var copyName = "\(base) copy"
+        var destination = folder.appendingPathComponent(ext.isEmpty ? copyName : "\(copyName).\(ext)")
+        var extra = 2
+        while FileManager.default.fileExists(atPath: destination.path) {
+            copyName = "\(base) copy \(extra)"
+            destination = folder.appendingPathComponent(ext.isEmpty ? copyName : "\(copyName).\(ext)")
+            extra += 1
+        }
+        do {
+            try FileManager.default.copyItem(at: shot.url, to: destination)
+        } catch {
+            tell("Couldn't duplicate", "Shotli couldn't copy that file.")
+            return
+        }
+        refresh()
+    }
+
+    func createProject() -> URL? {
+        let folder = LibraryFolders.shotli
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let url = LibraryScan.uniqueProjectURL(in: folder)
+            try LibraryScan.writeBlank(to: url)
+            refresh()
+            return url
+        } catch {
+            tell("Couldn't create a project", "Shotli couldn't save a new file in Pictures/Shotli.")
+            return nil
+        }
+    }
+
+    func selectedShot() -> LibraryShot? {
+        if let anchor = selectionAnchor, let shot = shots.first(where: { $0.id == anchor }) { return shot }
+        return shots.first { selected.contains($0.id) }
     }
 
     private func retarget(from oldID: String, to shot: LibraryShot) {
@@ -288,7 +345,7 @@ final class LibraryModel: ObservableObject {
         }
         if let kind = kinds.removeValue(forKey: oldID) { kinds[shot.id] = kind }
         if let text = texts.removeValue(forKey: oldID) { texts[shot.id] = text }
-        if let image = thumbs.removeValue(forKey: oldID) { thumbs[shot.id] = image }
+        if let preview = previews.removeValue(forKey: oldID) { previews[shot.id] = preview }
         if selected.remove(oldID) != nil { selected.insert(shot.id) }
         if selectionAnchor == oldID { selectionAnchor = shot.id }
         counts = Dictionary(uniqueKeysWithValues: LibrarySource.allCases.map { source in
@@ -352,8 +409,8 @@ final class LibraryModel: ObservableObject {
             let alert = NSAlert()
             alert.messageText = "Are you sure?"
             alert.informativeText = chosen.count == 1
-                ? "“\(chosen[0].name)” will be moved to the Trash."
-                : "\(chosen.count) screenshots will be moved to the Trash."
+                ? "“\(chosen[0].title)” will be moved to the Trash."
+                : "\(chosen.count) projects will be moved to the Trash."
             alert.alertStyle = .warning
             alert.addButton(withTitle: "Move to Trash")
             alert.addButton(withTitle: "Cancel")
@@ -382,14 +439,14 @@ final class LibraryModel: ObservableObject {
         let visible = shots
         let rest = LibrarySource.allCases.flatMap { cache[$0] ?? [] }
         let ordered = (visible + rest).filter { seen.insert($0.id).inserted }
-        let known = Set(thumbs.keys)
+        let known = Set(previews.keys)
         DispatchQueue.global(qos: .utility).async {
             for shot in ordered where !known.contains(shot.id) {
                 guard token == self.refreshToken else { return }
-                guard let image = LibraryScan.thumbnail(shot.url) else { continue }
+                guard let preview = LibraryScan.preview(shot.url) else { continue }
                 DispatchQueue.main.async {
                     guard token == self.refreshToken else { return }
-                    self.thumbs[shot.id] = image
+                    self.previews[shot.id] = preview
                 }
             }
         }
@@ -461,15 +518,130 @@ private enum LibraryScan {
         return (shots, notes)
     }
 
-    static func thumbnail(_ url: URL) -> NSImage? {
+    static func preview(_ url: URL) -> LibraryPreview? {
+        guard let image = thumbnail(url, maxPixel: 480) else { return nil }
+        let tint = averageColor(image)
+        let softened = diffuse(image) ?? image
+        return LibraryPreview(
+            image: NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)),
+            frost: NSImage(cgImage: softened, size: NSSize(width: softened.width, height: softened.height)),
+            tint: tint
+        )
+    }
+
+    static func uniqueProjectURL(in folder: URL) -> URL {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.dateFormat = "d MMM, HH.mm"
+        let stamp = formatter.string(from: Date())
+        var url = folder.appendingPathComponent("Project \(stamp).png")
+        var extra = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = folder.appendingPathComponent("Project \(stamp) \(extra).png")
+            extra += 1
+        }
+        return url
+    }
+
+    static func writeBlank(to url: URL) throws {
+        let width = 1280
+        let height = 800
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { throw CocoaError(.fileWriteUnknown) }
+        context.setFillColor(ShotliGlass.workspaceTop.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let colors = [ShotliGlass.workspaceTop.cgColor, ShotliGlass.workspaceBottom.cgColor] as CFArray
+        if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
+            context.drawLinearGradient(
+                gradient,
+                start: CGPoint(x: 0, y: CGFloat(height)),
+                end: CGPoint(x: CGFloat(width), y: 0),
+                options: []
+            )
+        }
+        context.setFillColor(NSColor.white.withAlphaComponent(0.42).cgColor)
+        let board = CGRect(x: 96, y: 72, width: CGFloat(width - 192), height: CGFloat(height - 144))
+        let path = CGPath(roundedRect: board, cornerWidth: 28, cornerHeight: 28, transform: nil)
+        context.addPath(path)
+        context.fillPath()
+        guard let image = context.makeImage() else { throw CocoaError(.fileWriteUnknown) }
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        if !CGImageDestinationFinalize(destination) { throw CocoaError(.fileWriteUnknown) }
+    }
+
+    private static let ciContext = CIContext(options: nil)
+
+    private static func thumbnail(_ url: URL, maxPixel: Int) -> CGImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: 640,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
         ]
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+
+    private static func diffuse(_ image: CGImage) -> CGImage? {
+        guard let small = scaled(image, maxEdge: 200) else { return nil }
+        let input = CIImage(cgImage: small)
+        let blurred = input
+            .clampedToExtent()
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 8])
+            .cropped(to: input.extent)
+        return ciContext.createCGImage(blurred, from: input.extent)
+    }
+
+    private static func scaled(_ image: CGImage, maxEdge: CGFloat) -> CGImage? {
+        let width = CGFloat(image.width)
+        let height = CGFloat(image.height)
+        let edge = max(width, height)
+        guard edge > 1 else { return nil }
+        let scale = min(1, maxEdge / edge)
+        let size = CGSize(width: max(1, floor(width * scale)), height: max(1, floor(height * scale)))
+        guard let context = CGContext(
+            data: nil,
+            width: Int(size.width),
+            height: Int(size.height),
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .medium
+        context.draw(image, in: CGRect(origin: .zero, size: size))
+        return context.makeImage()
+    }
+
+    private static func averageColor(_ image: CGImage) -> NSColor {
+        guard let context = CGContext(
+            data: nil,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return NSColor(srgbRed: 0.80, green: 0.84, blue: 0.91, alpha: 1)
+        }
+        context.interpolationQuality = .medium
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        guard let data = context.data else {
+            return NSColor(srgbRed: 0.80, green: 0.84, blue: 0.91, alpha: 1)
+        }
+        let pixel = data.bindMemory(to: UInt8.self, capacity: 4)
+        let sampled = NSColor(srgbRed: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255, blue: CGFloat(pixel[2]) / 255, alpha: 1)
+        return sampled.blended(withFraction: 0.62, of: .white) ?? sampled
     }
 
     private static func listed(_ folder: URL, empty: String) -> Result {
@@ -515,12 +687,11 @@ struct LibraryHome: View {
     @Namespace private var selection
     @State private var layout: LibraryLayout = .grid
     @State private var browserWidth: CGFloat = 720
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var onOpen: () -> Void
 
-    private let accent = Color(nsColor: NSColor(hex: "#3478F6")!)
-    private let ink = Color(nsColor: NSColor(hex: "#222222")!)
-    private let cardGap: CGFloat = 16
-    private let cardMax: CGFloat = 320
+    private let cardGap: CGFloat = 22
+    private let cardMax: CGFloat = 280
 
     var body: some View {
         HStack(spacing: 0) {
@@ -535,7 +706,12 @@ struct LibraryHome: View {
                 onDown: { library.step(1) },
                 onSelectAll: { if !library.showingSettings { library.selectAll() } },
                 onDelete: { if !library.showingSettings { library.deleteSelected() } },
-                onClear: { if !library.showingSettings { library.clearSelection() } }
+                onClear: { if !library.showingSettings { library.clearSelection() } },
+                onOpen: {
+                    guard !library.showingSettings, let shot = library.selectedShot() else { return false }
+                    EditorModel.shared.load(url: shot.url)
+                    return true
+                }
             )
             .frame(width: 0, height: 0)
         )
@@ -545,7 +721,7 @@ struct LibraryHome: View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Library")
+                    Text("Projects")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 14)
@@ -571,10 +747,10 @@ struct LibraryHome: View {
                 .padding(.bottom, 12)
         }
         .frame(width: 216)
-        .background(Color.white)
-        .animation(.spring(response: 0.38, dampingFraction: 0.84), value: library.source)
-        .animation(.spring(response: 0.38, dampingFraction: 0.84), value: library.showingSettings)
-        .animation(.spring(response: 0.38, dampingFraction: 0.84), value: library.kindFilter)
+        .background(Color(nsColor: NSColor(srgbRed: 0.965, green: 0.968, blue: 0.978, alpha: 1)))
+        .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: library.source)
+        .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: library.showingSettings)
+        .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: library.kindFilter)
     }
 
     private var settingsButton: some View {
@@ -602,7 +778,7 @@ struct LibraryHome: View {
             HStack(spacing: 8) {
                 Image(systemName: symbol)
                     .font(.system(size: 13, weight: selected ? .semibold : .regular))
-                    .foregroundColor(selected ? accent : ink)
+                    .foregroundColor(selected ? ShotliGlass.accent : ShotliGlass.ink)
                     .frame(width: 18, alignment: .center)
                 Text(title)
                     .font(.system(size: 13, weight: selected ? .semibold : .regular))
@@ -619,11 +795,11 @@ struct LibraryHome: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 30)
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .foregroundColor(ink)
+            .foregroundColor(ShotliGlass.ink)
             .background {
                 if selected {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(accent.opacity(0.14))
+                        .fill(ShotliGlass.accent.opacity(0.14))
                         .matchedGeometryEffect(id: "library-source", in: selection)
                 }
             }
@@ -641,7 +817,7 @@ struct LibraryHome: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.easeInOut(duration: 0.18), value: library.showingSettings)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: library.showingSettings)
     }
 
     private var libraryContent: some View {
@@ -654,7 +830,8 @@ struct LibraryHome: View {
                     ScrollView {
                         shotBrowser
                             .padding(.horizontal, 22)
-                            .padding(.bottom, 24)
+                            .padding(.top, 8)
+                            .padding(.bottom, 28)
                     }
                     .background(
                         GeometryReader { geo in
@@ -668,7 +845,7 @@ struct LibraryHome: View {
             .id(library.kindFilter?.rawValue ?? library.source.rawValue)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)))
+        .background(ShotliWorkspaceWash())
     }
 
     private var libraryToolbar: some View {
@@ -677,7 +854,7 @@ struct LibraryHome: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(library.kindFilter?.title ?? library.source.title)
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(ink)
+                        .foregroundColor(ShotliGlass.ink)
                         .lineLimit(1)
                     Text(headerDetail)
                         .font(.system(size: 12))
@@ -686,6 +863,7 @@ struct LibraryHome: View {
                 }
                 Spacer(minLength: 8)
                 openButton
+                newProjectButton
             }
             HStack(spacing: 8) {
                 searchField
@@ -704,18 +882,40 @@ struct LibraryHome: View {
         .padding(.bottom, 14)
     }
 
-    private var openButton: some View {
-        Button(action: onOpen) {
+    private var newProjectButton: some View {
+        Button(action: {
+            if let url = library.createProject() {
+                EditorModel.shared.load(url: url)
+            }
+        }) {
             HStack(spacing: 6) {
-                Image(systemName: "folder")
+                Image(systemName: "plus")
                     .font(.system(size: 12, weight: .semibold))
-                Text("Open a screenshot")
+                Text("New project")
                     .font(.system(size: 12, weight: .semibold))
             }
             .foregroundColor(.white)
             .padding(.horizontal, 12)
             .frame(height: 30)
-            .background(Capsule().fill(accent))
+            .background(Capsule().fill(ShotliGlass.accent))
+        }
+        .buttonStyle(.plain)
+        .help("Start a blank project in Pictures/Shotli")
+        .accessibilityLabel("New project")
+    }
+
+    private var openButton: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 6) {
+                Image(systemName: "folder")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Open")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundColor(ShotliGlass.ink)
+            .padding(.horizontal, 12)
+            .frame(height: 30)
+            .shotliCapsuleChip()
         }
         .buttonStyle(.plain)
         .help("Open a PNG, JPEG, or WebP")
@@ -741,32 +941,42 @@ struct LibraryHome: View {
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(1)
             }
-            .foregroundColor(ink)
+            .foregroundColor(ShotliGlass.ink)
             .padding(.horizontal, 10)
             .frame(height: 30)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
+            .shotliGlass(.compact, radius: 10, shadow: false)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Sort screenshots")
+        .help("Sort projects")
         .accessibilityLabel("Sort by \(library.order.title)")
     }
 
     private var layoutToggle: some View {
         HStack(spacing: 2) {
-            layoutButton("square.grid.2x2", help: "Grid", on: layout == .grid) { layout = .grid }
-            layoutButton("list.bullet", help: "List", on: layout == .list) { layout = .list }
+            layoutButton("square.grid.2x2", help: "Grid", on: layout == .grid) { setLayout(.grid) }
+            layoutButton("list.bullet", help: "List", on: layout == .list) { setLayout(.list) }
         }
         .padding(2)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.05)))
+        .shotliGlass(.compact, radius: 10, shadow: false)
+    }
+
+    private func setLayout(_ next: LibraryLayout) {
+        guard next != layout else { return }
+        if reduceMotion {
+            layout = next
+        } else {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.84)) {
+                layout = next
+            }
+        }
     }
 
     private func layoutButton(_ symbol: String, help: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: on ? .semibold : .regular))
-                .foregroundColor(on ? ink : .secondary)
+                .foregroundColor(on ? ShotliGlass.ink : .secondary)
                 .frame(width: 28, height: 26)
                 .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? Color.white : Color.clear))
         }
@@ -781,20 +991,20 @@ struct LibraryHome: View {
         let metrics = gridMetrics(for: width)
         return Group {
             if layout == .grid {
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(metrics.card), spacing: cardGap), count: metrics.columns), alignment: .leading, spacing: cardGap) {
-                    shotList(previewHeight: max(168, metrics.card * 0.7))
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(metrics.card), spacing: cardGap), count: metrics.columns), alignment: .leading, spacing: 36) {
+                    shotList()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    shotList(previewHeight: 72)
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    shotList()
                 }
             }
         }
     }
 
     private func gridMetrics(for width: CGFloat) -> (columns: Int, card: CGFloat) {
-        let target: CGFloat = 280
+        let target: CGFloat = 248
         var columns = max(1, Int((width + cardGap) / (target + cardGap)))
         func card(for columns: Int) -> CGFloat {
             (width - cardGap * CGFloat(max(columns - 1, 0))) / CGFloat(columns)
@@ -803,7 +1013,7 @@ struct LibraryHome: View {
         if size > cardMax {
             let fitted = max(columns, Int(ceil((width + cardGap) / (cardMax + cardGap))))
             let fittedSize = card(for: fitted)
-            if fittedSize >= 220 {
+            if fittedSize >= 200 {
                 columns = fitted
                 size = min(cardMax, fittedSize)
             } else {
@@ -813,20 +1023,20 @@ struct LibraryHome: View {
         return (columns, size)
     }
 
-    private func shotList(previewHeight: CGFloat) -> some View {
+    private func shotList() -> some View {
         ForEach(library.shots) { shot in
             ShotCard(
                 shot: shot,
-                image: library.thumbs[shot.id],
+                preview: library.previews[shot.id],
                 selected: library.selected.contains(shot.id),
                 showsCheck: !library.selected.isEmpty,
                 kindTitle: library.kinds[shot.id]?.title,
                 layout: layout,
-                previewHeight: previewHeight,
                 onChoose: { library.choose(shot.id) },
                 onToggle: { library.toggle(shot.id) },
                 onOpen: { EditorModel.shared.load(url: shot.url) },
                 onRename: { library.rename(shot) },
+                onDuplicate: { library.duplicate(shot) },
                 onDelete: {
                     if !library.selected.contains(shot.id) { library.selectOnly(shot.id) }
                     library.deleteSelected()
@@ -842,7 +1052,7 @@ struct LibraryHome: View {
 
     private var headerDetail: String {
         let count = library.shots.count
-        let noun = count == 1 ? "screenshot" : "screenshots"
+        let noun = count == 1 ? "project" : "projects"
         if !library.selected.isEmpty { return "\(library.selected.count) selected · \(count) \(noun)" }
         if library.source == .screenshots,
            LibraryFolders.screenshots.standardizedFileURL.path == LibraryFolders.desktop.standardizedFileURL.path {
@@ -859,14 +1069,14 @@ struct LibraryHome: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(prominent ? Color(nsColor: NSColor(hex: "#C13636")!) : ink)
+                .foregroundColor(prominent ? Color(nsColor: NSColor(hex: "#C13636")!) : ShotliGlass.ink)
                 .padding(.horizontal, 10)
                 .frame(height: 30)
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .help(prominent ? "Move the selected screenshots to the Trash" : title)
+        .help(prominent ? "Move the selected projects to the Trash" : title)
     }
 
     private var searchField: some View {
@@ -874,7 +1084,7 @@ struct LibraryHome: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.secondary)
-            TextField("Search text", text: Binding(get: { library.query }, set: { library.updateQuery($0) }))
+            TextField("Search", text: Binding(get: { library.query }, set: { library.updateQuery($0) }))
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
             if !library.query.isEmpty {
@@ -887,9 +1097,9 @@ struct LibraryHome: View {
         }
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity)
-        .frame(height: 28)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
+        .frame(height: 30)
+        .shotliGlass(.compact, radius: 10, shadow: false)
+        .help("Search names and text Shotli has read")
     }
 
     private var empty: some View {
@@ -900,14 +1110,17 @@ struct LibraryHome: View {
                     .foregroundColor(.secondary)
                 Text(library.message ?? "Nothing here yet.")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(ink)
+                    .foregroundColor(ShotliGlass.ink)
                     .multilineTextAlignment(.center)
-                Text("Drop a PNG, JPEG, or WebP here, or open one from your Mac.")
+                Text("Drop a PNG, JPEG, or WebP here, start a blank project, or open one from your Mac.")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                openButton
-                    .padding(.top, 4)
+                HStack(spacing: 8) {
+                    openButton
+                    newProjectButton
+                }
+                .padding(.top, 4)
             } else {
                 Text(library.message ?? "Nothing matches.")
                     .font(.system(size: 13))
@@ -929,66 +1142,75 @@ private struct LibraryWidthKey: PreferenceKey {
 
 private struct ShotCard: View {
     var shot: LibraryShot
-    var image: NSImage?
+    var preview: LibraryPreview?
     var selected: Bool
     var showsCheck: Bool
     var kindTitle: String? = nil
     var layout: LibraryLayout = .grid
-    var previewHeight: CGFloat = 180
     var onChoose: () -> Void
     var onToggle: () -> Void
     var onOpen: () -> Void
     var onRename: () -> Void
+    var onDuplicate: () -> Void
     var onDelete: () -> Void
     var onSelectAll: () -> Void
     var onFile: (ShotKind) -> Void
     @State private var hovered = false
-
-    private let accent = Color(nsColor: NSColor(hex: "#3478F6")!)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
             if layout == .list {
-                HStack(spacing: 12) {
-                    preview
-                        .frame(width: 112, height: previewHeight)
+                HStack(spacing: 14) {
+                    document
+                        .frame(width: 72)
                     VStack(alignment: .leading, spacing: 3) {
                         fileName
                         meta
                     }
                     Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(rowFill)
+                )
             } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    preview
-                        .frame(height: previewHeight)
-                    fileName
-                    meta
+                VStack(spacing: 10) {
+                    document
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                    VStack(spacing: 3) {
+                        fileName
+                        meta
+                    }
+                    .padding(.horizontal, 8)
                 }
+                .padding(.bottom, 8)
             }
         }
-        .padding(8)
         .frame(maxWidth: layout == .list ? .infinity : nil, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(selected ? accent.opacity(0.1) : (hovered ? Color.white : Color.white.opacity(0.55)))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(selected ? accent : Color.black.opacity(hovered ? 0.08 : 0.04), lineWidth: selected ? 2 : 1)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(alignment: .topLeading) { check }
+        .contentShape(Rectangle())
         .gesture(
             TapGesture(count: 2).onEnded { onOpen() }
                 .exclusively(before: TapGesture(count: 1).onEnded { onChoose() })
         )
-        .onHover { hovered = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovered)
-        .animation(.easeOut(duration: 0.12), value: selected)
+        .onHover { hovering in
+            if reduceMotion {
+                hovered = hovering
+            } else {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.74)) {
+                    hovered = hovering
+                }
+            }
+        }
         .contextMenu {
             Button("Open", action: onOpen)
             Button("Rename", action: onRename)
-            Button("Show in Finder") {
+            Button("Duplicate", action: onDuplicate)
+            Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([shot.url])
             }
             Divider()
@@ -1009,7 +1231,12 @@ private struct ShotCard: View {
             Button("Select All", action: onSelectAll)
             Button("Delete", action: onDelete)
         }
-        .help("\(shot.name)\n\(shot.modified.formatted(date: .abbreviated, time: .shortened))")
+        .help("\(shot.title)\nEdited \(shot.modified.formatted(date: .abbreviated, time: .shortened))")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(shot.title), edited \(shot.modified.formatted(date: .abbreviated, time: .shortened)), \(badge)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(selected ? .isSelected : AccessibilityTraits())
+        .accessibilityAction(.default) { onOpen() }
         .onDrag {
             let provider = NSItemProvider(contentsOf: shot.url) ?? NSItemProvider()
             provider.suggestedName = shot.name
@@ -1017,57 +1244,72 @@ private struct ShotCard: View {
         }
     }
 
-    private var preview: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.white)
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .padding(layout == .list ? 4 : 10)
-            }
-            if showsCheck || hovered || selected {
-                Button(action: onToggle) {
-                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(selected ? accent : Color.white)
-                        .shadow(color: Color.black.opacity(0.35), radius: 2, y: 1)
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(6)
-                .help(selected ? "Deselect" : "Select")
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+    private var rowFill: Color {
+        if selected { return ShotliGlass.accent.opacity(0.08) }
+        if hovered { return Color.white.opacity(0.45) }
+        return Color.clear
+    }
+
+    private var document: some View {
+        GlassDocumentIcon(
+            image: preview?.image,
+            frost: preview?.frost,
+            tint: Color(nsColor: preview?.tint ?? NSColor(srgbRed: 0.80, green: 0.84, blue: 0.91, alpha: 1)),
+            style: layout == .list ? .compact : .standard,
+            lifted: hovered,
+            selected: selected
         )
     }
 
+    @ViewBuilder
+    private var check: some View {
+        if showsCheck || hovered || selected {
+            Button(action: onToggle) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(selected ? ShotliGlass.accent : Color.white)
+                    .shadow(color: Color.black.opacity(0.28), radius: 2, y: 1)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(8)
+            .help(selected ? "Deselect" : "Select")
+            .accessibilityLabel(selected ? "Deselect" : "Select")
+        }
+    }
+
     private var fileName: some View {
-        Text(shot.name)
+        Text(shot.title)
             .font(.system(size: 12, weight: .medium))
-            .foregroundColor(Color(nsColor: NSColor(hex: "#222222")!))
+            .foregroundColor(ShotliGlass.ink)
             .lineLimit(1)
             .truncationMode(.middle)
+            .frame(maxWidth: .infinity, alignment: layout == .list ? .leading : .center)
             .help(shot.name)
     }
 
+    private var badge: String {
+        if let kindTitle { return kindTitle }
+        let ext = shot.url.pathExtension
+        return ext.isEmpty ? "Picture" : ext.uppercased()
+    }
+
     private var meta: some View {
-        HStack(spacing: 4) {
-            if let kindTitle {
-                Text(kindTitle)
-                Text("·")
-            }
+        HStack(spacing: 6) {
+            Text(badge)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(ShotliGlass.ink.opacity(0.72))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.white.opacity(0.72)))
+            Text("Edited")
             Text(shot.modified, style: .relative)
         }
         .font(.system(size: 11))
         .foregroundColor(.secondary)
         .lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: layout == .list ? .leading : .center)
     }
 }
 
@@ -1077,6 +1319,7 @@ private struct LibraryKeys: NSViewRepresentable {
     var onSelectAll: () -> Void
     var onDelete: () -> Void
     var onClear: () -> Void
+    var onOpen: () -> Bool
 
     func makeNSView(context: Context) -> KeyView {
         let view = KeyView()
@@ -1085,6 +1328,7 @@ private struct LibraryKeys: NSViewRepresentable {
         view.onSelectAll = onSelectAll
         view.onDelete = onDelete
         view.onClear = onClear
+        view.onOpen = onOpen
         return view
     }
 
@@ -1094,6 +1338,7 @@ private struct LibraryKeys: NSViewRepresentable {
         view.onSelectAll = onSelectAll
         view.onDelete = onDelete
         view.onClear = onClear
+        view.onOpen = onOpen
     }
 
     final class KeyView: NSView {
@@ -1102,6 +1347,7 @@ private struct LibraryKeys: NSViewRepresentable {
         var onSelectAll: (() -> Void)?
         var onDelete: (() -> Void)?
         var onClear: (() -> Void)?
+        var onOpen: (() -> Bool)?
         private var monitor: Any?
 
         deinit {
@@ -1134,6 +1380,9 @@ private struct LibraryKeys: NSViewRepresentable {
                 }
                 if event.keyCode == 51 || event.keyCode == 117 {
                     self.onDelete?()
+                    return nil
+                }
+                if event.keyCode == 36, self.onOpen?() == true {
                     return nil
                 }
                 let flags = event.modifierFlags
