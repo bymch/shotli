@@ -68,6 +68,7 @@ cp "$ROOT/build/Shotli.app/Contents/Resources/AppIcon.icns" "$ROOT/build/VolumeI
 # every build, so macOS asks again after each update. A release imports the
 # same certificate and signs with it, so the permission survives the update.
 if [[ -n "${SHOTLI_P12_BASE64:-}" ]]; then
+  echo "Importing the stable signing certificate"
   KEYCHAIN="$ROOT/build/shotli.keychain-db"
   KEYCHAIN_PASSWORD="$(uuidgen)"
   P12="$ROOT/build/shotli.p12"
@@ -76,14 +77,19 @@ if [[ -n "${SHOTLI_P12_BASE64:-}" ]]; then
   security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
   security set-keychain-settings -lut 21600 "$KEYCHAIN"
   security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-  security import "$P12" -k "$KEYCHAIN" -P "$SHOTLI_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
-  openssl pkcs12 -in "$P12" -clcerts -nokeys -out "$CERT" -passin "pass:$SHOTLI_P12_PASSWORD"
-  security add-trusted-cert -d -r trustRoot -p codeSign -k "$KEYCHAIN" "$CERT"
-  security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+  # -A lets codesign use the key without a dialog. A dialog hangs the runner.
+  security import "$P12" -k "$KEYCHAIN" -P "$SHOTLI_P12_PASSWORD" -A -t cert -f pkcs12 -T /usr/bin/codesign
+  if ! openssl pkcs12 -in "$P12" -clcerts -nokeys -out "$CERT" -passin "pass:$SHOTLI_P12_PASSWORD"; then
+    openssl pkcs12 -legacy -in "$P12" -clcerts -nokeys -out "$CERT" -passin "pass:$SHOTLI_P12_PASSWORD"
+  fi
+  sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$CERT"
+  security default-keychain -s "$KEYCHAIN"
+  security list-keychains -d user -s "$KEYCHAIN"
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
   security find-identity -v -p codesigning "$KEYCHAIN"
   rm -f "$P12" "$CERT"
   SHOTLI_SIGN_IDENTITY="${SHOTLI_SIGN_IDENTITY:-Shotli Signing}"
+  echo "Signing Shotli with ${SHOTLI_SIGN_IDENTITY}"
 fi
 
 if [[ -n "${SHOTLI_SIGN_IDENTITY:-}" ]]; then
