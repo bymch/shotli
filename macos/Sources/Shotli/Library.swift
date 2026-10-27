@@ -868,6 +868,7 @@ struct LibraryHome: View {
     @Namespace private var selection
     @State private var layout: LibraryLayout = .grid
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     var onOpen: () -> Void
 
     private let cardGap: CGFloat = LibraryGrid.gap
@@ -946,7 +947,7 @@ struct LibraryHome: View {
                 .padding(.bottom, 12)
         }
         .frame(width: 216)
-        .background(Color(nsColor: NSColor(srgbRed: 0.965, green: 0.968, blue: 0.978, alpha: 1)))
+        .background(ShotliGlass.sidebar(colorScheme))
         .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: library.source)
         .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: library.showingSettings)
         .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: library.kindFilter)
@@ -978,7 +979,7 @@ struct LibraryHome: View {
             HStack(spacing: 8) {
                 Image(systemName: symbol)
                     .font(.system(size: 13, weight: selected ? .semibold : .regular))
-                    .foregroundColor(selected ? ShotliGlass.accent : ShotliGlass.ink)
+                    .foregroundColor(selected ? ShotliGlass.accent : ShotliGlass.ink(colorScheme))
                     .frame(width: 18, alignment: .center)
                 Text(title)
                     .font(.system(size: 13, weight: selected ? .semibold : .regular))
@@ -995,11 +996,11 @@ struct LibraryHome: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 30)
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .foregroundColor(ShotliGlass.ink)
+            .foregroundColor(ShotliGlass.ink(colorScheme))
             .background {
                 if selected {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(ShotliGlass.accent.opacity(0.14))
+                        .fill(ShotliGlass.selectedNav(colorScheme))
                         .matchedGeometryEffect(id: "library-source", in: selection)
                 }
             }
@@ -1056,7 +1057,7 @@ struct LibraryHome: View {
                     Button(action: { library.closeContents() }) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(ShotliGlass.ink)
+                            .foregroundColor(ShotliGlass.ink(colorScheme))
                             .frame(width: 28, height: 28)
                             .shotliCapsuleChip()
                     }
@@ -1073,7 +1074,7 @@ struct LibraryHome: View {
                     }
                     Text(libraryTitle)
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(ShotliGlass.ink)
+                        .foregroundColor(ShotliGlass.ink(colorScheme))
                         .lineLimit(1)
                     Text(headerDetail)
                         .font(.system(size: 12))
@@ -1152,7 +1153,7 @@ struct LibraryHome: View {
                 Text("Open")
                     .font(.system(size: 12, weight: .semibold))
             }
-            .foregroundColor(ShotliGlass.ink)
+            .foregroundColor(ShotliGlass.ink(colorScheme))
             .padding(.horizontal, 12)
             .frame(height: 30)
             .shotliCapsuleChip()
@@ -1181,7 +1182,7 @@ struct LibraryHome: View {
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(1)
             }
-            .foregroundColor(ShotliGlass.ink)
+            .foregroundColor(ShotliGlass.ink(colorScheme))
             .padding(.horizontal, 10)
             .frame(height: 30)
             .shotliGlass(.compact, radius: 10, shadow: false)
@@ -1216,9 +1217,9 @@ struct LibraryHome: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: on ? .semibold : .regular))
-                .foregroundColor(on ? ShotliGlass.ink : .secondary)
+                .foregroundColor(on ? ShotliGlass.ink(colorScheme) : .secondary)
                 .frame(width: 28, height: 26)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? Color.white : Color.clear))
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? ShotliGlass.segmentSolid(colorScheme) : Color.clear))
         }
         .buttonStyle(.plain)
         .help(help)
@@ -1370,11 +1371,11 @@ struct LibraryHome: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(prominent ? Color(nsColor: NSColor(hex: "#C13636")!) : ShotliGlass.ink)
+                .foregroundColor(prominent ? ShotliGlass.error(colorScheme) : ShotliGlass.ink(colorScheme))
                 .padding(.horizontal, 10)
                 .frame(height: 30)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ShotliGlass.surface(colorScheme)))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(ShotliGlass.hairline(colorScheme), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .help(prominent ? "Move the selected projects to the Trash" : title)
@@ -1434,7 +1435,7 @@ struct LibraryHome: View {
                         .foregroundColor(.secondary)
                     Text(emptyTitle)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(ShotliGlass.ink)
+                        .foregroundColor(ShotliGlass.ink(colorScheme))
                         .multilineTextAlignment(.center)
                     Text(emptyDetail)
                         .font(.system(size: 13))
@@ -1499,7 +1500,7 @@ struct LibraryHome: View {
         }) {
             Text("Open Image")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(ShotliGlass.ink)
+                .foregroundColor(ShotliGlass.ink(colorScheme))
                 .padding(.horizontal, 12)
                 .frame(height: 30)
                 .shotliCapsuleChip()
@@ -1555,6 +1556,7 @@ private struct ShotCard: View {
     var onDelete: () -> Void
     var onSelectAll: () -> Void
     var onFile: (ShotKind) -> Void
+    @Environment(\.colorScheme) private var colorScheme
     @State private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1645,8 +1647,8 @@ private struct ShotCard: View {
     }
 
     private var rowFill: Color {
-        if selected { return ShotliGlass.accent.opacity(0.08) }
-        if hovered { return Color.white.opacity(0.45) }
+        if selected { return ShotliGlass.selectedCard(colorScheme) }
+        if hovered { return ShotliGlass.hover(colorScheme) }
         return Color.clear
     }
 
@@ -1682,7 +1684,7 @@ private struct ShotCard: View {
     private var fileName: some View {
         Text(shot.title)
             .font(.system(size: 12, weight: .medium))
-            .foregroundColor(ShotliGlass.ink)
+            .foregroundColor(ShotliGlass.ink(colorScheme))
             .lineLimit(1)
             .truncationMode(.middle)
             .frame(maxWidth: .infinity, alignment: layout == .list ? .leading : .center)
@@ -1698,10 +1700,10 @@ private struct ShotCard: View {
     private var meta: some View {
         Text(badge)
             .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(ShotliGlass.ink.opacity(0.72))
+            .foregroundColor(ShotliGlass.ink(colorScheme).opacity(0.72))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Capsule().fill(Color.white.opacity(0.72)))
+            .background(Capsule().fill(ShotliGlass.capsule(colorScheme)))
             .frame(maxWidth: .infinity, alignment: layout == .list ? .leading : .center)
     }
 }
@@ -1715,6 +1717,7 @@ private struct CompositionCard: View {
     var onOpen: () -> Void
     @State private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Group {
@@ -1723,7 +1726,7 @@ private struct CompositionCard: View {
                     document.frame(width: 72)
                     Text(item.name)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(ShotliGlass.ink)
+                        .foregroundColor(ShotliGlass.ink(colorScheme))
                         .lineLimit(1)
                     Spacer(minLength: 0)
                 }
@@ -1737,7 +1740,7 @@ private struct CompositionCard: View {
                         .padding(.top, 6)
                     Text(item.name)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(ShotliGlass.ink)
+                        .foregroundColor(ShotliGlass.ink(colorScheme))
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(maxWidth: .infinity)
@@ -1770,8 +1773,8 @@ private struct CompositionCard: View {
     }
 
     private var rowFill: Color {
-        if selected { return ShotliGlass.accent.opacity(0.08) }
-        if hovered { return Color.white.opacity(0.45) }
+        if selected { return ShotliGlass.selectedCard(colorScheme) }
+        if hovered { return ShotliGlass.hover(colorScheme) }
         return Color.clear
     }
 
@@ -1802,6 +1805,7 @@ private struct ProjectCard: View {
     var onSelectAll: () -> Void
     @State private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Group {
@@ -1868,8 +1872,8 @@ private struct ProjectCard: View {
     }
 
     private var rowFill: Color {
-        if selected { return ShotliGlass.accent.opacity(0.08) }
-        if hovered { return Color.white.opacity(0.45) }
+        if selected { return ShotliGlass.selectedCard(colorScheme) }
+        if hovered { return ShotliGlass.hover(colorScheme) }
         return Color.clear
     }
 
@@ -1904,7 +1908,7 @@ private struct ProjectCard: View {
     private var fileName: some View {
         Text(project.name)
             .font(.system(size: 12, weight: .medium))
-            .foregroundColor(ShotliGlass.ink)
+            .foregroundColor(ShotliGlass.ink(colorScheme))
             .lineLimit(1)
             .truncationMode(.middle)
             .frame(maxWidth: .infinity, alignment: layout == .list ? .leading : .center)
@@ -1919,10 +1923,10 @@ private struct ProjectCard: View {
     private var meta: some View {
         Text(badge)
             .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(ShotliGlass.ink.opacity(0.72))
+            .foregroundColor(ShotliGlass.ink(colorScheme).opacity(0.72))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Capsule().fill(Color.white.opacity(0.72)))
+            .background(Capsule().fill(ShotliGlass.capsule(colorScheme)))
             .frame(maxWidth: .infinity, alignment: layout == .list ? .leading : .center)
     }
 }

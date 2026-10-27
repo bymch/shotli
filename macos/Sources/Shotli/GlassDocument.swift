@@ -34,6 +34,9 @@ struct GlassDocumentIcon: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var dark: Bool { colorScheme == .dark }
 
     static let neutral = Color(nsColor: NSColor(srgbRed: 0.80, green: 0.84, blue: 0.91, alpha: 1))
 
@@ -67,19 +70,8 @@ struct GlassDocumentIcon: View {
                 crease(geometry)
             }
             if style.showsEdge {
-                page.stroke(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(lifted ? 0.9 : 0.7),
-                            Color.white.opacity(0.16),
-                            Color.white.opacity(0.4),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.8
-                )
-                page.stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+                page.stroke(edgeGradient, lineWidth: 0.8)
+                page.stroke(dark ? Color.white.opacity(0.06) : Color.black.opacity(0.06), lineWidth: 0.5)
             }
             if selected {
                 page.stroke(ShotliGlass.accent, lineWidth: 1.6)
@@ -87,15 +79,59 @@ struct GlassDocumentIcon: View {
         }
         .compositingGroup()
         .shadow(color: Color.black.opacity(shadowOpacity), radius: shadowRadius, y: shadowY)
-        .shadow(color: tint.opacity(lifted ? 0.18 : 0.06), radius: lifted ? 16 : 7, y: lifted ? 7 : 2)
+        .shadow(color: tint.opacity(dark ? (lifted ? 0.08 : 0.03) : (lifted ? 0.18 : 0.06)), radius: lifted ? 16 : 7, y: lifted ? 7 : 2)
+        .shadow(color: ShotliGlass.accent.opacity(selected && dark ? 0.42 : 0), radius: selected && dark ? 7 : 0)
     }
 
     private var baseFill: LinearGradient {
         let empty = image == nil
+        if dark {
+            if empty {
+                return LinearGradient(
+                    colors: [
+                        Color(nsColor: ShotliGlass.srgb(0.20, 0.23, 0.32, reduceTransparency ? 1 : 0.94)),
+                        Color(nsColor: ShotliGlass.srgb(0.11, 0.13, 0.20, reduceTransparency ? 1 : 0.90)),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+            return LinearGradient(
+                colors: [
+                    Color.white.opacity(reduceTransparency ? 0.16 : 0.04),
+                    Color(nsColor: ShotliGlass.srgb(0.35, 0.42, 0.62, reduceTransparency ? 0.35 : 0.16)),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
         return LinearGradient(
             colors: [
                 Color.white.opacity(reduceTransparency ? 0.96 : (empty ? 0.78 : 0.28)),
                 tint.opacity(reduceTransparency ? 0.9 : (empty ? 0.62 : 0.22)),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var edgeGradient: LinearGradient {
+        if dark {
+            return LinearGradient(
+                colors: [
+                    Color.white.opacity(lifted ? 0.34 : 0.22),
+                    Color.white.opacity(0.05),
+                    Color(nsColor: ShotliGlass.srgb(0.55, 0.62, 0.86, 0.28)),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        return LinearGradient(
+            colors: [
+                Color.white.opacity(lifted ? 0.9 : 0.7),
+                Color.white.opacity(0.16),
+                Color.white.opacity(0.4),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -118,7 +154,7 @@ struct GlassDocumentIcon: View {
             } else {
                 Image(systemName: "doc")
                     .font(.system(size: max(11, rect.width * 0.09), weight: .medium))
-                    .foregroundColor(ShotliGlass.ink.opacity(0.34))
+                    .foregroundColor(ShotliGlass.emptyIcon(colorScheme))
             }
         }
         .frame(width: rect.width, height: rect.height)
@@ -127,6 +163,18 @@ struct GlassDocumentIcon: View {
     }
 
     private var veil: LinearGradient {
+        if dark {
+            let amount = reduceTransparency ? 0.22 : 0.06
+            return LinearGradient(
+                colors: [
+                    Color.white.opacity(amount),
+                    Color(nsColor: ShotliGlass.srgb(0.32, 0.28, 0.55, amount + 0.04)),
+                    Color.clear,
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
         let amount = reduceTransparency ? min(0.72, style.veil + 0.4) : style.veil
         return LinearGradient(
             colors: [
@@ -140,7 +188,18 @@ struct GlassDocumentIcon: View {
     }
 
     private var sheen: LinearGradient {
-        LinearGradient(
+        if dark {
+            return LinearGradient(
+                colors: [
+                    Color.white.opacity(lifted ? 0.14 : 0.08),
+                    Color.clear,
+                    Color.clear,
+                ],
+                startPoint: .top,
+                endPoint: .center
+            )
+        }
+        return LinearGradient(
             colors: [
                 Color.white.opacity(lifted ? 0.34 : 0.18),
                 Color.white.opacity(0.02),
@@ -153,28 +212,37 @@ struct GlassDocumentIcon: View {
 
     private func flap(_ geometry: GlassDocumentGeometry) -> some View {
         let shape = GlassDocumentFlap(geometry: geometry)
+        let fill = dark
+            ? LinearGradient(
+                colors: [
+                    Color(nsColor: ShotliGlass.srgb(0.32, 0.36, 0.48, lifted ? 0.92 : 0.78)),
+                    Color(nsColor: ShotliGlass.srgb(0.16, 0.18, 0.28, 0.72)),
+                    Color(nsColor: ShotliGlass.srgb(0.45, 0.50, 0.72, 0.28)),
+                ],
+                startPoint: .topTrailing,
+                endPoint: .bottomLeading
+            )
+            : LinearGradient(
+                colors: [
+                    Color.white.opacity(lifted ? 0.72 : 0.58),
+                    tint.opacity(0.28),
+                    Color.white.opacity(0.22),
+                ],
+                startPoint: .topTrailing,
+                endPoint: .bottomLeading
+            )
         return shape
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(lifted ? 0.72 : 0.58),
-                        tint.opacity(0.28),
-                        Color.white.opacity(0.22),
-                    ],
-                    startPoint: .topTrailing,
-                    endPoint: .bottomLeading
-                )
-            )
+            .fill(fill)
             .overlay(
-                shape.stroke(Color.white.opacity(0.55), lineWidth: 0.6)
+                shape.stroke(Color.white.opacity(dark ? 0.22 : 0.55), lineWidth: 0.6)
             )
-            .shadow(color: Color.black.opacity(0.12), radius: 1.6, x: -0.6, y: 1.2)
+            .shadow(color: Color.black.opacity(dark ? 0.28 : 0.12), radius: 1.6, x: -0.6, y: 1.2)
     }
 
     private func crease(_ geometry: GlassDocumentGeometry) -> some View {
         GlassDocumentCrease(geometry: geometry)
-            .stroke(Color.black.opacity(0.2), style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
-            .shadow(color: Color.black.opacity(0.12), radius: 1.5, x: -0.6, y: 1.2)
+            .stroke(dark ? Color.white.opacity(0.28) : Color.black.opacity(0.2), style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
+            .shadow(color: Color.black.opacity(dark ? 0.35 : 0.12), radius: 1.5, x: -0.6, y: 1.2)
     }
 }
 

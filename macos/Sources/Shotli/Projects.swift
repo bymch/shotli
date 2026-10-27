@@ -1055,6 +1055,7 @@ enum ProjectVerify {
         try checkPopoverSave()
         try checkLibraryKeys()
         try checkLibraryGrid()
+        if let issue = ShotliAppearance.check() { throw Failure(issue) }
     }
 
     private static func checkPopoverSave() throws {

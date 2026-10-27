@@ -55,13 +55,14 @@ final class ProjectPrompt: ObservableObject {
 struct NewProjectSheet: View {
     @ObservedObject var prompt: ProjectPrompt
     @FocusState private var focused: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("New Project")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(ShotliGlass.ink)
+                    .foregroundColor(ShotliGlass.ink(colorScheme))
                 Text("Shotli creates a folder in \(ShotliProjects.displayRoot) after you confirm. Cancel leaves the disk alone.")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
@@ -74,7 +75,7 @@ struct NewProjectSheet: View {
             if let issue = prompt.issue {
                 Text(issue)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Color(nsColor: NSColor(hex: "#C13636")!))
+                    .foregroundColor(ShotliGlass.error(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 8) {
@@ -333,19 +334,27 @@ private struct SaveRowStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(fill(pressed: configuration.isPressed))
-            )
+            .background(SaveRowPlate(hovered: hovered, pressed: configuration.isPressed))
+    }
+}
+
+private struct SaveRowPlate: View {
+    var hovered: Bool
+    var pressed: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(fill)
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.primary.opacity(configuration.isPressed || hovered ? 0.14 : 0.06), lineWidth: 1)
+                    .stroke(Color.primary.opacity(pressed || hovered ? 0.14 : 0.06), lineWidth: 1)
             )
     }
 
-    private func fill(pressed: Bool) -> Color {
-        if pressed { return ShotliGlass.accent.opacity(0.16) }
-        if hovered { return ShotliGlass.accent.opacity(0.08) }
-        return Color.primary.opacity(0.04)
+    private var fill: Color {
+        if pressed { return ShotliGlass.rowPressed(colorScheme) }
+        if hovered { return ShotliGlass.rowHover(colorScheme) }
+        return ShotliGlass.quiet(colorScheme)
     }
 }

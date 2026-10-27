@@ -9,6 +9,10 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.56", notes: [
+            "Settings has Appearance: System, Light, or Dark. System follows the Mac, and the choice is remembered.",
+            "Dark mode keeps the glass documents, with the picture showing through. Exported images keep their colours.",
+        ]),
         ChangelogEntry(version: "0.2.55", notes: [
             "Project cards sit side by side. Opening a project shows the pictures inside it.",
             "Document icons are frosted glass, with the artwork showing through the page.",
@@ -164,8 +168,9 @@ enum Changelog {
 }
 
 private struct ChangelogView: View {
-    private let ink = Color(nsColor: NSColor(hex: "#222222")!)
+    private var ink: Color { ShotliGlass.ink(colorScheme) }
     private let accent = Color(nsColor: NSColor(hex: "#3478F6")!)
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ScrollView {
@@ -177,7 +182,11 @@ private struct ChangelogView: View {
             .padding(16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)))
+        .background(ShotliGlass.page(colorScheme))
+        .shotliAppearance()
+        .onChange(of: colorScheme) { _ in
+            ShotliSettings.shared.appearance.apply()
+        }
     }
 
     private func card(_ entry: ChangelogEntry, current: Bool) -> some View {
@@ -203,15 +212,15 @@ private struct ChangelogView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.black.opacity(current ? 0.14 : 0.06), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.surface(colorScheme)))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(current ? ShotliGlass.line(colorScheme) : ShotliGlass.hairline(colorScheme), lineWidth: 1))
     }
 
     private func noteRow(_ note: String, marked: Bool) -> some View {
         HStack(alignment: .top, spacing: 8) {
             if marked {
                 Circle()
-                    .fill(Color.black.opacity(0.28))
+                    .fill(ink.opacity(0.45))
                     .frame(width: 5, height: 5)
                     .padding(.top, 6)
             }

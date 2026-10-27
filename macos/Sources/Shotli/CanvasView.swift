@@ -192,8 +192,13 @@ final class EditorCanvas: NSView {
         return image
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     private func drawStage() {
-        NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1).setFill()
+        ShotliGlass.stageColor.setFill()
         bounds.fill()
     }
 

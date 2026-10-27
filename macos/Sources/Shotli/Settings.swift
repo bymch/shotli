@@ -2,6 +2,71 @@ import AppKit
 import ServiceManagement
 import SwiftUI
 
+enum ShotliAppearance: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    /// Nil lets SwiftUI follow the Mac. Light and Dark override it.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+
+    static func resolved(from stored: String?) -> ShotliAppearance {
+        guard let stored, let value = ShotliAppearance(rawValue: stored) else { return .system }
+        return value
+    }
+
+    /// Headless check for `--verify-projects`. It does not draw or touch a picture.
+    static func check() -> String? {
+        if resolved(from: nil) != .system { return "missing appearance was not System" }
+        if resolved(from: "") != .system { return "blank appearance was not System" }
+        if resolved(from: "nope") != .system { return "unknown appearance was not System" }
+        if resolved(from: "system") != .system { return "system appearance was not System" }
+        if resolved(from: "light") != .light || ShotliAppearance.light.colorScheme != .light {
+            return "light appearance did not stay light"
+        }
+        if resolved(from: "dark") != .dark || ShotliAppearance.dark.colorScheme != .dark {
+            return "dark appearance did not stay dark"
+        }
+        if ShotliAppearance.system.colorScheme != nil { return "system appearance forced a scheme" }
+        if ShotliAppearance.light.colorScheme == ShotliAppearance.dark.colorScheme {
+            return "light and dark appearance matched"
+        }
+        return nil
+    }
+
+    func apply() {
+        let next = nsAppearance
+        NSApp.appearance = next
+        for window in NSApp.windows {
+            window.appearance = next
+        }
+    }
+}
+
 final class ShotliSettings: ObservableObject {
     static let shared = ShotliSettings()
 
@@ -11,6 +76,7 @@ final class ShotliSettings: ObservableObject {
     @Published var confirmDelete: Bool
     @Published var startIn: LibrarySource
     @Published var sortShots: Bool
+    @Published var appearance: ShotliAppearance
 
     @Published var opensAtLogin = false
     @Published var loginAvailable = false
@@ -26,10 +92,11 @@ final class ShotliSettings: ObservableObject {
         static let delete = "shotli.confirmDelete"
         static let startIn = "shotli.startIn"
         static let sort = "shotli.sortShots"
+        static let appearance = "shotli.appearance"
     }
 
     static var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.55"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.56"
     }
 
     private init() {
@@ -40,7 +107,9 @@ final class ShotliSettings: ObservableObject {
         let raw = UserDefaults.standard.string(forKey: Key.startIn) ?? LibrarySource.recent.rawValue
         startIn = LibrarySource(rawValue: raw) ?? .recent
         sortShots = Self.storedBool(Key.sort, default: true)
+        appearance = ShotliAppearance.resolved(from: UserDefaults.standard.string(forKey: Key.appearance))
         refreshLoginItem()
+        appearance.apply()
     }
 
     func requestOpen() {
@@ -76,6 +145,13 @@ final class ShotliSettings: ObservableObject {
         guard startIn != value else { return }
         startIn = value
         defaults.set(value.rawValue, forKey: Key.startIn)
+    }
+
+    func setAppearance(_ value: ShotliAppearance) {
+        guard appearance != value else { return }
+        appearance = value
+        defaults.set(value.rawValue, forKey: Key.appearance)
+        value.apply()
     }
 
     func setSortShots(_ value: Bool) {
@@ -150,8 +226,9 @@ struct SettingsPane: View {
     @ObservedObject private var settings = ShotliSettings.shared
     @ObservedObject private var permissions = ShotliPermissions.shared
     @ObservedObject private var shortcuts = ShotShortcuts.shared
+    @Environment(\.colorScheme) private var colorScheme
 
-    private let ink = Color(nsColor: NSColor(hex: "#222222")!)
+    private var ink: Color { ShotliGlass.ink(colorScheme) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -174,6 +251,23 @@ struct SettingsPane: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    card("Appearance") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("System follows this Mac. Light and Dark stay put when the Mac changes.")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Picker("Appearance", selection: Binding(get: { settings.appearance }, set: { settings.setAppearance($0) })) {
+                                ForEach(ShotliAppearance.allCases) { mode in
+                                    Text(mode.title).tag(mode)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .accessibilityLabel("Appearance")
+                        }
+                        .padding(.vertical, 10)
+                    }
                     card("Permissions") {
                         ForEach(Array(ShotliPermissions.Kind.allCases.enumerated()), id: \.element.id) { index, kind in
                             if index > 0 { divider }
@@ -292,7 +386,7 @@ struct SettingsPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)))
+        .background(ShotliGlass.page(colorScheme))
         .onAppear {
             settings.refreshLoginItem()
             permissions.beginWatching()
@@ -338,7 +432,7 @@ struct SettingsPane: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color.black.opacity(0.06))
+            .fill(ShotliGlass.hairline(colorScheme))
             .frame(height: 1)
     }
 
@@ -353,8 +447,8 @@ struct SettingsPane: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.black.opacity(0.06), lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.surface(colorScheme)))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ShotliGlass.hairline(colorScheme), lineWidth: 1))
         }
     }
 
@@ -382,19 +476,18 @@ struct SettingsPane: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var cardButton: Color {
-        Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1))
-    }
+    private var cardButton: Color { ShotliGlass.surfaceSecondary(colorScheme) }
 
-    private func plainButton(_ title: String, fill: Color = .white, action: @escaping () -> Void) -> some View {
+    private func plainButton(_ title: String, fill: Color? = nil, action: @escaping () -> Void) -> some View {
+        let plate = fill ?? ShotliGlass.surface(colorScheme)
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(ink)
                 .padding(.horizontal, 10)
                 .frame(height: 28)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(fill))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(plate))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(ShotliGlass.line(colorScheme), lineWidth: 1))
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
