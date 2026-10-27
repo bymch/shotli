@@ -72,8 +72,10 @@ struct EditorView: View {
     @State private var adjustingLight = false
     @State private var showTemplates = false
     @State private var backgroundShelf: BackgroundShelf?
-    @State private var backgroundPopover: WallpaperID?
     @State private var gradientPopover: String?
+    @State private var expandedShelves: Set<String> = []
+    @State private var didSeedLibrary = false
+    @State private var backgroundQuery = ""
     @State private var hoveredPreset: String?
     @State private var showMagic = false
     @State private var magicColors: [MagicColor] = []
@@ -148,13 +150,13 @@ struct EditorView: View {
         .onAppear {
             refreshMagic()
             configureWindow()
+            seedLibrary()
         }
         .onChange(of: pictureKey) { _ in
             refreshMagic()
             if model.picture == nil {
                 showTemplates = false
                 backgroundShelf = nil
-                backgroundPopover = nil
                 gradientPopover = nil
             }
         }
@@ -1083,7 +1085,14 @@ struct EditorView: View {
     }
 
     private var backgroundGallery: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
+            backgroundLibraryHeader
+            if backgroundLibraryIsEmpty {
+                Text("No backgrounds match.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             wallpaperShelf("Gradient", WallpaperID.fields, .gradient)
             wallpaperShelf("Glass", WallpaperID.glass, .glass)
             wallpaperShelf("Cosmic", WallpaperID.cosmic, .cosmic)
@@ -1096,45 +1105,181 @@ struct EditorView: View {
             gradientShelf
             wallpaperShelf("Pattern", WallpaperID.patterns, .pattern)
         }
+        .onAppear(perform: seedLibrary)
     }
 
+    private var backgroundLibraryHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Backgrounds")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(ink)
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                TextField("Search", text: $backgroundQuery)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .accessibilityLabel("Search backgrounds")
+                if !backgroundQuery.isEmpty {
+                    Button(action: { backgroundQuery = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear search")
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
+        }
+    }
+
+    private var backgroundQueryText: String {
+        backgroundQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var backgroundLibraryIsEmpty: Bool {
+        wallpaperPool(WallpaperID.fields, title: "Gradient") == nil
+            && wallpaperPool(WallpaperID.glass, title: "Glass") == nil
+            && wallpaperPool(WallpaperID.cosmic, title: "Cosmic") == nil
+            && wallpaperPool(WallpaperID.mystic, title: "Mystic") == nil
+            && wallpaperPool(WallpaperID.desktop, title: "Desktop") == nil
+            && wallpaperPool(WallpaperID.abstract, title: "Abstract") == nil
+            && wallpaperPool(WallpaperID.earth, title: "Earth") == nil
+            && wallpaperPool(WallpaperID.backdrops, title: "Studio") == nil
+            && wallpaperPool(WallpaperID.scenes, title: "Scenes") == nil
+            && wallpaperPool(WallpaperID.patterns, title: "Pattern") == nil
+            && gradientPool() == nil
+    }
+
+    private var activeBackgroundShelf: BackgroundShelf? {
+        switch model.style.background {
+        case .wallpaper(let id):
+            if WallpaperID.fields.contains(id) { return .gradient }
+            if WallpaperID.glass.contains(id) { return .glass }
+            if WallpaperID.cosmic.contains(id) { return .cosmic }
+            if WallpaperID.mystic.contains(id) { return .mystic }
+            if WallpaperID.desktop.contains(id) { return .desktop }
+            if WallpaperID.abstract.contains(id) { return .abstract }
+            if WallpaperID.earth.contains(id) { return .earth }
+            if WallpaperID.backdrops.contains(id) { return .studio }
+            if WallpaperID.scenes.contains(id) { return .scenes }
+            if WallpaperID.patterns.contains(id) { return .pattern }
+            return nil
+        case .gradient:
+            return .linear
+        case .color:
+            return nil
+        }
+    }
+
+    private func seedLibrary() {
+        guard !didSeedLibrary else { return }
+        didSeedLibrary = true
+        expandedShelves = [activeBackgroundShelf?.rawValue ?? BackgroundShelf.gradient.rawValue]
+    }
+
+    private func shelfIsOpen(_ shelf: BackgroundShelf) -> Bool {
+        !backgroundQueryText.isEmpty || expandedShelves.contains(shelf.rawValue)
+    }
+
+    private func toggleShelf(_ shelf: BackgroundShelf) {
+        guard backgroundQueryText.isEmpty else { return }
+        if expandedShelves.contains(shelf.rawValue) {
+            expandedShelves.remove(shelf.rawValue)
+        } else {
+            expandedShelves.insert(shelf.rawValue)
+        }
+    }
+
+    private func categoryHeading(_ title: String, _ shelf: BackgroundShelf) -> some View {
+        let open = shelfIsOpen(shelf)
+        return Button(action: { toggleShelf(shelf) }) {
+            HStack(spacing: 6) {
+                Image(systemName: open ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 10, alignment: .center)
+                Text(title.uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .kerning(0.6)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(open ? "Expanded" : "Collapsed")
+        .help(open ? "Collapse \(title)" : "Expand \(title)")
+    }
+
+    @ViewBuilder
     private func wallpaperShelf(_ title: String, _ items: [WallpaperID], _ shelf: BackgroundShelf) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            caption(title)
-            HStack(spacing: thumbGap) {
-                ForEach(visibleWallpapers(items)) { wallpaper in
-                    wallpaperSwatch(wallpaper, height: thumbHeight, shelf: shelf)
-                }
-                if items.count > 3 {
-                    moreSwatch(title) {
-                        backgroundPopover = nil
-                        gradientPopover = nil
-                        backgroundShelf = shelf
+        if let pool = wallpaperPool(items, title: title) {
+            VStack(alignment: .leading, spacing: 8) {
+                categoryHeading(title, shelf)
+                if shelfIsOpen(shelf) {
+                    HStack(spacing: thumbGap) {
+                        ForEach(rowWallpapers(pool)) { wallpaper in
+                            wallpaperSwatch(wallpaper, height: thumbHeight)
+                        }
+                        if pool.count > 3 {
+                            moreSwatch(title) {
+                                gradientPopover = nil
+                                backgroundShelf = shelf
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
+    @ViewBuilder
     private var gradientShelf: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            caption("Linear")
-            HStack(spacing: thumbGap) {
-                ForEach(visibleGradients(), id: \.name) { gradient in
-                    gradientSwatch(gradient, height: thumbHeight, shelf: .linear)
-                }
-                if Presets.gradients.count > 3 {
-                    moreSwatch("Linear") {
-                        backgroundPopover = nil
-                        gradientPopover = nil
-                        backgroundShelf = .linear
+        if let pool = gradientPool() {
+            VStack(alignment: .leading, spacing: 8) {
+                categoryHeading("Linear", .linear)
+                if shelfIsOpen(.linear) {
+                    HStack(spacing: thumbGap) {
+                        ForEach(rowGradients(pool), id: \.name) { gradient in
+                            gradientSwatch(gradient, height: thumbHeight, showsColours: true)
+                        }
+                        if pool.count > 3 {
+                            moreSwatch("Linear") {
+                                gradientPopover = nil
+                                backgroundShelf = .linear
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    private func visibleWallpapers(_ items: [WallpaperID]) -> [WallpaperID] {
+    private func wallpaperPool(_ items: [WallpaperID], title: String) -> [WallpaperID]? {
+        let query = backgroundQueryText
+        if query.isEmpty || title.lowercased().contains(query) { return items }
+        let matches = items.filter { $0.label.lowercased().contains(query) }
+        return matches.isEmpty ? nil : matches
+    }
+
+    private func gradientPool() -> [(name: String, from: String, mid: String, to: String, angle: CGFloat)]? {
+        let query = backgroundQueryText
+        if query.isEmpty || "linear".contains(query) { return Presets.gradients }
+        let matches = Presets.gradients.filter { $0.name.lowercased().contains(query) }
+        return matches.isEmpty ? nil : matches
+    }
+
+    private func rowWallpapers(_ items: [WallpaperID]) -> [WallpaperID] {
         let head = Array(items.prefix(3))
         guard case .wallpaper(let selected) = model.style.background,
               let index = items.firstIndex(of: selected),
@@ -1142,23 +1287,16 @@ struct EditorView: View {
         return Array(items.prefix(2)) + [selected]
     }
 
-    private func visibleGradients() -> [(name: String, from: String, mid: String, to: String, angle: CGFloat)] {
-        let head = Array(Presets.gradients.prefix(3))
+    private func rowGradients(_ items: [(name: String, from: String, mid: String, to: String, angle: CGFloat)]) -> [(name: String, from: String, mid: String, to: String, angle: CGFloat)] {
+        let head = Array(items.prefix(3))
         guard case .gradient(let from, let mid, let to, _) = model.style.background,
-              let match = Presets.gradients.first(where: { $0.from == from && $0.mid == mid && $0.to == to }),
+              let match = items.first(where: { $0.from == from && $0.mid == mid && $0.to == to }),
               !head.contains(where: { $0.name == match.name }) else { return head }
-        return Array(Presets.gradients.prefix(2)) + [match]
+        return Array(items.prefix(2)) + [match]
     }
 
-    private func wallpaperSwatch(_ wallpaper: WallpaperID, height: CGFloat, shelf: BackgroundShelf? = nil) -> some View {
-        ZStack(alignment: .topTrailing) {
-            wallpaperChoice(wallpaper, height: height)
-            if let shelf {
-                PlusButton(label: "Related \(shelf.title) backgrounds", presented: wallpaperPresented(wallpaper)) {
-                    categoryPopover(shelf)
-                }
-            }
-        }
+    private func wallpaperSwatch(_ wallpaper: WallpaperID, height: CGFloat) -> some View {
+        wallpaperChoice(wallpaper, height: height)
     }
 
     private func wallpaperChoice(_ wallpaper: WallpaperID, height: CGFloat) -> some View {
@@ -1168,19 +1306,18 @@ struct EditorView: View {
         }()
         return SelectWell(height: height, active: active, help: wallpaper.label, label: "Use \(wallpaper.label) background", action: {
             model.setBackground(.wallpaper(wallpaper))
-            backgroundPopover = nil
             gradientPopover = nil
         }) {
             wallpaperPreview(wallpaper)
         }
     }
 
-    private func gradientSwatch(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat), height: CGFloat, shelf: BackgroundShelf? = nil) -> some View {
+    private func gradientSwatch(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat), height: CGFloat, showsColours: Bool = false) -> some View {
         ZStack(alignment: .topTrailing) {
             gradientChoice(gradient, height: height)
-            if shelf != nil {
-                PlusButton(label: "Related linear backgrounds", presented: gradientPresented(gradient.name)) {
-                    categoryPopover(.linear)
+            if showsColours {
+                PlusButton(label: "Flat colours from \(gradient.name)", presented: gradientPresented(gradient.name)) {
+                    gradientColourPopover(gradient)
                 }
             }
         }
@@ -1195,7 +1332,6 @@ struct EditorView: View {
         }()
         return SelectWell(height: height, active: active, help: gradient.name, label: "Use \(gradient.name) background", action: {
             model.setBackground(.gradient(from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle))
-            backgroundPopover = nil
             gradientPopover = nil
         }) {
             LinearGradient(
@@ -1206,111 +1342,48 @@ struct EditorView: View {
         }
     }
 
-    private func wallpaperPresented(_ wallpaper: WallpaperID) -> Binding<Bool> {
-        Binding(
-            get: { backgroundPopover == wallpaper },
-            set: { on in
-                if on {
-                    gradientPopover = nil
-                    backgroundPopover = wallpaper
-                } else if backgroundPopover == wallpaper {
-                    backgroundPopover = nil
-                }
-            }
-        )
-    }
-
     private func gradientPresented(_ name: String) -> Binding<Bool> {
         Binding(
             get: { gradientPopover == name },
             set: { on in
-                if on {
-                    backgroundPopover = nil
-                    gradientPopover = name
-                } else if gradientPopover == name {
-                    gradientPopover = nil
-                }
+                gradientPopover = on ? name : (gradientPopover == name ? nil : gradientPopover)
             }
         )
     }
 
-    private func categoryPopover(_ shelf: BackgroundShelf) -> some View {
-        let count = shelf == .linear ? Presets.gradients.count : shelf.wallpapers.count
-        return VStack(alignment: .leading, spacing: 10) {
-            Text(shelf.title)
+    private func gradientColourPopover(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat)) -> some View {
+        let selected: String? = {
+            if case .color(let hex) = model.style.background { return hex }
+            return nil
+        }()
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(gradient.name)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(ink)
-                .accessibilityAddTraits(.isHeader)
-            popoverChoices(count: count) {
-                if shelf == .linear {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: thumbGap), GridItem(.flexible(), spacing: thumbGap)], spacing: thumbGap) {
-                        ForEach(Presets.gradients, id: \.name) { gradient in
-                            gradientChoice(gradient, height: 64)
-                        }
-                    }
-                } else {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: thumbGap), GridItem(.flexible(), spacing: thumbGap)], spacing: thumbGap) {
-                        ForEach(shelf.wallpapers) { wallpaper in
-                            wallpaperChoice(wallpaper, height: 64)
-                        }
-                    }
-                }
-            }
-            Button(action: {
-                backgroundPopover = nil
+            Text("FLAT COLOUR")
+                .font(.system(size: 10, weight: .semibold))
+                .kerning(0.6)
+                .foregroundColor(.secondary)
+            swatchRow(gradientStops(gradient), selected: selected) { hex in
+                model.setBackground(.color(hex))
                 gradientPopover = nil
-                backgroundShelf = shelf
-            }) {
-                Text("See all")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(accent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .help("See all \(shelf.title.lowercased()) backgrounds")
-            .accessibilityLabel("See all \(shelf.title.lowercased()) backgrounds")
         }
         .padding(12)
-        .frame(width: 248)
-        .onExitCommand {
-            backgroundPopover = nil
-            gradientPopover = nil
-        }
+        .frame(width: 180, alignment: .leading)
+        .onExitCommand { gradientPopover = nil }
     }
 
-    @ViewBuilder
-    private func popoverChoices<Content: View>(count: Int, @ViewBuilder content: () -> Content) -> some View {
-        if count > 6 {
-            ScrollView(.vertical) {
-                content()
-            }
-            .frame(height: 248)
-        } else {
-            content()
+    private func gradientStops(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat)) -> [String] {
+        var stops: [String] = []
+        for hex in [gradient.from, gradient.mid, gradient.to] where !stops.contains(hex) {
+            stops.append(hex)
         }
+        return stops
     }
 
     private func moreSwatch(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            ZStack {
-                Color.clear
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(ink)
-            }
-            .frame(height: thumbHeight)
-            .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.05)))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(PressFadeButtonStyle())
-        .help("More \(title.lowercased()) backgrounds")
-        .accessibilityLabel("More \(title.lowercased()) backgrounds")
+        LibraryMoreTile(title: title, action: action)
     }
 
     private func swatchStroke(_ active: Bool) -> some View {
@@ -1903,6 +1976,37 @@ private struct PlusButton<Popover: View>: View {
         .focused($focused)
         .onHover { hovering = $0 }
         .popover(isPresented: $presented, arrowEdge: .trailing) { popover }
+    }
+}
+
+private struct LibraryMoreTile: View {
+    var title: String
+    var action: () -> Void
+    @State private var hovering = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Color.clear
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(ink)
+            }
+            .frame(height: thumbHeight)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(hovering ? Color.black.opacity(0.08) : Color.black.opacity(0.05)))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(focused ? accent : Color.black.opacity(hovering ? 0.28 : 0.08), lineWidth: focused ? 2 : 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .help("More \(title.lowercased()) backgrounds")
+        .accessibilityLabel("More \(title.lowercased()) backgrounds")
+        .focused($focused)
+        .onHover { hovering = $0 }
     }
 }
 

@@ -9,6 +9,11 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.43", notes: [
+            "The library uses larger screenshots, and the grid follows the window width.",
+            "Sort by most recent, oldest, or name. Rename, reveal, and delete are in the thumbnail menu.",
+            "Background categories collapse. Search finds one by name. More opens the rest, and a gradient's plus uses its colours as a flat background.",
+        ]),
         ChangelogEntry(version: "0.2.42", notes: [
             "Background names stay fully visible, and each swatch has a plus that opens the rest of that set.",
             "Padding, zoom, tilt, and layout presets are grouped more clearly.",
