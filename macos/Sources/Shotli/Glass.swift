@@ -11,7 +11,7 @@ enum ShotliGlass {
         case compact
     }
 
-    static let accent = Color(nsColor: NSColor(srgbRed: 74.0 / 255.0, green: 82.0 / 255.0, blue: 208.0 / 255.0, alpha: 1))
+    static let accent = Color(nsColor: NSColor(srgbRed: 18.0 / 255.0, green: 120.0 / 255.0, blue: 180.0 / 255.0, alpha: 1))
     static let ink = Color(nsColor: NSColor(srgbRed: 28.0 / 255.0, green: 30.0 / 255.0, blue: 36.0 / 255.0, alpha: 1))
     static let line = Color.black.opacity(0.12)
 
