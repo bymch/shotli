@@ -79,17 +79,18 @@ struct EditorView: View {
     @State private var magicBackgrounds: [MagicBackground] = []
     @State private var settingsSheet = false
     @ObservedObject private var settings = ShotliSettings.shared
+    @ObservedObject private var projectPrompt = ProjectPrompt.shared
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
 
     var body: some View {
         VStack(spacing: 0) {
-            if model.picture == nil {
+            if model.picture == nil && model.projectFolder == nil {
                 stage {
                     LibraryHome(onOpen: { model.openPanel() })
                 }
-            } else if showMotion {
+            } else if showMotion && model.picture != nil {
                 MotionStudio(model: model) { showMotion = false }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -103,6 +104,11 @@ struct EditorView: View {
                             GeometryReader { geo in
                                 CanvasView(model: model, viewport: geo.size)
                                     .frame(width: geo.size.width, height: geo.size.height)
+                                    .overlay {
+                                        if model.picture == nil {
+                                            emptyProject
+                                        }
+                                    }
                             }
                         }
                         .clipShape(RoundedRectangle(cornerRadius: ShotliGlass.radiusPanel, style: .continuous))
@@ -111,6 +117,7 @@ struct EditorView: View {
                                 .stroke(Color.black.opacity(0.06), lineWidth: 1)
                                 .allowsHitTesting(false)
                         )
+                        if model.picture != nil {
                         Button(action: { showMotion = true }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "move.3d")
@@ -127,6 +134,7 @@ struct EditorView: View {
                         .fixedSize(horizontal: true, vertical: true)
                         .help("Open Motion Studio")
                         .accessibilityLabel("Motion")
+                        }
                     }
                     .frame(minWidth: 360, idealWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
                     .layoutPriority(1)
@@ -161,6 +169,9 @@ struct EditorView: View {
                 gradientPopover = nil
             }
         }
+        .onChange(of: model.style) { _ in model.scheduleProjectSave() }
+        .onChange(of: model.annotations) { _ in model.scheduleProjectSave() }
+        .onChange(of: model.crop) { _ in model.scheduleProjectSave() }
         .onChange(of: settings.openRequest) { _ in
             if model.picture == nil {
                 LibraryModel.shared.showSettings()
@@ -172,13 +183,18 @@ struct EditorView: View {
             SettingsPane(onDone: { settingsSheet = false })
                 .frame(width: 560, height: 640)
         }
+        .sheet(isPresented: $projectPrompt.naming, onDismiss: { projectPrompt.cancel() }) {
+            NewProjectSheet(prompt: projectPrompt)
+        }
     }
 
     private var studioBar: some View {
         HStack(spacing: 12) {
             HStack(spacing: 6) {
-                if model.picture != nil {
+                if model.picture != nil || model.projectFolder != nil {
                     iconButton("chevron.left", help: "Library") { model.showLibrary() }
+                    projectTitle
+                    if model.picture != nil {
                     Button(action: { showTemplates = true }) {
                         HStack(spacing: 6) {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -197,6 +213,7 @@ struct EditorView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Templates")
+                    }
                 }
             }
             .padding(.leading, 8)
@@ -216,13 +233,16 @@ struct EditorView: View {
                     toolDock
                 }
             }
-            .frame(minWidth: 360, idealWidth: 520, maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(minWidth: 240, idealWidth: 520, maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .layoutPriority(1)
 
             if model.picture != nil {
-                exportButton
-                    .padding(.trailing, 8)
-                    .frame(minWidth: rightRailMin, idealWidth: rightRailIdeal, maxWidth: rightRailIdeal, alignment: .trailing)
+                HStack(spacing: 8) {
+                    saveProjectButton
+                    exportButton
+                }
+                .padding(.trailing, 8)
+                .fixedSize(horizontal: true, vertical: false)
             } else {
                 Color.clear
                     .frame(minWidth: rightRailMin, idealWidth: rightRailIdeal, maxWidth: rightRailIdeal)
@@ -234,6 +254,68 @@ struct EditorView: View {
         .padding(.horizontal, ShotliGlass.pageInset)
         .padding(.top, 34)
         .padding(.bottom, 8)
+    }
+
+    private var projectTitle: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(model.projectName ?? "Screenshot")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(ink)
+                .lineLimit(1)
+            if !model.saveState.label.isEmpty {
+                Text(model.saveState.label)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(model.saveState.isFailure ? Color(nsColor: NSColor(hex: "#C13636")!) : .secondary)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var emptyProject: some View {
+        VStack(spacing: 8) {
+            Text(model.projectName ?? "Project")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(ink)
+            Text("Drop a screenshot here, or open one. Shotli saves it in this project.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+            Button(action: { model.openPanel() }) {
+                Text("Open Screenshot")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: 30)
+                    .background(Capsule().fill(accent))
+            }
+            .buttonStyle(PressFadeButtonStyle())
+            .padding(.top, 4)
+        }
+        .padding(24)
+        .frame(maxWidth: 360)
+    }
+
+    private var saveProjectButton: some View {
+        Button(action: { model.showSaveProjects = true }) {
+            HStack(spacing: 6) {
+                Image(systemName: "folder.badge.plus")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Save to Project")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundColor(ink)
+            .padding(.horizontal, 12)
+            .frame(height: 32)
+            .shotliCapsuleChip()
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .help("Save this composition into a project folder")
+        .accessibilityLabel("Save to Project")
+        .popover(isPresented: $model.showSaveProjects, arrowEdge: .bottom) {
+            SaveProjectPopover(model: model)
+        }
     }
 
     private var exportButton: some View {

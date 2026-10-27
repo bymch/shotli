@@ -87,6 +87,9 @@ final class LibraryModel: ObservableObject {
     @Published var query = ""
     @Published var order: LibraryOrder = .newest
     @Published var selected: Set<String> = []
+    @Published var showingProjects = true
+    @Published var projects: [ProjectRecord] = []
+    @Published var visibleProjects: [ProjectRecord] = []
 
     private var cache: [LibrarySource: [LibraryShot]] = [:]
     private var notes: [LibrarySource: String] = [:]
@@ -98,20 +101,24 @@ final class LibraryModel: ObservableObject {
     }
 
     func select(_ source: LibrarySource) {
-        let leavingSettings = showingSettings || kindFilter != nil
+        let leavingSettings = showingSettings || kindFilter != nil || showingProjects
         showingSettings = false
         kindFilter = nil
-        guard source != self.source else {
-            if leavingSettings {
-                clearSelection()
-                apply()
-            }
-            return
-        }
+        showingProjects = false
+        guard source != self.source || leavingSettings else { return }
         self.source = source
         clearSelection()
         apply()
         warm(refreshToken)
+    }
+
+    func showProjects() {
+        let leaving = !showingProjects || showingSettings || kindFilter != nil
+        showingSettings = false
+        kindFilter = nil
+        showingProjects = true
+        if leaving { clearSelection() }
+        apply()
     }
 
     func showSettings() {
@@ -122,8 +129,9 @@ final class LibraryModel: ObservableObject {
     }
 
     func selectKind(_ kind: ShotKind) {
-        let same = kindFilter == kind && !showingSettings
+        let same = kindFilter == kind && !showingSettings && !showingProjects
         showingSettings = false
+        showingProjects = false
         kindFilter = kind
         clearSelection()
         if same { return }
@@ -164,9 +172,20 @@ final class LibraryModel: ObservableObject {
     func step(_ offset: Int) {
         guard !showingSettings, kindFilter == nil else { return }
         let order = LibrarySource.allCases
+        if showingProjects {
+            if offset > 0 { select(order[0]) } else { select(order[order.count - 1]) }
+            return
+        }
         guard let index = order.firstIndex(of: source) else { return }
-        let next = order[(index + offset + order.count) % order.count]
-        select(next)
+        if offset < 0, index == 0 {
+            showProjects()
+            return
+        }
+        if offset > 0, index == order.count - 1 {
+            showProjects()
+            return
+        }
+        select(order[index + offset])
     }
 
     func updateQuery(_ value: String) {
@@ -179,15 +198,18 @@ final class LibraryModel: ObservableObject {
         let token = refreshToken
         DispatchQueue.global(qos: .userInitiated).async {
             let catalog = LibraryScan.catalog()
+            let listed = ProjectStore.list()
             DispatchQueue.main.async {
                 guard token == self.refreshToken else { return }
                 self.cache = catalog.shots
                 self.notes = catalog.notes
+                self.projects = listed
                 self.counts = Dictionary(uniqueKeysWithValues: LibrarySource.allCases.map { source in
                     (source, catalog.shots[source]?.count ?? 0)
                 })
                 let keep = Set(catalog.shots.values.flatMap { $0.map(\.id) })
-                self.previews = self.previews.filter { keep.contains($0.key) }
+                let projectIDs = Set(listed.map(\.id))
+                self.previews = self.previews.filter { keep.contains($0.key) || projectIDs.contains($0.key) }
                 let everything = self.allShots()
                 let readings = ShotSorter.shared.knownReadings(in: everything)
                 self.kinds = Dictionary(uniqueKeysWithValues: readings.map { ($0.key, $0.value.kind) })
@@ -197,6 +219,7 @@ final class LibraryModel: ObservableObject {
                 })
                 self.apply()
                 self.warm(token)
+                self.warmProjects(token)
                 ShotSorter.shared.schedule(everything)
             }
         }
@@ -204,13 +227,25 @@ final class LibraryModel: ObservableObject {
 
     private func apply() {
         recomputeKindCounts()
+        applyProjects()
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if showingProjects && kindFilter == nil && !showingSettings {
+            if !needle.isEmpty {
+                message = visibleProjects.isEmpty ? "Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”." : nil
+            } else {
+                message = visibleProjects.isEmpty ? "No projects yet." : nil
+            }
+            let visible = Set(visibleProjects.map(\.id))
+            selected = selected.intersection(visible)
+            if let anchor = selectionAnchor, !visible.contains(anchor) { selectionAnchor = selected.first }
+            return
+        }
         let base: [LibraryShot]
         if let kindFilter {
             base = allShots().filter { kinds[$0.id] == kindFilter }.sorted { $0.modified > $1.modified }
         } else {
             base = cache[source] ?? []
         }
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let searched = needle.isEmpty ? base : base.filter {
             $0.name.lowercased().contains(needle) || (texts[$0.id]?.lowercased().contains(needle) ?? false)
         }
@@ -225,6 +260,23 @@ final class LibraryModel: ObservableObject {
         let visible = Set(shots.map(\.id))
         selected = selected.intersection(visible)
         if let anchor = selectionAnchor, !visible.contains(anchor) { selectionAnchor = selected.first }
+    }
+
+    private func applyProjects() {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let matched = needle.isEmpty ? projects : projects.filter { $0.name.lowercased().contains(needle) }
+        visibleProjects = orderedProjects(matched)
+    }
+
+    private func orderedProjects(_ items: [ProjectRecord]) -> [ProjectRecord] {
+        switch order {
+        case .newest:
+            return items.sorted { $0.modified > $1.modified }
+        case .oldest:
+            return items.sorted { $0.modified < $1.modified }
+        case .name:
+            return items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
     }
 
     private func recomputeKindCounts() {
@@ -320,20 +372,6 @@ final class LibraryModel: ObservableObject {
         refresh()
     }
 
-    func createProject() -> URL? {
-        let folder = LibraryFolders.shotli
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let url = LibraryScan.uniqueProjectURL(in: folder)
-            try LibraryScan.writeBlank(to: url)
-            refresh()
-            return url
-        } catch {
-            tell("Couldn't create a project", "Shotli couldn't save a new file in Pictures/Shotli.")
-            return nil
-        }
-    }
-
     func selectedShot() -> LibraryShot? {
         if let anchor = selectionAnchor, let shot = shots.first(where: { $0.id == anchor }) { return shot }
         return shots.first { selected.contains($0.id) }
@@ -382,6 +420,11 @@ final class LibraryModel: ObservableObject {
     }
 
     func selectAll() {
+        if showingProjects && kindFilter == nil && !showingSettings {
+            selected = Set(visibleProjects.map(\.id))
+            if selectionAnchor == nil { selectionAnchor = visibleProjects.first?.id }
+            return
+        }
         selected = Set(shots.map(\.id))
         if selectionAnchor == nil { selectionAnchor = shots.first?.id }
     }
@@ -402,7 +445,46 @@ final class LibraryModel: ObservableObject {
         }
     }
 
+    func selectedProject() -> ProjectRecord? {
+        if let anchor = selectionAnchor, let project = visibleProjects.first(where: { $0.id == anchor }) { return project }
+        return visibleProjects.first { selected.contains($0.id) }
+    }
+
+    func renameProject(_ project: ProjectRecord) {
+        let alert = NSAlert()
+        alert.messageText = "Rename project"
+        alert.informativeText = "This renames the project folder. Screenshots outside it stay where they are."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.stringValue = project.name
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let proposed = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let destination = try ProjectStore.rename(folder: project.folder, to: proposed)
+            EditorModel.shared.noteProjectMoved(from: project.folder, to: destination, name: destination.lastPathComponent)
+            refresh()
+        } catch {
+            tell("Couldn't rename", error.localizedDescription)
+        }
+    }
+
+    func duplicateProject(_ project: ProjectRecord) {
+        do {
+            _ = try ProjectStore.duplicate(folder: project.folder)
+            refresh()
+        } catch {
+            tell("Couldn't duplicate", error.localizedDescription)
+        }
+    }
+
     func deleteSelected() {
+        if showingProjects && kindFilter == nil && !showingSettings {
+            deleteSelectedProjects()
+            return
+        }
         let chosen = shots.filter { selected.contains($0.id) }
         guard !chosen.isEmpty else { return }
         if ShotliSettings.shared.confirmDelete {
@@ -410,7 +492,7 @@ final class LibraryModel: ObservableObject {
             alert.messageText = "Are you sure?"
             alert.informativeText = chosen.count == 1
                 ? "“\(chosen[0].title)” will be moved to the Trash."
-                : "\(chosen.count) projects will be moved to the Trash."
+                : "\(chosen.count) screenshots will be moved to the Trash."
             alert.alertStyle = .warning
             alert.addButton(withTitle: "Move to Trash")
             alert.addButton(withTitle: "Cancel")
@@ -434,6 +516,35 @@ final class LibraryModel: ObservableObject {
         refresh()
     }
 
+    private func deleteSelectedProjects() {
+        let chosen = visibleProjects.filter { selected.contains($0.id) }
+        guard !chosen.isEmpty else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        if chosen.count == 1 {
+            alert.messageText = "Delete “\(chosen[0].name)”?"
+            let count = chosen[0].compositions
+            let noun = count == 1 ? "composition" : "compositions"
+            alert.informativeText = "The project folder will be moved to the Trash, including its \(count) \(noun), copied screenshots, and exports. Files you still have outside this folder stay where they are."
+        } else {
+            alert.messageText = "Delete \(chosen.count) projects?"
+            alert.informativeText = "Each project folder will be moved to the Trash, including its compositions, copied screenshots, and exports. Files outside those folders stay where they are."
+        }
+        alert.addButton(withTitle: "Move to Trash")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        for project in chosen {
+            do {
+                try ProjectStore.delete(folder: project.folder)
+            } catch {
+                tell("Couldn't delete", error.localizedDescription)
+            }
+        }
+        clearSelection()
+        refresh()
+    }
+
     private func warm(_ token: Int) {
         var seen = Set<String>()
         let visible = shots
@@ -447,6 +558,20 @@ final class LibraryModel: ObservableObject {
                 DispatchQueue.main.async {
                     guard token == self.refreshToken else { return }
                     self.previews[shot.id] = preview
+                }
+            }
+        }
+    }
+
+    private func warmProjects(_ token: Int) {
+        let listed = visibleProjects
+        DispatchQueue.global(qos: .utility).async {
+            for project in listed {
+                guard token == self.refreshToken else { return }
+                guard let thumb = project.thumbnail, let preview = LibraryScan.preview(thumb) else { continue }
+                DispatchQueue.main.async {
+                    guard token == self.refreshToken else { return }
+                    self.previews[project.id] = preview
                 }
             }
         }
@@ -490,7 +615,7 @@ enum LibraryFolders {
     }
 }
 
-private enum LibraryScan {
+enum LibraryScan {
     struct Result {
         var shots: [LibraryShot]
         var message: String?
@@ -527,56 +652,6 @@ private enum LibraryScan {
             frost: NSImage(cgImage: softened, size: NSSize(width: softened.width, height: softened.height)),
             tint: tint
         )
-    }
-
-    static func uniqueProjectURL(in folder: URL) -> URL {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_GB")
-        formatter.dateFormat = "d MMM, HH.mm"
-        let stamp = formatter.string(from: Date())
-        var url = folder.appendingPathComponent("Project \(stamp).png")
-        var extra = 2
-        while FileManager.default.fileExists(atPath: url.path) {
-            url = folder.appendingPathComponent("Project \(stamp) \(extra).png")
-            extra += 1
-        }
-        return url
-    }
-
-    static func writeBlank(to url: URL) throws {
-        let width = 1280
-        let height = 800
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { throw CocoaError(.fileWriteUnknown) }
-        context.setFillColor(ShotliGlass.workspaceTop.cgColor)
-        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        let colors = [ShotliGlass.workspaceTop.cgColor, ShotliGlass.workspaceBottom.cgColor] as CFArray
-        if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
-            context.drawLinearGradient(
-                gradient,
-                start: CGPoint(x: 0, y: CGFloat(height)),
-                end: CGPoint(x: CGFloat(width), y: 0),
-                options: []
-            )
-        }
-        context.setFillColor(NSColor.white.withAlphaComponent(0.42).cgColor)
-        let board = CGRect(x: 96, y: 72, width: CGFloat(width - 192), height: CGFloat(height - 144))
-        let path = CGPath(roundedRect: board, cornerWidth: 28, cornerHeight: 28, transform: nil)
-        context.addPath(path)
-        context.fillPath()
-        guard let image = context.makeImage() else { throw CocoaError(.fileWriteUnknown) }
-        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        CGImageDestinationAddImage(destination, image, nil)
-        if !CGImageDestinationFinalize(destination) { throw CocoaError(.fileWriteUnknown) }
     }
 
     private static let ciContext = CIContext(options: nil)
@@ -708,7 +783,13 @@ struct LibraryHome: View {
                 onDelete: { if !library.showingSettings { library.deleteSelected() } },
                 onClear: { if !library.showingSettings { library.clearSelection() } },
                 onOpen: {
-                    guard !library.showingSettings, let shot = library.selectedShot() else { return false }
+                    guard !library.showingSettings else { return false }
+                    if library.showingProjects && library.kindFilter == nil {
+                        guard let project = library.selectedProject() else { return false }
+                        EditorModel.shared.openProject(at: project.folder)
+                        return true
+                    }
+                    guard let shot = library.selectedShot() else { return false }
                     EditorModel.shared.load(url: shot.url)
                     return true
                 }
@@ -722,6 +803,15 @@ struct LibraryHome: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Projects")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 16)
+                        .padding(.bottom, 6)
+                    sidebarRow("Projects", symbol: "folder", count: library.projects.count, selected: library.showingProjects && !library.showingSettings && library.kindFilter == nil) {
+                        library.showProjects()
+                    }
+                    Text("Screenshots")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 14)
@@ -751,6 +841,7 @@ struct LibraryHome: View {
         .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: library.source)
         .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: library.showingSettings)
         .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: library.kindFilter)
+        .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: library.showingProjects)
     }
 
     private var settingsButton: some View {
@@ -760,7 +851,7 @@ struct LibraryHome: View {
     }
 
     private func sourceButton(_ source: LibrarySource) -> some View {
-        let selected = library.source == source && !library.showingSettings && library.kindFilter == nil
+        let selected = library.source == source && !library.showingSettings && library.kindFilter == nil && !library.showingProjects
         return sidebarRow(source.title, symbol: source.symbol, count: library.counts[source] ?? 0, selected: selected) {
             library.select(source)
         }
@@ -824,25 +915,20 @@ struct LibraryHome: View {
         VStack(alignment: .leading, spacing: 0) {
             libraryToolbar
             Group {
-                if library.shots.isEmpty {
+                if library.showingProjects && library.kindFilter == nil {
+                    if library.visibleProjects.isEmpty {
+                        empty
+                    } else {
+                        browserScroll { projectBrowser }
+                    }
+                } else if library.shots.isEmpty {
                     empty
                 } else {
-                    ScrollView {
-                        shotBrowser
-                            .padding(.horizontal, 22)
-                            .padding(.top, 8)
-                            .padding(.bottom, 28)
-                    }
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear.preference(key: LibraryWidthKey.self, value: geo.size.width)
-                        }
-                    )
-                    .onPreferenceChange(LibraryWidthKey.self) { browserWidth = $0 }
+                    browserScroll { shotBrowser }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .id(library.kindFilter?.rawValue ?? library.source.rawValue)
+            .id(library.showingProjects ? "projects" : (library.kindFilter?.rawValue ?? library.source.rawValue))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ShotliWorkspaceWash())
@@ -852,7 +938,7 @@ struct LibraryHome: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(library.kindFilter?.title ?? library.source.title)
+                    Text(libraryTitle)
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(ShotliGlass.ink)
                         .lineLimit(1)
@@ -882,10 +968,30 @@ struct LibraryHome: View {
         .padding(.bottom, 14)
     }
 
+    private var libraryTitle: String {
+        if library.showingProjects && library.kindFilter == nil { return "Projects" }
+        return library.kindFilter?.title ?? library.source.title
+    }
+
+    private func browserScroll<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ScrollView {
+            content()
+                .padding(.horizontal, 22)
+                .padding(.top, 8)
+                .padding(.bottom, 28)
+        }
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: LibraryWidthKey.self, value: geo.size.width)
+            }
+        )
+        .onPreferenceChange(LibraryWidthKey.self) { browserWidth = $0 }
+    }
+
     private var newProjectButton: some View {
         Button(action: {
-            if let url = library.createProject() {
-                EditorModel.shared.load(url: url)
+            ProjectPrompt.shared.ask { folder in
+                EditorModel.shared.openProject(at: folder)
             }
         }) {
             HStack(spacing: 6) {
@@ -900,7 +1006,7 @@ struct LibraryHome: View {
             .background(Capsule().fill(ShotliGlass.accent))
         }
         .buttonStyle(.plain)
-        .help("Start a blank project in Pictures/Shotli")
+        .help("Create a project folder")
         .accessibilityLabel("New project")
     }
 
@@ -1023,6 +1129,45 @@ struct LibraryHome: View {
         return (columns, size)
     }
 
+    private var projectBrowser: some View {
+        let width = max(browserWidth - 44, 180)
+        let metrics = gridMetrics(for: width)
+        return Group {
+            if layout == .grid {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(metrics.card), spacing: cardGap), count: metrics.columns), alignment: .leading, spacing: 36) {
+                    projectList()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    projectList()
+                }
+            }
+        }
+    }
+
+    private func projectList() -> some View {
+        ForEach(library.visibleProjects) { project in
+            ProjectCard(
+                project: project,
+                preview: library.previews[project.id],
+                selected: library.selected.contains(project.id),
+                showsCheck: !library.selected.isEmpty,
+                layout: layout,
+                onChoose: { library.choose(project.id) },
+                onToggle: { library.toggle(project.id) },
+                onOpen: { EditorModel.shared.openProject(at: project.folder) },
+                onRename: { library.renameProject(project) },
+                onDuplicate: { library.duplicateProject(project) },
+                onDelete: {
+                    if !library.selected.contains(project.id) { library.selectOnly(project.id) }
+                    library.deleteSelected()
+                },
+                onSelectAll: { library.selectAll() }
+            )
+        }
+    }
+
     private func shotList() -> some View {
         ForEach(library.shots) { shot in
             ShotCard(
@@ -1051,8 +1196,14 @@ struct LibraryHome: View {
     }
 
     private var headerDetail: String {
+        if library.showingProjects && library.kindFilter == nil {
+            let count = library.visibleProjects.count
+            let noun = count == 1 ? "project" : "projects"
+            if !library.selected.isEmpty { return "\(library.selected.count) selected · \(count) \(noun)" }
+            return "\(count) \(noun) · \(ShotliProjects.displayRoot)"
+        }
         let count = library.shots.count
-        let noun = count == 1 ? "project" : "projects"
+        let noun = count == 1 ? "screenshot" : "screenshots"
         if !library.selected.isEmpty { return "\(library.selected.count) selected · \(count) \(noun)" }
         if library.source == .screenshots,
            LibraryFolders.screenshots.standardizedFileURL.path == LibraryFolders.desktop.standardizedFileURL.path {
@@ -1112,7 +1263,9 @@ struct LibraryHome: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(ShotliGlass.ink)
                     .multilineTextAlignment(.center)
-                Text("Drop a PNG, JPEG, or WebP here, start a blank project, or open one from your Mac.")
+                Text(library.showingProjects && library.kindFilter == nil
+                     ? "Create a project, or open a screenshot and choose Save to Project."
+                     : "Drop a PNG, JPEG, or WebP here, or open one from your Mac.")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -1231,9 +1384,9 @@ private struct ShotCard: View {
             Button("Select All", action: onSelectAll)
             Button("Delete", action: onDelete)
         }
-        .help("\(shot.title)\nEdited \(shot.modified.formatted(date: .abbreviated, time: .shortened))")
+        .help(shot.title)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(shot.title), edited \(shot.modified.formatted(date: .abbreviated, time: .shortened)), \(badge)")
+        .accessibilityLabel("\(shot.title), \(badge)")
         .accessibilityAddTraits(.isButton)
         .accessibilityAddTraits(selected ? .isSelected : AccessibilityTraits())
         .accessibilityAction(.default) { onOpen() }
@@ -1296,20 +1449,153 @@ private struct ShotCard: View {
     }
 
     private var meta: some View {
-        HStack(spacing: 6) {
-            Text(badge)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(ShotliGlass.ink.opacity(0.72))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(Color.white.opacity(0.72)))
-            Text("Edited")
-            Text(shot.modified, style: .relative)
+        Text(badge)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(ShotliGlass.ink.opacity(0.72))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.white.opacity(0.72)))
+            .frame(maxWidth: .infinity, alignment: layout == .list ? .leading : .center)
+    }
+}
+
+private struct ProjectCard: View {
+    var project: ProjectRecord
+    var preview: LibraryPreview?
+    var selected: Bool
+    var showsCheck: Bool
+    var layout: LibraryLayout = .grid
+    var onChoose: () -> Void
+    var onToggle: () -> Void
+    var onOpen: () -> Void
+    var onRename: () -> Void
+    var onDuplicate: () -> Void
+    var onDelete: () -> Void
+    var onSelectAll: () -> Void
+    @State private var hovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if layout == .list {
+                HStack(spacing: 14) {
+                    document
+                        .frame(width: 72)
+                    VStack(alignment: .leading, spacing: 3) {
+                        fileName
+                        meta
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(rowFill))
+            } else {
+                VStack(spacing: 10) {
+                    document
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                    VStack(spacing: 3) {
+                        fileName
+                        meta
+                    }
+                    .padding(.horizontal, 8)
+                }
+                .padding(.bottom, 8)
+            }
         }
-        .font(.system(size: 11))
-        .foregroundColor(.secondary)
-        .lineLimit(1)
-        .frame(maxWidth: .infinity, alignment: layout == .list ? .leading : .center)
+        .frame(maxWidth: layout == .list ? .infinity : nil, alignment: .leading)
+        .overlay(alignment: .topLeading) { check }
+        .contentShape(Rectangle())
+        .gesture(
+            TapGesture(count: 2).onEnded { onOpen() }
+                .exclusively(before: TapGesture(count: 1).onEnded { onChoose() })
+        )
+        .onHover { hovering in
+            if reduceMotion {
+                hovered = hovering
+            } else {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.74)) {
+                    hovered = hovering
+                }
+            }
+        }
+        .contextMenu {
+            Button("Open", action: onOpen)
+            Button("Rename", action: onRename)
+            Button("Duplicate", action: onDuplicate)
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([project.folder])
+            }
+            Divider()
+            Button("Select All", action: onSelectAll)
+            Button("Delete", action: onDelete)
+        }
+        .help(project.name)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(project.name), \(badge)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(selected ? .isSelected : AccessibilityTraits())
+        .accessibilityAction(.default) { onOpen() }
+    }
+
+    private var rowFill: Color {
+        if selected { return ShotliGlass.accent.opacity(0.08) }
+        if hovered { return Color.white.opacity(0.45) }
+        return Color.clear
+    }
+
+    private var document: some View {
+        GlassDocumentIcon(
+            image: preview?.image,
+            frost: preview?.frost,
+            tint: Color(nsColor: preview?.tint ?? NSColor(srgbRed: 0.80, green: 0.84, blue: 0.91, alpha: 1)),
+            style: layout == .list ? .compact : .standard,
+            lifted: hovered,
+            selected: selected
+        )
+    }
+
+    @ViewBuilder
+    private var check: some View {
+        if showsCheck || hovered || selected {
+            Button(action: onToggle) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(selected ? ShotliGlass.accent : Color.white)
+                    .shadow(color: Color.black.opacity(0.28), radius: 2, y: 1)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(8)
+            .help(selected ? "Deselect" : "Select")
+        }
+    }
+
+    private var fileName: some View {
+        Text(project.name)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundColor(ShotliGlass.ink)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(maxWidth: .infinity, alignment: layout == .list ? .leading : .center)
+    }
+
+    private var badge: String {
+        if project.compositions == 0 { return "Empty" }
+        if project.compositions == 1 { return "1 composition" }
+        return "\(project.compositions) compositions"
+    }
+
+    private var meta: some View {
+        Text(badge)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(ShotliGlass.ink.opacity(0.72))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.white.opacity(0.72)))
+            .frame(maxWidth: .infinity, alignment: layout == .list ? .leading : .center)
     }
 }
 

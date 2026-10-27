@@ -26,7 +26,7 @@ The first time you capture, macOS asks for Screen & System Audio Recording. That
 
 The first time you open it, macOS may say the developer cannot be verified. Control-click Shotli, choose **Open**, then choose **Open** again. I don't have an Apple developer account yet, so the app isn't notarized.
 
-You can also open a PNG, JPEG, or WebP from Finder with Shotli, or drop it on the window. The home screen lists recent pictures from the Desktop, Pictures, the Screenshots folder, and `Pictures/Shotli`. Captures from the menu bar are saved into `Pictures/Shotli`. If you just want to try the tools, open **Sample**.
+You can also open a PNG, JPEG, or WebP from Finder with Shotli, or drop it on the window. The home screen opens on Projects. Each project is a folder in `~/Library/Application Support/Shotli/Projects`, with `project.json`, `Screenshots`, `Assets`, and `Exports`. Captures from the menu bar still land in `Pictures/Shotli` and open in the editor without a project until you choose **Save to Project**. If you just want to try the tools, open **Sample**.
 
 ## Updates
 
@@ -43,14 +43,15 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - Import a PNG, JPEG, or WebP file, drop it on the window, or paste an image.
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
 - Presets set the background, padding, corner radius, shadow and frame together.
-- The library shows each picture as a glass document. The thumbnail sits behind the page, and the folded corner is part of that page. The number of columns follows the window. Search, sort, and the grid or list control are in the toolbar. Right-click a card to rename, duplicate, reveal it in Finder, or delete it. New project saves a blank canvas in Pictures/Shotli and opens it.
+- The library opens on Projects. Each card is a real folder: the name, a thumbnail from the latest composition, and how many compositions are inside. Search, sort, and the grid or list control are in the toolbar. Right-click a card to rename, duplicate, reveal it in Finder, or delete it. Delete moves that folder to the Trash and says so. New project asks for a name first and only creates the folder when you confirm.
+- **Save to Project**, beside Export and Copy, writes the editable composition into a project and copies the screenshot in. It does not export a file or touch the clipboard. Export still asks where to put the rendered PNG. Copy still puts that render on the clipboard.
 - Backgrounds stay at the top of the mockup panel. Each row shows three, and the headings collapse. More opens the rest of that set over the picture. The plus on a linear gradient applies one of its colours as a flat background.
 - The editor is three columns on a cool workspace. The toolbar, side panels, and overlays are translucent glass. The picture in the middle is not. The left side is the mockup: card style, corners, shadow, light, and hide mockup. Zoom and layout presets are on the right. Drawing tools are along the top. The back arrow returns to your screenshots.
 - Templates, at the top left, opens a gallery. Each one sets a background, a position, and an angle. Product shots use studio sweeps. Abstract colour uses bloom, tide, citrus, and the rest. Angled ones lean the screenshot so the background stays in frame.
 - Fit keeps the whole screenshot in the window. Zooming out makes the picture smaller, and the background colour still fills the stage. Canvas width and height are in the panel.
 - Pixelate and blur paint into the exported image. They are not a separate overlay.
 - Crop from the toolbar, then drag on the screenshot. Reset crop is in Layout.
-- **Export PNG** asks where to save. The file is the composition only: background, frame, shadow, annotations and redactions. The glass toolbar and panels are not included.
+- **Export PNG** asks where to save and does not replace a file unless you confirm it in the save panel. The file is the composition only: background, frame, shadow, annotations and redactions. The glass toolbar and panels are not included. A project remembers the same edits in `project.json`, so reopening it restores the composition rather than only a flattened PNG.
 - **Motion**, under the picture, opens Motion Studio. Float, Perspective, Focus, Drift, Orbit, and Reveal move that screenshot on its background. Duration, speed, and loop sit in the inspector. Adjust holds movement, rotation, zoom, perspective, shadow, and background travel. Export video writes a 1080p H.264 MP4, and an optional music file is trimmed into it. The still PNG export stays where it was.
 
 Images larger than 25 MB are refused. Images longer than 4096px on the long edge are scaled down before editing, and export uses that scaled size.

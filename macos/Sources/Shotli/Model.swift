@@ -454,11 +454,24 @@ final class EditorModel: ObservableObject {
     @Published var zoomMultiplier: CGFloat = 1
     @Published var zoomSetRequest = 0
     var zoomSetValue: CGFloat = 1
+    @Published var projectFolder: URL?
+    @Published var projectName: String?
+    @Published var saveState: ProjectSaveState = .idle
+    @Published var showSaveProjects = false
+    var projectID: String?
+    var compositionID: String?
 
     private var undoStack: [Snapshot] = []
     private var redoStack: [Snapshot] = []
     private var gestureStart: Snapshot?
     private var textUndoID: String?
+    private var sourceOrigin: URL?
+    private var sourceData: Data?
+    private var sourceSHA: String?
+    private var sourceFileName: String?
+    private var sourceRelative: String?
+    private var quietUntil = Date.distantPast
+    private var saveTicket = 0
 
     private init() {}
 
@@ -477,6 +490,11 @@ final class EditorModel: ObservableObject {
     }
 
     func load(url: URL) {
+        if let message = flushBoundSave() {
+            notice = message
+            saveState = .failed(message)
+            return
+        }
         let accessed = url.startAccessingSecurityScopedResource()
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
         guard let data = try? Data(contentsOf: url) else {
@@ -491,10 +509,16 @@ final class EditorModel: ObservableObject {
             notice = "Use a PNG, JPEG, or WebP image."
             return
         }
-        replacePicture(loaded)
+        rememberSource(data, name: url.lastPathComponent, origin: url)
+        replacePicture(loaded, adopting: projectFolder != nil)
     }
 
     func loadImageData(_ data: Data, name: String) {
+        if let message = flushBoundSave() {
+            notice = message
+            saveState = .failed(message)
+            return
+        }
         if data.count > maxBytes {
             notice = "That image is over 25 MB. Choose a smaller file."
             return
@@ -503,10 +527,20 @@ final class EditorModel: ObservableObject {
             notice = "Use a PNG, JPEG, or WebP image."
             return
         }
-        replacePicture(loaded)
+        if let png = pngData(loaded.image) {
+            rememberSource(png, name: name, origin: nil)
+        } else {
+            rememberSource(data, name: name, origin: nil)
+        }
+        replacePicture(loaded, adopting: projectFolder != nil)
     }
 
     func pasteImage() {
+        if let message = flushBoundSave() {
+            notice = message
+            saveState = .failed(message)
+            return
+        }
         let board = NSPasteboard.general
         guard let objects = board.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
               let image = objects.first,
@@ -515,14 +549,32 @@ final class EditorModel: ObservableObject {
             notice = "Clipboard doesn't contain an image."
             return
         }
-        replacePicture(loaded)
+        if let png = pngData(loaded.image) {
+            rememberSource(png, name: "Pasted image.png", origin: nil)
+        }
+        replacePicture(loaded, adopting: projectFolder != nil)
     }
 
     func useSample() {
-        replacePicture(LoadedPicture(image: sampleScreenshot(), name: "Sample.png", scaled: false))
+        if let message = flushBoundSave() {
+            notice = message
+            saveState = .failed(message)
+            return
+        }
+        let image = sampleScreenshot()
+        if let png = pngData(image) {
+            rememberSource(png, name: "Sample.png", origin: nil)
+        }
+        replacePicture(LoadedPicture(image: image, name: "Sample.png", scaled: false), adopting: projectFolder != nil)
     }
 
     func showLibrary() {
+        if let message = flushBoundSave() {
+            notice = message
+            saveState = .failed(message)
+            return
+        }
+        quietChanges()
         picture = nil
         crop = nil
         annotations = []
@@ -532,6 +584,17 @@ final class EditorModel: ObservableObject {
         gestureStart = nil
         textUndoID = nil
         notice = nil
+        projectFolder = nil
+        projectID = nil
+        projectName = nil
+        compositionID = nil
+        sourceOrigin = nil
+        sourceData = nil
+        sourceSHA = nil
+        sourceFileName = nil
+        sourceRelative = nil
+        saveState = .idle
+        showSaveProjects = false
         refreshHistory()
         LibraryModel.shared.refresh()
     }
@@ -545,7 +608,13 @@ final class EditorModel: ObservableObject {
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "shotli-\(safe.isEmpty ? "screenshot" : safe).png"
         panel.title = "Export PNG"
-        panel.directoryURL = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+        if let folder = projectFolder {
+            let exports = folder.appendingPathComponent("Exports", isDirectory: true)
+            try? FileManager.default.createDirectory(at: exports, withIntermediateDirectories: true)
+            panel.directoryURL = exports
+        } else {
+            panel.directoryURL = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+        }
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard let image = renderComposition(picture: picture, crop: crop, style: style, annotations: annotations, draft: nil, interactive: false) else {
             notice = "Couldn't create the PNG."
@@ -922,7 +991,8 @@ final class EditorModel: ObservableObject {
         return (numbers.max() ?? 0) + 1
     }
 
-    private func replacePicture(_ loaded: LoadedPicture) {
+    private func replacePicture(_ loaded: LoadedPicture, adopting: Bool) {
+        quietChanges()
         picture = loaded
         crop = nil
         annotations = []
@@ -931,9 +1001,306 @@ final class EditorModel: ObservableObject {
         redoStack = []
         gestureStart = nil
         textUndoID = nil
+        compositionID = nil
+        sourceRelative = nil
         refreshHistory()
         fitRequest += 1
-        notice = loaded.scaled ? "Scaled to 4096px on the long edge so editing stays responsive." : nil
+        if adopting, projectFolder != nil {
+            commitNewComposition(scaled: loaded.scaled)
+        } else {
+            if projectFolder == nil {
+                projectID = nil
+                projectName = nil
+            }
+            saveState = .unsaved
+            notice = loaded.scaled ? "Scaled to 4096px on the long edge so editing stays responsive." : nil
+        }
+    }
+
+    func openProject(at folder: URL) {
+        if let message = flushBoundSave() {
+            notice = message
+            saveState = .failed(message)
+            return
+        }
+        do {
+            let file = try ProjectStore.read(folder)
+            quietChanges()
+            projectFolder = folder
+            projectID = file.id
+            projectName = file.name
+            showSaveProjects = false
+            guard let latest = file.compositions.max(by: { ProjectStore.date($0.modified) < ProjectStore.date($1.modified) }) else {
+                picture = nil
+                crop = nil
+                annotations = []
+                selectedID = nil
+                undoStack = []
+                redoStack = []
+                gestureStart = nil
+                textUndoID = nil
+                compositionID = nil
+                clearSource()
+                saveState = .saved
+                notice = nil
+                refreshHistory()
+                return
+            }
+            try apply(latest, in: folder)
+            saveState = .saved
+            notice = nil
+        } catch {
+            saveState = .failed(error.localizedDescription)
+            notice = error.localizedDescription
+        }
+    }
+
+    func saveCurrent(into folder: URL) {
+        guard picture != nil else {
+            let message = "Open a screenshot before saving it to a project."
+            saveState = .failed(message)
+            notice = message
+            return
+        }
+        let same = projectFolder?.standardizedFileURL.path == folder.standardizedFileURL.path
+        if !same, let message = flushBoundSave() {
+            notice = message
+            return
+        }
+        saveTicket += 1
+        do {
+            let file = try ProjectStore.read(folder)
+            guard var draft = makeDraft(id: same ? compositionID : nil, reuse: same ? sourceRelative : nil) else {
+                throw ProjectError.writeFailed("Couldn't save this screenshot.")
+            }
+            ensureSource(&draft)
+            let outcome = try ProjectStore.saveComposition(draft, in: folder)
+            quietChanges()
+            projectFolder = folder
+            projectID = file.id
+            projectName = outcome.file.name
+            compositionID = outcome.compositionID
+            sourceRelative = outcome.relative
+            if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
+                sourceOrigin = url
+            }
+            sourceData = nil
+            saveState = .saved
+            notice = "Saved to \(outcome.file.name)"
+            LibraryModel.shared.refresh()
+        } catch {
+            saveState = .failed(error.localizedDescription)
+            notice = error.localizedDescription
+        }
+    }
+
+    func scheduleProjectSave() {
+        if Date() < quietUntil { return }
+        guard picture != nil else { return }
+        guard let folder = projectFolder, let compositionID else {
+            if !saveState.isFailure { saveState = .unsaved }
+            return
+        }
+        saveTicket += 1
+        let ticket = saveTicket
+        let boundID = compositionID
+        saveState = .saving
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            self?.performSave(ticket: ticket, folder: folder, compositionID: boundID, announce: false)
+        }
+    }
+
+    func noteProjectMoved(from old: URL, to new: URL, name: String) {
+        guard let current = projectFolder, current.standardizedFileURL.path == old.standardizedFileURL.path else { return }
+        projectFolder = new
+        projectName = name
+        if let relative = sourceRelative, let url = try? ProjectStore.resolve(relative, in: new) {
+            sourceOrigin = url
+        }
+    }
+
+    func quietChanges() {
+        quietUntil = Date().addingTimeInterval(0.35)
+    }
+
+    @discardableResult
+    func flushBoundSave() -> String? {
+        saveTicket += 1
+        guard let folder = projectFolder, let compositionID, picture != nil else { return nil }
+        guard var draft = makeDraft(id: compositionID, reuse: sourceRelative) else {
+            let message = "Couldn't save this project."
+            saveState = .failed(message)
+            return message
+        }
+        ensureSource(&draft)
+        do {
+            let outcome = try ProjectStore.saveComposition(draft, in: folder)
+            self.compositionID = outcome.compositionID
+            sourceRelative = outcome.relative
+            if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
+                sourceOrigin = url
+            }
+            sourceData = nil
+            saveState = .saved
+            return nil
+        } catch {
+            saveState = .failed(error.localizedDescription)
+            return error.localizedDescription
+        }
+    }
+
+    private func performSave(ticket: Int, folder: URL, compositionID: String, announce: Bool) {
+        guard ticket == saveTicket, self.compositionID == compositionID, projectFolder?.path == folder.path else { return }
+        guard var draft = makeDraft(id: compositionID, reuse: sourceRelative) else {
+            saveState = .failed("Couldn't save this project.")
+            notice = "Couldn't save this project."
+            return
+        }
+        ensureSource(&draft)
+        do {
+            let outcome = try ProjectStore.saveComposition(draft, in: folder)
+            guard ticket == saveTicket else { return }
+            self.compositionID = outcome.compositionID
+            sourceRelative = outcome.relative
+            if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
+                sourceOrigin = url
+            }
+            sourceData = nil
+            projectName = outcome.file.name
+            projectID = outcome.file.id
+            saveState = .saved
+            if announce { notice = "Saved to \(outcome.file.name)" }
+        } catch {
+            guard ticket == saveTicket else { return }
+            saveState = .failed(error.localizedDescription)
+            notice = error.localizedDescription
+        }
+    }
+
+    private func commitNewComposition(scaled: Bool) {
+        guard let folder = projectFolder else { return }
+        saveTicket += 1
+        guard var draft = makeDraft(id: nil, reuse: nil) else {
+            let message = "Couldn't save this screenshot."
+            saveState = .failed(message)
+            notice = message
+            return
+        }
+        ensureSource(&draft)
+        do {
+            let outcome = try ProjectStore.saveComposition(draft, in: folder)
+            quietChanges()
+            compositionID = outcome.compositionID
+            sourceRelative = outcome.relative
+            if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
+                sourceOrigin = url
+            }
+            sourceData = nil
+            projectName = outcome.file.name
+            projectID = outcome.file.id
+            saveState = .saved
+            if scaled {
+                notice = "Saved to \(outcome.file.name). Scaled to 4096px on the long edge."
+            } else {
+                notice = "Saved to \(outcome.file.name)"
+            }
+        } catch {
+            saveState = .failed(error.localizedDescription)
+            notice = error.localizedDescription
+        }
+    }
+
+    private func apply(_ composition: CompositionFile, in folder: URL) throws {
+        quietChanges()
+        if let relative = composition.source {
+            let url = try ProjectStore.resolve(relative, in: folder)
+            guard let data = try? Data(contentsOf: url) else { throw ProjectError.missingSource }
+            if data.count > maxBytes { throw ProjectError.unreadable("That screenshot is over 25 MB.") }
+            guard let loaded = decodeImage(data, name: url.lastPathComponent) else {
+                throw ProjectError.unreadable("The screenshot in this project couldn't be read.")
+            }
+            picture = loaded
+            sourceOrigin = url
+            sourceData = nil
+            sourceSHA = composition.sourceSHA256 ?? ProjectStore.sha256(data)
+            sourceFileName = url.lastPathComponent
+            sourceRelative = relative
+        } else {
+            picture = nil
+            clearSource()
+        }
+        crop = composition.crop?.rect
+        style = composition.style.style
+        annotations = composition.annotations.compactMap(\.annotation)
+        compositionID = composition.id
+        selectedID = nil
+        undoStack = []
+        redoStack = []
+        gestureStart = nil
+        textUndoID = nil
+        refreshHistory()
+        fitRequest += 1
+    }
+
+    private func makeDraft(id: String?, reuse: String?) -> CompositionDraft? {
+        guard let picture else { return nil }
+        let thumbnail = renderComposition(
+            picture: picture,
+            crop: crop,
+            style: style,
+            annotations: annotations,
+            draft: nil,
+            interactive: false
+        )
+        return CompositionDraft(
+            id: id,
+            name: picture.name,
+            sourceData: sourceData,
+            sourceFileName: sourceFileName ?? picture.name,
+            sourceSHA256: sourceSHA,
+            reuseRelative: reuse,
+            crop: crop,
+            style: style,
+            annotations: annotations,
+            thumbnail: thumbnail
+        )
+    }
+
+    private func ensureSource(_ draft: inout CompositionDraft) {
+        if let reuse = draft.reuseRelative, let folder = projectFolder,
+           let url = try? ProjectStore.resolve(reuse, in: folder),
+           FileManager.default.fileExists(atPath: url.path) {
+            return
+        }
+        draft.reuseRelative = nil
+        if draft.sourceData == nil, let origin = sourceOrigin, let data = try? Data(contentsOf: origin) {
+            draft.sourceData = data
+            draft.sourceFileName = origin.lastPathComponent
+        }
+        if draft.sourceData == nil, let picture, let png = pngData(picture.image) {
+            draft.sourceData = png
+            if (draft.sourceFileName as NSString).pathExtension.isEmpty {
+                draft.sourceFileName = "Screenshot.png"
+            }
+        }
+        if draft.sourceSHA256 == nil, let data = draft.sourceData {
+            draft.sourceSHA256 = ProjectStore.sha256(data)
+        }
+    }
+
+    private func rememberSource(_ data: Data, name: String, origin: URL?) {
+        sourceOrigin = origin
+        sourceData = data
+        sourceSHA = ProjectStore.sha256(data)
+        sourceFileName = name
+    }
+
+    private func clearSource() {
+        sourceOrigin = nil
+        sourceData = nil
+        sourceSHA = nil
+        sourceFileName = nil
+        sourceRelative = nil
     }
 
     private func snapshot() -> Snapshot {

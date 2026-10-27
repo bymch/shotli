@@ -64,6 +64,31 @@ sips -z 1024 1024 "$ROOT/desktop/icon.png" --out "$ICONSET/icon_512x512@2x.png" 
 iconutil -c icns "$ICONSET" -o "$ROOT/build/Shotli.app/Contents/Resources/AppIcon.icns"
 cp "$ROOT/build/Shotli.app/Contents/Resources/AppIcon.icns" "$ROOT/build/VolumeIcon.icns"
 
+echo "Checking project folders…"
+verify_log="$ROOT/build/projects-verify.log"
+"$ROOT/build/Shotli.app/Contents/MacOS/Shotli" --verify-projects >"$verify_log" 2>&1 &
+verify_pid=$!
+verify_code=1
+for _ in $(seq 1 30); do
+  if ! kill -0 "$verify_pid" 2>/dev/null; then
+    verify_code=0
+    wait "$verify_pid" || verify_code=$?
+    break
+  fi
+  sleep 1
+done
+if kill -0 "$verify_pid" 2>/dev/null; then
+  kill "$verify_pid" 2>/dev/null || true
+  echo "Project folder check timed out" >&2
+  cat "$verify_log" >&2
+  exit 1
+fi
+cat "$verify_log"
+if [ "$verify_code" -ne 0 ]; then
+  echo "Project folder check failed" >&2
+  exit "$verify_code"
+fi
+
 echo "Checking motion export…"
 verify_log="$ROOT/build/motion-verify.log"
 "$ROOT/build/Shotli.app/Contents/MacOS/Shotli" --verify-motion >"$verify_log" 2>&1 &
