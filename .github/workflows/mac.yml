@@ -16,6 +16,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the native Mac app
+        env:
+          SHOTLI_P12_BASE64: ${{ secrets.SHOTLI_SIGNING_P12 }}
+          SHOTLI_P12_PASSWORD: ${{ secrets.SHOTLI_SIGNING_PASSWORD }}
+          SHOTLI_SIGN_IDENTITY: Shotli Signing
         run: bash scripts/build-mac.sh
 
       - name: Publish the download
@@ -32,7 +36,9 @@ jobs:
 
           Otherwise, open the disk image, drag Shotli onto the Applications folder, then open it from Applications. This is the last version you need to install that way.
 
-          The first time you launch it, macOS may say the developer cannot be verified. Control-click Shotli, choose Open, then choose Open again. An update can ask for that again.
+          The first time you launch it, macOS may say the developer cannot be verified. Control-click Shotli, choose Open, then choose Open again.
+
+          Allow Screen Recording once for this version. Later updates keep that permission.
 
           Images stay on your Mac.
           EOF

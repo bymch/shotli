@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.38", notes: [
+            "Screen Recording stays allowed after an update. This version asks one last time.",
+        ]),
         ChangelogEntry(version: "0.2.37", notes: [
             "Settings is at the bottom of the library. Allow Screen Recording, Desktop, Documents, and Downloads from there.",
             "Screenshots are sorted into Code, Websites, Documents, Conversations, and Other. Apple Intelligence does this when it is on. Otherwise Shotli reads the text on this Mac.",
