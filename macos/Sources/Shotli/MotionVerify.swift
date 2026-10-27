@@ -27,15 +27,22 @@ enum MotionVerify {
         }
         for preset in MotionPreset.allCases {
             settings.preset = preset
-            let start = try render(plate, settings, time: 0)
-            let end = try render(plate, settings, time: settings.duration)
-            let moved = try render(plate, settings, time: settings.duration * 0.25)
-            if checksum(start) != checksum(end) {
-                throw Failure("\(preset.title) loop seam")
-            }
-            if checksum(start) == checksum(moved) {
-                throw Failure("\(preset.title) did not move")
-            }
+            try assertSeam(plate, settings, preset.title)
+        }
+        settings.preset = .orbit
+        settings.speed = 1.5
+        try assertSeam(plate, settings, "Orbit at 1.5×")
+    }
+
+    private static func assertSeam(_ plate: MotionCompose.Plate, _ settings: MotionSettings, _ name: String) throws {
+        let start = try render(plate, settings, time: 0)
+        let end = try render(plate, settings, time: settings.outputDuration)
+        let moved = try render(plate, settings, time: settings.outputDuration * 0.25)
+        if checksum(start) != checksum(end) {
+            throw Failure("\(name) loop seam")
+        }
+        if checksum(start) == checksum(moved) {
+            throw Failure("\(name) did not move")
         }
     }
 

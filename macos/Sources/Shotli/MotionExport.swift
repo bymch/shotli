@@ -34,14 +34,74 @@ enum MotionExport {
         guard let plate = MotionCompose.plate(picture: picture, crop: crop, style: style, annotations: annotations) else {
             throw MotionExportError.unreadable
         }
-        let frameCount = max(2, Int((settings.clampedDuration * Double(fps)).rounded()))
-        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("shotli-motion-\(UUID().uuidString).mp4")
-        defer { try? FileManager.default.removeItem(at: temp) }
-        try encode(plate: plate, background: style.background, settings: settings, frames: frameCount, fps: fps, size: size, to: temp, progress: progress)
+        let frameCount = max(2, Int((settings.outputDuration * Double(fps)).rounded()))
+        let silent = FileManager.default.temporaryDirectory.appendingPathComponent("shotli-motion-\(UUID().uuidString).mp4")
+        let mixed = FileManager.default.temporaryDirectory.appendingPathComponent("shotli-motion-audio-\(UUID().uuidString).mp4")
+        defer {
+            try? FileManager.default.removeItem(at: silent)
+            try? FileManager.default.removeItem(at: mixed)
+        }
+        try encode(plate: plate, background: style.background, settings: settings, frames: frameCount, fps: fps, size: size, to: silent, progress: progress)
+        let finished: URL
+        if let music = settings.music {
+            let accessing = music.startAccessingSecurityScopedResource()
+            defer { if accessing { music.stopAccessingSecurityScopedResource() } }
+            try mix(video: silent, music: music, to: mixed)
+            finished = mixed
+        } else {
+            finished = silent
+        }
         if FileManager.default.fileExists(atPath: destination.path) {
             try FileManager.default.removeItem(at: destination)
         }
-        try FileManager.default.moveItem(at: temp, to: destination)
+        try FileManager.default.copyItem(at: finished, to: destination)
+    }
+
+    private static func mix(video: URL, music: URL, to destination: URL) throws {
+        let videoAsset = AVURLAsset(url: video)
+        let musicAsset = AVURLAsset(url: music)
+        try load(videoAsset)
+        try load(musicAsset)
+        guard let videoTrack = videoAsset.tracks(withMediaType: .video).first else {
+            throw MotionExportError.writer("Couldn't read the video.")
+        }
+        guard let musicTrack = musicAsset.tracks(withMediaType: .audio).first else {
+            throw MotionExportError.writer("That file has no audio.")
+        }
+        let composition = AVMutableComposition()
+        guard let composedVideo = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+              let composedAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+            throw MotionExportError.writer("Couldn't mix the music.")
+        }
+        let videoDuration = videoAsset.duration
+        try composedVideo.insertTimeRange(CMTimeRange(start: .zero, duration: videoDuration), of: videoTrack, at: .zero)
+        let audioDuration = CMTimeMinimum(videoDuration, musicTrack.timeRange.duration)
+        try composedAudio.insertTimeRange(CMTimeRange(start: .zero, duration: audioDuration), of: musicTrack, at: .zero)
+        guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
+            throw MotionExportError.writer("Couldn't mix the music.")
+        }
+        exporter.outputURL = destination
+        exporter.outputFileType = .mp4
+        let group = DispatchGroup()
+        group.enter()
+        exporter.exportAsynchronously { group.leave() }
+        group.wait()
+        if exporter.status != .completed {
+            throw MotionExportError.writer(exporter.error?.localizedDescription ?? "Couldn't mix the music.")
+        }
+    }
+
+    private static func load(_ asset: AVURLAsset) throws {
+        let keys = ["tracks", "duration"]
+        let ready = DispatchSemaphore(value: 0)
+        asset.loadValuesAsynchronously(forKeys: keys) { ready.signal() }
+        _ = ready.wait(timeout: .now() + 8)
+        for key in keys {
+            var error: NSError?
+            if asset.statusOfValue(forKey: key, error: &error) != .loaded {
+                throw MotionExportError.writer(error?.localizedDescription ?? "Couldn't read the audio.")
+            }
+        }
     }
 
     private static func encode(

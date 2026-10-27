@@ -79,6 +79,7 @@ enum MotionCompose {
         if let shadow = shadow(style: plate.style, gain: pose.shadowGain) {
             context.setShadow(offset: shadow.offset, blur: shadow.blur, color: shadow.color.cgColor)
         }
+        context.setAlpha(min(1, max(0, pose.opacity)))
         context.draw(
             card,
             in: CGRect(x: -rect.width / 2, y: -rect.height / 2, width: rect.width, height: rect.height)
@@ -105,8 +106,8 @@ enum MotionCompose {
     }
 
     private static func shadow(style: ShotliStyle, gain: CGFloat) -> (offset: CGSize, blur: CGFloat, color: NSColor)? {
-        guard style.shadowKind != .none, style.shadow > 0.5, style.shadowOpacity > 0.5 else { return nil }
-        let depth = style.shadow / 100 * max(0.35, gain)
+        guard style.shadowKind != .none, style.shadow > 0.5, style.shadowOpacity > 0.5, gain > 0.02 else { return nil }
+        let depth = style.shadow / 100 * gain
         let alpha = min(0.82, (0.06 + depth * 0.38) * (style.shadowOpacity / 40))
         switch style.shadowKind {
         case .none:
