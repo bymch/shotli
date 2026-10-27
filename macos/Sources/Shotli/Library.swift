@@ -130,10 +130,6 @@ final class LibraryModel: ObservableObject {
 
     func openContents(_ project: ProjectRecord) {
         let records = ProjectStore.compositionRecords(in: project.folder)
-        if records.count < 2 {
-            EditorModel.shared.openProject(at: project.folder)
-            return
-        }
         showingSettings = false
         kindFilter = nil
         showingProjects = true
@@ -871,12 +867,10 @@ struct LibraryHome: View {
     @ObservedObject private var library = LibraryModel.shared
     @Namespace private var selection
     @State private var layout: LibraryLayout = .grid
-    @State private var browserWidth: CGFloat = 720
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var onOpen: () -> Void
 
-    private let cardGap: CGFloat = 22
-    private let cardMax: CGFloat = 280
+    private let cardGap: CGFloat = LibraryGrid.gap
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1035,17 +1029,17 @@ struct LibraryHome: View {
                         if library.visibleCompositions.isEmpty {
                             empty
                         } else {
-                            browserScroll { compositionBrowser }
+                            browserScroll { compositionBrowser(width: $0) }
                         }
                     } else if library.visibleProjects.isEmpty {
                         empty
                     } else {
-                        browserScroll { projectBrowser }
+                        browserScroll { projectBrowser(width: $0) }
                     }
                 } else if library.shots.isEmpty {
                     empty
                 } else {
-                    browserScroll { shotBrowser }
+                    browserScroll { shotBrowser(width: $0) }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: libraryIsEmpty ? .center : .topLeading)
@@ -1071,6 +1065,12 @@ struct LibraryHome: View {
                     .accessibilityLabel("Back to projects")
                 }
                 VStack(alignment: .leading, spacing: 2) {
+                    if library.openedProject != nil && library.showingProjects && library.kindFilter == nil {
+                        Text("Projects")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
                     Text(libraryTitle)
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(ShotliGlass.ink)
@@ -1109,19 +1109,17 @@ struct LibraryHome: View {
         return library.kindFilter?.title ?? library.source.title
     }
 
-    private func browserScroll<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        ScrollView {
-            content()
-                .padding(.horizontal, 22)
-                .padding(.top, 8)
-                .padding(.bottom, 28)
-        }
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: LibraryWidthKey.self, value: geo.size.width)
+    private func browserScroll<Content: View>(@ViewBuilder content: @escaping (CGFloat) -> Content) -> some View {
+        GeometryReader { geo in
+            ScrollView {
+                content(geo.size.width)
+                    .padding(.horizontal, 22)
+                    .padding(.top, 8)
+                    .padding(.bottom, 28)
+                    .frame(width: geo.size.width, alignment: .leading)
             }
-        )
-        .onPreferenceChange(LibraryWidthKey.self) { browserWidth = $0 }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var newProjectButton: some View {
@@ -1228,9 +1226,8 @@ struct LibraryHome: View {
         .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
     }
 
-    private var shotBrowser: some View {
-        let width = max(browserWidth - 44, 180)
-        let metrics = gridMetrics(for: width)
+    private func shotBrowser(width: CGFloat) -> some View {
+        let metrics = LibraryGrid.metrics(for: max(width - 44, LibraryGrid.minCard))
         return Group {
             if layout == .grid {
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(metrics.card), spacing: cardGap), count: metrics.columns), alignment: .leading, spacing: 36) {
@@ -1245,29 +1242,8 @@ struct LibraryHome: View {
         }
     }
 
-    private func gridMetrics(for width: CGFloat) -> (columns: Int, card: CGFloat) {
-        let target: CGFloat = 248
-        var columns = max(1, Int((width + cardGap) / (target + cardGap)))
-        func card(for columns: Int) -> CGFloat {
-            (width - cardGap * CGFloat(max(columns - 1, 0))) / CGFloat(columns)
-        }
-        var size = card(for: columns)
-        if size > cardMax {
-            let fitted = max(columns, Int(ceil((width + cardGap) / (cardMax + cardGap))))
-            let fittedSize = card(for: fitted)
-            if fittedSize >= 200 {
-                columns = fitted
-                size = min(cardMax, fittedSize)
-            } else {
-                size = cardMax
-            }
-        }
-        return (columns, size)
-    }
-
-    private var projectBrowser: some View {
-        let width = max(browserWidth - 44, 180)
-        let metrics = gridMetrics(for: width)
+    private func projectBrowser(width: CGFloat) -> some View {
+        let metrics = LibraryGrid.metrics(for: max(width - 44, LibraryGrid.minCard))
         return Group {
             if layout == .grid {
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(metrics.card), spacing: cardGap), count: metrics.columns), alignment: .leading, spacing: 36) {
@@ -1331,9 +1307,8 @@ struct LibraryHome: View {
         }
     }
 
-    private var compositionBrowser: some View {
-        let width = max(browserWidth - 44, 180)
-        let metrics = gridMetrics(for: width)
+    private func compositionBrowser(width: CGFloat) -> some View {
+        let metrics = LibraryGrid.metrics(for: max(width - 44, LibraryGrid.minCard))
         return Group {
             if layout == .grid {
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(metrics.card), spacing: cardGap), count: metrics.columns), alignment: .leading, spacing: 36) {
@@ -1436,14 +1411,17 @@ struct LibraryHome: View {
         return library.shots.isEmpty
     }
 
+    private var emptyTitle: String {
+        if library.openedProject != nil { return "Add an image to your project" }
+        return library.message ?? "Nothing here yet."
+    }
+
     private var emptyDetail: String {
-        if library.openedProject != nil {
-            return "Save a screenshot into this project from the editor."
-        }
+        if library.openedProject != nil { return "Open a screenshot or image to start creating." }
         if library.showingProjects && library.kindFilter == nil {
-            return "Create a project, or open a screenshot\nand choose Save to Project."
+            return "Create a project, or open a screenshot or image."
         }
-        return "Drop a PNG, JPEG, or WebP here, or open one from your Mac."
+        return "Drop a PNG, JPEG, HEIC, TIFF, or WebP here, or open one from your Mac."
     }
 
     private var empty: some View {
@@ -1451,10 +1429,10 @@ struct LibraryHome: View {
             Spacer(minLength: 0)
             VStack(spacing: 14) {
                 if library.query.isEmpty {
-                    Image(systemName: "photo.on.rectangle.angled")
+                    Image(systemName: library.openedProject == nil ? "photo.on.rectangle.angled" : "doc")
                         .font(.system(size: 28, weight: .regular))
                         .foregroundColor(.secondary)
-                    Text(library.message ?? "Nothing here yet.")
+                    Text(emptyTitle)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(ShotliGlass.ink)
                         .multilineTextAlignment(.center)
@@ -1463,12 +1441,8 @@ struct LibraryHome: View {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 420)
-                    HStack(spacing: 8) {
-                        openButton
-                        newProjectButton
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 2)
+                    emptyActions
+                        .padding(.top, 2)
                 } else {
                     Text(library.message ?? "Nothing matches.")
                         .font(.system(size: 13))
@@ -1482,12 +1456,87 @@ struct LibraryHome: View {
         .padding(.horizontal, 32)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
+
+    @ViewBuilder
+    private var emptyActions: some View {
+        if library.openedProject != nil {
+            HStack(spacing: 8) {
+                screenshotButton
+                imageButton
+            }
+        } else if library.showingProjects && library.kindFilter == nil {
+            VStack(spacing: 8) {
+                newProjectButton
+                HStack(spacing: 8) {
+                    screenshotButton
+                    imageButton
+                }
+            }
+        } else {
+            openButton
+        }
+    }
+
+    private var screenshotButton: some View {
+        Button(action: {
+            EditorModel.shared.importFile(into: library.openedProject?.folder, screenshotsOnly: true)
+        }) {
+            Text("Open Screenshot")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(Capsule().fill(ShotliGlass.accent))
+        }
+        .buttonStyle(.plain)
+        .help("Open a PNG, JPEG, or WebP screenshot")
+        .accessibilityLabel("Open Screenshot")
+    }
+
+    private var imageButton: some View {
+        Button(action: {
+            EditorModel.shared.importFile(into: library.openedProject?.folder, screenshotsOnly: false)
+        }) {
+            Text("Open Image")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(ShotliGlass.ink)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .shotliCapsuleChip()
+        }
+        .buttonStyle(.plain)
+        .help("Open a PNG, JPEG, HEIC, TIFF, or WebP image")
+        .accessibilityLabel("Open Image")
+    }
 }
 
-private struct LibraryWidthKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+enum LibraryGrid {
+    static let gap: CGFloat = 22
+    static let target: CGFloat = 210
+    static let maxCard: CGFloat = 260
+    static let minCard: CGFloat = 180
+
+    static func metrics(for width: CGFloat) -> (columns: Int, card: CGFloat) {
+        let width = max(width, minCard)
+        var columns = max(1, Int((width + gap) / (target + gap)))
+        func card(for columns: Int) -> CGFloat {
+            (width - gap * CGFloat(max(columns - 1, 0))) / CGFloat(columns)
+        }
+        while columns > 1 && card(for: columns) < minCard {
+            columns -= 1
+        }
+        var size = card(for: columns)
+        if size > maxCard {
+            let fitted = max(columns, Int(ceil((width + gap) / (maxCard + gap))))
+            let fittedSize = card(for: fitted)
+            if fittedSize >= minCard {
+                columns = fitted
+                size = min(maxCard, fittedSize)
+            } else {
+                size = maxCard
+            }
+        }
+        return (columns, size)
     }
 }
 

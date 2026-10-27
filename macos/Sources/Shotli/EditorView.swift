@@ -273,27 +273,42 @@ struct EditorView: View {
     }
 
     private var emptyProject: some View {
-        VStack(spacing: 8) {
-            Text(model.projectName ?? "Project")
+        VStack(spacing: 10) {
+            Text("Add an image to your project")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(ink)
-            Text("Drop a screenshot here, or open one. Shotli saves it in this project.")
+                .multilineTextAlignment(.center)
+            Text("Open a screenshot or image to start creating.")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-            Button(action: { model.openPanel() }) {
-                Text("Open Screenshot")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
-                    .background(Capsule().fill(accent))
+            HStack(spacing: 8) {
+                Button(action: { model.importFile(into: model.projectFolder, screenshotsOnly: true) }) {
+                    Text("Open Screenshot")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 30)
+                        .background(Capsule().fill(accent))
+                }
+                .buttonStyle(PressFadeButtonStyle())
+                .accessibilityLabel("Open Screenshot")
+                Button(action: { model.importFile(into: model.projectFolder, screenshotsOnly: false) }) {
+                    Text("Open Image")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(ink)
+                        .padding(.horizontal, 12)
+                        .frame(height: 30)
+                        .shotliCapsuleChip()
+                }
+                .buttonStyle(PressFadeButtonStyle())
+                .accessibilityLabel("Open Image")
             }
-            .buttonStyle(PressFadeButtonStyle())
             .padding(.top, 4)
         }
         .padding(24)
-        .frame(maxWidth: 360)
+        .frame(maxWidth: 420)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var saveProjectButton: some View {

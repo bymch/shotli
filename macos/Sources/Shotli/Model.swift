@@ -486,12 +486,39 @@ final class EditorModel: ObservableObject {
     }
 
     func openPanel() {
+        importFile(into: nil, screenshotsOnly: true)
+    }
+
+    func importFile(into folder: URL?, screenshotsOnly: Bool) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.png, .jpeg, .webP]
+        panel.allowedContentTypes = screenshotsOnly
+            ? [.png, .jpeg, .webP]
+            : [.png, .jpeg, .heic, .tiff, .webP]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.message = "Choose a screenshot"
+        panel.message = screenshotsOnly ? "Choose a screenshot" : "Choose an image"
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        if let folder {
+            if let message = flushBoundSave() {
+                notice = message
+                saveState = .failed(message)
+                return
+            }
+            do {
+                let file = try ProjectStore.read(folder)
+                quietChanges()
+                projectFolder = folder
+                projectID = file.id
+                projectName = file.name
+                compositionID = nil
+                sourceRelative = nil
+                showSaveProjects = false
+            } catch {
+                notice = error.localizedDescription
+                saveState = .failed(error.localizedDescription)
+                return
+            }
+        }
         load(url: url)
     }
 
@@ -512,7 +539,7 @@ final class EditorModel: ObservableObject {
             return
         }
         guard let loaded = decodeImage(data, name: url.lastPathComponent) else {
-            notice = "Use a PNG, JPEG, or WebP image."
+            notice = "Shotli couldn't read that image. Use a PNG, JPEG, HEIC, TIFF, or WebP file."
             return
         }
         rememberSource(data, name: url.lastPathComponent, origin: url)
@@ -530,7 +557,7 @@ final class EditorModel: ObservableObject {
             return
         }
         guard let loaded = decodeImage(data, name: name) else {
-            notice = "Use a PNG, JPEG, or WebP image."
+            notice = "Shotli couldn't read that image. Use a PNG, JPEG, HEIC, TIFF, or WebP file."
             return
         }
         if let png = pngData(loaded.image) {
@@ -607,16 +634,14 @@ final class EditorModel: ObservableObject {
         LibraryModel.shared.refresh()
         if let returnFolder {
             let count = (try? ProjectStore.read(returnFolder))?.compositions.count ?? 0
-            if count > 1 {
-                LibraryModel.shared.openContents(ProjectRecord(
-                    id: returnFolder.path,
-                    folder: returnFolder,
-                    name: returnName ?? returnFolder.lastPathComponent,
-                    modified: Date(),
-                    compositions: count,
-                    thumbnail: nil
-                ))
-            }
+            LibraryModel.shared.openContents(ProjectRecord(
+                id: returnFolder.path,
+                folder: returnFolder,
+                name: returnName ?? returnFolder.lastPathComponent,
+                modified: Date(),
+                compositions: count,
+                thumbnail: nil
+            ))
         }
     }
 

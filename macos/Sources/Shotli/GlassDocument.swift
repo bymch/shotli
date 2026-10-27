@@ -58,7 +58,7 @@ struct GlassDocumentIcon: View {
         let shadowRadius = style.shadowRadius + (lifted ? 6 : 0)
         let shadowY = style.shadowY + (lifted ? 4 : 0)
         return ZStack {
-            page.fill(tint.opacity(reduceTransparency ? 0.92 : 0.55))
+            page.fill(baseFill)
             artwork(in: geometry.rect)
             page.fill(veil)
             page.fill(sheen)
@@ -70,42 +70,55 @@ struct GlassDocumentIcon: View {
                 page.stroke(
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(lifted ? 0.95 : 0.82),
-                            Color.white.opacity(0.28),
-                            Color.white.opacity(0.62),
+                            Color.white.opacity(lifted ? 0.9 : 0.7),
+                            Color.white.opacity(0.16),
+                            Color.white.opacity(0.4),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    lineWidth: 1.15
+                    lineWidth: 0.8
                 )
-                page.stroke(Color.black.opacity(0.08), lineWidth: 0.6)
+                page.stroke(Color.black.opacity(0.06), lineWidth: 0.5)
             }
             if selected {
-                page.stroke(ShotliGlass.accent, lineWidth: 2.25)
+                page.stroke(ShotliGlass.accent, lineWidth: 1.6)
             }
         }
         .compositingGroup()
         .shadow(color: Color.black.opacity(shadowOpacity), radius: shadowRadius, y: shadowY)
-        .shadow(color: tint.opacity(lifted ? 0.22 : 0.08), radius: lifted ? 18 : 8, y: lifted ? 8 : 3)
+        .shadow(color: tint.opacity(lifted ? 0.18 : 0.06), radius: lifted ? 16 : 7, y: lifted ? 7 : 2)
+    }
+
+    private var baseFill: LinearGradient {
+        let empty = image == nil
+        return LinearGradient(
+            colors: [
+                Color.white.opacity(reduceTransparency ? 0.96 : (empty ? 0.78 : 0.28)),
+                tint.opacity(reduceTransparency ? 0.9 : (empty ? 0.62 : 0.22)),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     private func artwork(in rect: CGRect) -> some View {
         ZStack {
-            if let frost, !reduceTransparency {
+            if let frost, image != nil, !reduceTransparency {
                 Image(nsImage: frost)
                     .resizable()
                     .scaledToFill()
+                    .opacity(0.35)
             }
             if let image {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFill()
-                    .opacity(reduceTransparency ? 1 : 0.84)
+                    .opacity(reduceTransparency ? 1 : 0.92)
             } else {
-                Image(systemName: "photo")
-                    .font(.system(size: max(14, rect.width * 0.12), weight: .regular))
-                    .foregroundColor(ShotliGlass.ink.opacity(0.28))
+                Image(systemName: "doc")
+                    .font(.system(size: max(11, rect.width * 0.09), weight: .medium))
+                    .foregroundColor(ShotliGlass.ink.opacity(0.34))
             }
         }
         .frame(width: rect.width, height: rect.height)
@@ -143,19 +156,19 @@ struct GlassDocumentIcon: View {
         return shape
             .fill(
                 LinearGradient(
-                colors: [
-                    Color.white.opacity(lifted ? 0.42 : 0.30),
-                    tint.opacity(0.2),
-                    Color.white.opacity(0.08),
-                ],
+                    colors: [
+                        Color.white.opacity(lifted ? 0.72 : 0.58),
+                        tint.opacity(0.28),
+                        Color.white.opacity(0.22),
+                    ],
                     startPoint: .topTrailing,
                     endPoint: .bottomLeading
                 )
             )
             .overlay(
-                shape.stroke(Color.white.opacity(0.75), lineWidth: 0.8)
+                shape.stroke(Color.white.opacity(0.55), lineWidth: 0.6)
             )
-            .shadow(color: Color.black.opacity(0.16), radius: 2.4, x: -1, y: 2)
+            .shadow(color: Color.black.opacity(0.12), radius: 1.6, x: -0.6, y: 1.2)
     }
 
     private func crease(_ geometry: GlassDocumentGeometry) -> some View {
@@ -184,9 +197,9 @@ struct GlassDocumentGeometry: Equatable {
         self.radius = radius
         self.showsFold = style.showsFold && fold > 4
         top = CGPoint(x: rect.maxX - fold, y: rect.minY)
-        peak = CGPoint(x: rect.maxX - fold * 0.40, y: rect.minY + fold * 0.15)
         side = CGPoint(x: rect.maxX, y: rect.minY + fold)
-        tip = CGPoint(x: rect.maxX - fold * 0.64, y: rect.minY + fold * 0.64)
+        tip = CGPoint(x: rect.maxX - fold, y: rect.minY + fold)
+        peak = tip
     }
 }
 
@@ -233,7 +246,6 @@ extension GlassDocumentGeometry {
         if showsFold {
             path.move(to: CGPoint(x: rect.minX + radius, y: rect.minY))
             path.addLine(to: top)
-            path.addLine(to: peak)
             path.addLine(to: side)
         } else {
             path.move(to: CGPoint(x: rect.minX + radius, y: rect.minY))
@@ -267,9 +279,8 @@ extension GlassDocumentGeometry {
         var path = Path()
         guard showsFold else { return path }
         path.move(to: top)
-        path.addLine(to: peak)
-        path.addLine(to: side)
         path.addLine(to: tip)
+        path.addLine(to: side)
         path.closeSubpath()
         return path
     }
@@ -278,7 +289,6 @@ extension GlassDocumentGeometry {
         var path = Path()
         guard showsFold else { return path }
         path.move(to: top)
-        path.addLine(to: tip)
         path.addLine(to: side)
         return path
     }

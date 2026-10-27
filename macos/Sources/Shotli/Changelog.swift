@@ -9,6 +9,11 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.55", notes: [
+            "Project cards sit side by side. Opening a project shows the pictures inside it.",
+            "Document icons are frosted glass, with the artwork showing through the page.",
+            "An empty project can open a screenshot or an image. The original file stays where it is.",
+        ]),
         ChangelogEntry(version: "0.2.54", notes: [
             "Save to Project: click anywhere on the project row. The name sits beside the thumbnail, then Shotli confirms Saved.",
             "The empty projects screen keeps Create project in the middle. Backspace works in the project name.",
