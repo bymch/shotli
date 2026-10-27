@@ -3,11 +3,9 @@ import ObjectiveC
 import SwiftUI
 import UniformTypeIdentifiers
 
-private let accent = Color(nsColor: NSColor(hex: "#3478F6")!)
-private let ink = Color(nsColor: NSColor(hex: "#222222")!)
-private let line = Color(nsColor: NSColor(hex: "#DADADA")!)
-private let workspace = Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1))
-private let panel = Color(nsColor: NSColor(srgbRed: 0.965, green: 0.965, blue: 0.968, alpha: 1))
+private let accent = ShotliGlass.accent
+private let ink = ShotliGlass.ink
+private let line = ShotliGlass.line
 private let leftRailMin: CGFloat = 232
 private let leftRailIdeal: CGFloat = 280
 private let rightRailMin: CGFloat = 248
@@ -82,6 +80,7 @@ struct EditorView: View {
     @State private var magicBackgrounds: [MagicBackground] = []
     @State private var settingsSheet = false
     @ObservedObject private var settings = ShotliSettings.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
@@ -105,13 +104,13 @@ struct EditorView: View {
                                     .frame(width: geo.size.width, height: geo.size.height)
                             }
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: ShotliGlass.radiusPanel, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: ShotliGlass.radiusPanel, style: .continuous)
+                                .stroke(Color.black.opacity(0.06), lineWidth: 1)
                                 .allowsHitTesting(false)
                         )
-                        .scaleEffect(animatePop ? 1.015 : 1)
+                        .scaleEffect(animatePop ? 1.012 : 1)
                         Button(action: playAnimate) {
                             HStack(spacing: 6) {
                                 Image(systemName: "chevron.left.forwardslash.chevron.right")
@@ -122,9 +121,10 @@ struct EditorView: View {
                             .foregroundColor(ink)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 10, y: 3))
+                            .shotliGlass(.compact, radius: 18)
                         }
                         .buttonStyle(PressFadeButtonStyle())
+                        .fixedSize(horizontal: true, vertical: true)
                         .help("Preview a short motion")
                         .accessibilityLabel("Animate")
                     }
@@ -134,11 +134,11 @@ struct EditorView: View {
                         .frame(minWidth: rightRailMin, idealWidth: rightRailIdeal, maxWidth: rightRailIdeal)
                         .frame(maxHeight: .infinity)
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
+                .padding(.horizontal, ShotliGlass.pageInset)
+                .padding(.bottom, ShotliGlass.pageInset)
             }
         }
-        .background(workspace)
+        .background(ShotliWorkspaceWash().ignoresSafeArea())
         .overlay {
             if showTemplates {
                 TemplatesPanel(model: model, shot: shotImage) { showTemplates = false }
@@ -198,6 +198,7 @@ struct EditorView: View {
                     .help("Templates")
                 }
             }
+            .padding(.leading, 8)
             .frame(minWidth: leftRailMin, idealWidth: leftRailIdeal, maxWidth: leftRailIdeal, alignment: .leading)
 
             HStack(spacing: 8) {
@@ -219,6 +220,7 @@ struct EditorView: View {
 
             if model.picture != nil {
                 exportButton
+                    .padding(.trailing, 8)
                     .frame(minWidth: rightRailMin, idealWidth: rightRailIdeal, maxWidth: rightRailIdeal, alignment: .trailing)
             } else {
                 Color.clear
@@ -226,8 +228,11 @@ struct EditorView: View {
                     .frame(height: 32)
             }
         }
-        .padding(.horizontal, 12)
         .frame(height: 52)
+        .shotliGlass(.compact, radius: ShotliGlass.radiusBar)
+        .padding(.horizontal, ShotliGlass.pageInset)
+        .padding(.top, 34)
+        .padding(.bottom, 8)
     }
 
     private var exportButton: some View {
@@ -267,7 +272,7 @@ struct EditorView: View {
             .help("Copy PNG (⌘C)")
             .accessibilityLabel("Copy PNG")
         }
-        .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.1), radius: 8, y: 2))
+        .shotliCapsuleChip()
     }
 
     private func barCapsule(_ title: String, help: String, action: @escaping () -> Void) -> some View {
@@ -277,7 +282,7 @@ struct EditorView: View {
                 .foregroundColor(ink)
                 .padding(.horizontal, 12)
                 .frame(height: 32)
-                .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.08), radius: 6, y: 2))
+                .shotliCapsuleChip()
                 .contentShape(Capsule())
         }
         .buttonStyle(PressFadeButtonStyle())
@@ -295,6 +300,8 @@ struct EditorView: View {
                     if model.style.frame == .none { model.setFrame(.browser) }
                 }
             }
+            .padding(3)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.05)))
             .padding(.horizontal, railInset)
             .padding(.vertical, 10)
             if model.style.frame != .none {
@@ -302,6 +309,8 @@ struct EditorView: View {
                     tabButton("Browser", on: model.style.frame == .browser) { model.setFrame(.browser) }
                     tabButton("Window", on: model.style.frame == .desktop) { model.setFrame(.desktop) }
                 }
+                .padding(3)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.05)))
                 .padding(.horizontal, railInset)
                 .padding(.bottom, 8)
             }
@@ -327,9 +336,7 @@ struct EditorView: View {
                 .padding(.bottom, 18)
             }
         }
-        .background(panel)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: Color.black.opacity(0.05), radius: 10, y: 2)
+        .shotliGlass(.panel, radius: ShotliGlass.radiusPanel)
     }
 
     private var rightRail: some View {
@@ -390,9 +397,7 @@ struct EditorView: View {
                 .padding(.bottom, 14)
             }
         }
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: Color.black.opacity(0.05), radius: 10, y: 2)
+        .shotliGlass(.panel, radius: ShotliGlass.radiusPanel)
     }
 
     private var zoomRow: some View {
@@ -423,8 +428,11 @@ struct EditorView: View {
                     .frame(height: 28)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(tilted ? Color.white : Color.clear)
-                            .shadow(color: tilted ? Color.black.opacity(0.08) : .clear, radius: 3, y: 1)
+                            .fill(tilted ? Color.white.opacity(0.78) : Color.clear)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(Color.black.opacity(tilted ? 0.06 : 0), lineWidth: 0.5)
+                            )
                     )
             }
             .buttonStyle(PressFadeButtonStyle())
@@ -439,8 +447,11 @@ struct EditorView: View {
                     .frame(height: 28)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(tilted ? Color.clear : Color.white)
-                            .shadow(color: tilted ? .clear : Color.black.opacity(0.08), radius: 3, y: 1)
+                            .fill(tilted ? Color.clear : Color.white.opacity(0.78))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(Color.black.opacity(tilted ? 0 : 0.06), lineWidth: 0.5)
+                            )
                     )
             }
             .buttonStyle(PressFadeButtonStyle())
@@ -460,6 +471,11 @@ struct EditorView: View {
         return Button(action: { model.applyPreset(preset) }) {
             VStack(alignment: .leading, spacing: 6) {
                 layoutCard(preset.style)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.white.opacity(active ? 0.9 : 0), lineWidth: 1)
+                            .padding(2)
+                    )
                     .overlay(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(active ? accent : (hovered ? Color.black.opacity(0.2) : Color.clear), lineWidth: active ? 2 : 1)
@@ -491,6 +507,7 @@ struct EditorView: View {
     }
 
     private func playAnimate() {
+        guard !reduceMotion else { return }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.62)) { animatePop = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { animatePop = false }
@@ -534,10 +551,17 @@ struct EditorView: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: on ? .semibold : .medium))
-                .foregroundColor(on ? .white : ink)
+                .foregroundColor(on ? ink : .secondary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 30)
-                .background(RoundedRectangle(cornerRadius: 9).fill(on ? ink : Color.black.opacity(0.05)))
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(on ? Color.white.opacity(0.78) : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .strokeBorder(Color.white.opacity(on ? 0.8 : 0), lineWidth: 0.6)
+                        )
+                )
         }
         .buttonStyle(PressFadeButtonStyle())
         .accessibilityLabel(title)
@@ -556,7 +580,14 @@ struct EditorView: View {
                 .foregroundColor(on ? ink : .secondary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 28)
-                .background(RoundedRectangle(cornerRadius: 8).fill(on ? Color.white : Color.clear).shadow(color: on ? Color.black.opacity(0.08) : .clear, radius: 3, y: 1))
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(on ? Color.white.opacity(0.78) : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color.black.opacity(on ? 0.06 : 0), lineWidth: 0.5)
+                        )
+                )
         }
         .buttonStyle(PressFadeButtonStyle())
         .help("\(title) padding")
@@ -1001,11 +1032,7 @@ struct EditorView: View {
                 .foregroundColor(ink)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.white)
-                        .shadow(color: Color.black.opacity(0.05), radius: 2, y: 1)
-                )
+                .shotliRoundedChip(radius: 8)
             Slider(value: value, in: range, onEditingChanged: { editing in
                 if !editing { model.endGesture() }
             })
@@ -1040,9 +1067,8 @@ struct EditorView: View {
             }
         }
         .padding(.horizontal, 4)
-        .frame(height: 32)
-        .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 8, y: 2))
-        .overlay(Capsule().stroke(Color.black.opacity(0.08), lineWidth: 1))
+        .frame(height: ShotliGlass.controlHeight)
+        .shotliCapsuleChip()
         .fixedSize(horizontal: true, vertical: true)
     }
 
@@ -1135,8 +1161,7 @@ struct EditorView: View {
             .padding(.horizontal, 8)
             .frame(height: 28)
             .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
+            .shotliRoundedChip(radius: 8)
         }
     }
 
@@ -1371,6 +1396,7 @@ struct EditorView: View {
         }
         .padding(12)
         .frame(width: 180, alignment: .leading)
+        .shotliGlass(.compact, radius: 14, shadow: false)
         .onExitCommand { gradientPopover = nil }
     }
 
@@ -1444,9 +1470,7 @@ struct EditorView: View {
                 .padding(.bottom, 22)
             }
             .frame(width: 680, height: 520)
-            .background(Color(nsColor: NSColor(srgbRed: 0.95, green: 0.95, blue: 0.96, alpha: 1)))
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .shadow(color: Color.black.opacity(0.18), radius: 30, y: 12)
+            .shotliGlass(.panel, radius: ShotliGlass.radiusOverlay)
         }
         .onExitCommand { backgroundShelf = nil }
     }
@@ -1603,9 +1627,7 @@ struct EditorView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(
-                Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
-            )
+            .shotliGlass(.panel, radius: 16)
             .padding(.bottom, 16)
         }
         .allowsHitTesting(true)
@@ -1685,6 +1707,11 @@ struct EditorView: View {
                         }
                     }
                     .frame(width: 22, height: 22)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .stroke(Color.white.opacity(selected == color ? 0.9 : 0), lineWidth: 1)
+                            .padding(1.5)
+                    )
                     .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected == color ? accent : Color.black.opacity(0.15), lineWidth: selected == color ? 2 : 1))
                 }
                 .buttonStyle(.plain)
@@ -1886,7 +1913,7 @@ struct EditorView: View {
             window.isMovableByWindowBackground = false
             TitlebarClicks.install(on: window)
             window.minSize = NSSize(width: 1100, height: 720)
-            window.backgroundColor = NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)
+            window.backgroundColor = ShotliGlass.workspaceBottom
             if window.contentRect(forFrameRect: window.frame).width < 1000 {
                 window.setContentSize(NSSize(width: 1180, height: 760))
                 window.center()
@@ -1896,8 +1923,12 @@ struct EditorView: View {
 }
 
 private struct PressFadeButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.opacity(configuration.isPressed ? 0.82 : 1)
+        configuration.label
+            .opacity(configuration.isPressed ? ShotliGlass.pressedOpacity : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: ShotliGlass.duration), value: configuration.isPressed)
     }
 }
 
@@ -1910,6 +1941,7 @@ private struct SelectWell<Content: View>: View {
     var content: Content
     @State private var hovering = false
     @FocusState private var focused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(height: CGFloat, active: Bool, help: String, label: String, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
         self.height = height
@@ -1936,12 +1968,20 @@ private struct SelectWell<Content: View>: View {
         .accessibilityAddTraits(active ? .isSelected : AccessibilityTraits())
         .focused($focused)
         .onHover { hovering = $0 }
+        .animation(reduceMotion ? nil : .easeOut(duration: ShotliGlass.duration), value: hovering)
     }
 
     private var stroke: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .stroke(active || focused ? accent : (hovering ? Color.black.opacity(0.28) : Color.black.opacity(0.08)), lineWidth: active || focused ? 2 : 1)
-            .allowsHitTesting(false)
+        ZStack {
+            if active || focused {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(0.92), lineWidth: 1)
+                    .padding(2)
+            }
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(active || focused ? accent : (hovering ? Color.black.opacity(0.28) : Color.black.opacity(0.10)), lineWidth: active || focused ? 2 : 1)
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -1997,8 +2037,13 @@ private struct LibraryMoreTile: View {
             .frame(maxWidth: .infinity)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(hovering ? Color.black.opacity(0.08) : Color.black.opacity(0.05)))
             .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(focused ? 0.9 : 0), lineWidth: 1)
+                    .padding(2)
+            )
+            .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(focused ? accent : Color.black.opacity(hovering ? 0.28 : 0.08), lineWidth: focused ? 2 : 1)
+                    .stroke(focused ? accent : Color.black.opacity(hovering ? 0.28 : 0.10), lineWidth: focused ? 2 : 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
@@ -2243,9 +2288,7 @@ private struct TemplatesPanel: View {
                 }
             }
             .frame(width: 720, height: 620)
-            .background(Color(nsColor: NSColor(srgbRed: 0.95, green: 0.95, blue: 0.96, alpha: 1)))
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .shadow(color: Color.black.opacity(0.18), radius: 30, y: 12)
+            .shotliGlass(.panel, radius: ShotliGlass.radiusOverlay)
         }
     }
 
