@@ -3,6 +3,22 @@ import Combine
 import ImageIO
 import SwiftUI
 
+enum LibraryOrder: String, CaseIterable, Identifiable {
+    case newest, oldest, name
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .newest: return "Most recent"
+        case .oldest: return "Oldest"
+        case .name: return "Name"
+        }
+    }
+}
+
+enum LibraryLayout: String {
+    case grid, list
+}
+
 enum LibrarySource: String, CaseIterable, Identifiable {
     case recent, screenshots, desktop, pictures, shotli
     var id: String { rawValue }
@@ -56,6 +72,7 @@ final class LibraryModel: ObservableObject {
     @Published var thumbs: [String: NSImage] = [:]
     @Published var message: String?
     @Published var query = ""
+    @Published var order: LibraryOrder = .newest
     @Published var selected: Set<String> = []
 
     private var cache: [LibrarySource: [LibraryShot]] = [:]
@@ -184,7 +201,7 @@ final class LibraryModel: ObservableObject {
         let searched = needle.isEmpty ? base : base.filter {
             $0.name.lowercased().contains(needle) || (texts[$0.id]?.lowercased().contains(needle) ?? false)
         }
-        shots = searched
+        shots = ordered(searched)
         if !needle.isEmpty {
             message = searched.isEmpty ? "Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”." : nil
         } else if let kindFilter, searched.isEmpty {
@@ -203,6 +220,82 @@ final class LibraryModel: ObservableObject {
             if let kind = kinds[shot.id] { counts[kind, default: 0] += 1 }
         }
         kindCounts = counts
+    }
+
+    func setOrder(_ order: LibraryOrder) {
+        guard self.order != order else { return }
+        self.order = order
+        apply()
+    }
+
+    private func ordered(_ items: [LibraryShot]) -> [LibraryShot] {
+        switch order {
+        case .newest:
+            return items.sorted { $0.modified > $1.modified }
+        case .oldest:
+            return items.sorted { $0.modified < $1.modified }
+        case .name:
+            return items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
+    }
+
+    func rename(_ shot: LibraryShot) {
+        let alert = NSAlert()
+        alert.messageText = "Rename"
+        alert.informativeText = "This changes the file name in Finder."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.stringValue = shot.url.deletingPathExtension().lastPathComponent
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let proposed = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !proposed.isEmpty, !proposed.contains("/"), !proposed.contains(":"), proposed != ".", proposed != ".." else {
+            renameFailed("Use a file name without slashes or colons.")
+            return
+        }
+        let ext = shot.url.pathExtension
+        let fileName = ext.isEmpty || !(proposed as NSString).pathExtension.isEmpty ? proposed : "\(proposed).\(ext)"
+        let destination = shot.url.deletingLastPathComponent().appendingPathComponent(fileName)
+        guard destination.path != shot.url.path else { return }
+        if FileManager.default.fileExists(atPath: destination.path) {
+            renameFailed("A file named “\(fileName)” is already in that folder.")
+            return
+        }
+        do {
+            try FileManager.default.moveItem(at: shot.url, to: destination)
+        } catch {
+            renameFailed("Shotli couldn't rename that file.")
+            return
+        }
+        let updated = LibraryShot(id: destination.path, url: destination, name: destination.lastPathComponent, modified: shot.modified)
+        let kind = kinds[shot.id]
+        retarget(from: shot.id, to: updated)
+        if let kind { ShotSorter.shared.file(updated, as: kind) }
+    }
+
+    private func renameFailed(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Couldn't rename"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func retarget(from oldID: String, to shot: LibraryShot) {
+        for key in Array(cache.keys) {
+            cache[key] = cache[key]?.map { $0.id == oldID ? shot : $0 }
+        }
+        if let kind = kinds.removeValue(forKey: oldID) { kinds[shot.id] = kind }
+        if let text = texts.removeValue(forKey: oldID) { texts[shot.id] = text }
+        if let image = thumbs.removeValue(forKey: oldID) { thumbs[shot.id] = image }
+        if selected.remove(oldID) != nil { selected.insert(shot.id) }
+        if selectionAnchor == oldID { selectionAnchor = shot.id }
+        counts = Dictionary(uniqueKeysWithValues: LibrarySource.allCases.map { source in
+            (source, cache[source]?.count ?? 0)
+        })
+        apply()
     }
 
     func selectOnly(_ id: String) {
@@ -374,7 +467,7 @@ private enum LibraryScan {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: 360,
+            kCGImageSourceThumbnailMaxPixelSize: 640,
         ]
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
         return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
@@ -421,11 +514,14 @@ private extension Array where Element == LibraryShot {
 struct LibraryHome: View {
     @ObservedObject private var library = LibraryModel.shared
     @Namespace private var selection
+    @State private var layout: LibraryLayout = .grid
+    @State private var browserWidth: CGFloat = 720
     var onOpen: () -> Void
 
-    private let columns = [GridItem(.adaptive(minimum: 168, maximum: 240), spacing: 14)]
     private let accent = Color(nsColor: NSColor(hex: "#3478F6")!)
     private let ink = Color(nsColor: NSColor(hex: "#222222")!)
+    private let cardGap: CGFloat = 16
+    private let cardMax: CGFloat = 320
 
     var body: some View {
         HStack(spacing: 0) {
@@ -485,7 +581,7 @@ struct LibraryHome: View {
             settingsButton
                 .padding(.bottom, 12)
         }
-        .frame(width: 220)
+        .frame(width: 216)
         .background(Color.white)
         .animation(.spring(response: 0.38, dampingFraction: 0.84), value: library.source)
         .animation(.spring(response: 0.38, dampingFraction: 0.84), value: library.showingSettings)
@@ -516,25 +612,29 @@ struct LibraryHome: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: symbol)
-                    .frame(width: 16)
+                    .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .foregroundColor(selected ? accent : ink)
+                    .frame(width: 18, alignment: .center)
                 Text(title)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .lineLimit(1)
                 Spacer(minLength: 4)
                 if let count, count > 0 {
                     Text("\(count)")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(selected ? Color.white.opacity(0.85) : .secondary)
+                        .monospacedDigit()
+                        .foregroundColor(.secondary)
                 }
             }
             .padding(.horizontal, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 28)
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .foregroundColor(selected ? .white : ink)
+            .frame(height: 30)
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .foregroundColor(ink)
             .background {
                 if selected {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(accent)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(accent.opacity(0.14))
                         .matchedGeometryEffect(id: "library-source", in: selection)
                 }
             }
@@ -557,95 +657,227 @@ struct LibraryHome: View {
 
     private var libraryContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(library.kindFilter?.title ?? library.source.title)
-                        .font(.system(size: 18, weight: .semibold))
-                    Text(headerDetail)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 12)
-                if !library.shots.isEmpty {
-                    headerButton(allSelected ? "Deselect" : "Select All") {
-                        if allSelected { library.clearSelection() } else { library.selectAll() }
-                    }
-                }
-                if !library.selected.isEmpty {
-                    headerButton("Delete") { library.deleteSelected() }
-                }
-                searchField
-            }
-            .padding(.horizontal, 22)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
-            ZStack(alignment: .topLeading) {
-                ScrollView {
-                    if library.shots.isEmpty {
-                        empty
+            libraryToolbar
+            Group {
+                if library.shots.isEmpty {
+                    empty
+                } else {
+                    ScrollView {
+                        shotBrowser
                             .padding(.horizontal, 22)
-                    } else {
-                        LazyVGrid(columns: columns, spacing: 14) {
-                            ForEach(library.shots) { shot in
-                                ShotCard(
-                                    shot: shot,
-                                    image: library.thumbs[shot.id],
-                                    selected: library.selected.contains(shot.id),
-                                    showsCheck: !library.selected.isEmpty,
-                                    kindTitle: library.kinds[shot.id]?.title,
-                                    onChoose: { library.choose(shot.id) },
-                                    onToggle: { library.toggle(shot.id) },
-                                    onOpen: { EditorModel.shared.load(url: shot.url) },
-                                    onDelete: {
-                                        if !library.selected.contains(shot.id) { library.selectOnly(shot.id) }
-                                        library.deleteSelected()
-                                    },
-                                    onSelectAll: { library.selectAll() },
-                                    onFile: { kind in
-                                        if !library.selected.contains(shot.id) { library.selectOnly(shot.id) }
-                                        library.fileSelected(as: kind)
-                                    }
-                                )
-                            }
-                        }
-                        .padding(.horizontal, 22)
-                        .padding(.bottom, 24)
+                            .padding(.bottom, 24)
                     }
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(key: LibraryWidthKey.self, value: geo.size.width)
+                        }
+                    )
+                    .onPreferenceChange(LibraryWidthKey.self) { browserWidth = $0 }
                 }
-                .id(library.kindFilter?.rawValue ?? library.source.rawValue)
-                .transition(.opacity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .animation(.easeInOut(duration: 0.18), value: library.source)
+            .id(library.kindFilter?.rawValue ?? library.source.rawValue)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)))
     }
 
-    private var headerDetail: String {
-        if !library.selected.isEmpty { return "\(library.selected.count) selected" }
-        if library.kindFilter != nil {
-            return library.sorting ? "Sorting on this Mac…" : "Sorted on this Mac"
+    private var libraryToolbar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(library.kindFilter?.title ?? library.source.title)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(ink)
+                        .lineLimit(1)
+                    Text(headerDetail)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                openButton
+            }
+            HStack(spacing: 8) {
+                searchField
+                    .frame(minWidth: 140, maxWidth: 240)
+                sortMenu
+                layoutToggle
+                Spacer(minLength: 8)
+                if !library.selected.isEmpty {
+                    headerButton("Deselect") { library.clearSelection() }
+                    headerButton("Delete", prominent: true) { library.deleteSelected() }
+                }
+            }
         }
-        return library.source.detail
+        .padding(.horizontal, 22)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
     }
 
-    private var allSelected: Bool {
-        !library.shots.isEmpty && library.selected.count == library.shots.count
+    private var openButton: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 6) {
+                Image(systemName: "folder")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Open a screenshot")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 12)
+            .frame(height: 30)
+            .background(Capsule().fill(accent))
+        }
+        .buttonStyle(.plain)
+        .help("Open a PNG, JPEG, or WebP")
+        .accessibilityLabel("Open a screenshot")
     }
 
-    private func headerButton(_ title: String, action: @escaping () -> Void) -> some View {
+    private var sortMenu: some View {
+        Menu {
+            ForEach(LibraryOrder.allCases) { order in
+                Button(action: { library.setOrder(order) }) {
+                    if library.order == order {
+                        Label(order.title, systemImage: "checkmark")
+                    } else {
+                        Text(order.title)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(library.order.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundColor(ink)
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Sort screenshots")
+        .accessibilityLabel("Sort by \(library.order.title)")
+    }
+
+    private var layoutToggle: some View {
+        HStack(spacing: 2) {
+            layoutButton("square.grid.2x2", help: "Grid", on: layout == .grid) { layout = .grid }
+            layoutButton("list.bullet", help: "List", on: layout == .list) { layout = .list }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.05)))
+    }
+
+    private func layoutButton(_ symbol: String, help: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: on ? .semibold : .regular))
+                .foregroundColor(on ? ink : .secondary)
+                .frame(width: 28, height: 26)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? Color.white : Color.clear))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+        .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
+    }
+
+    private var shotBrowser: some View {
+        let width = max(browserWidth - 44, 180)
+        let metrics = gridMetrics(for: width)
+        return Group {
+            if layout == .grid {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(metrics.card), spacing: cardGap), count: metrics.columns), alignment: .leading, spacing: cardGap) {
+                    shotList(previewHeight: max(168, metrics.card * 0.7))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    shotList(previewHeight: 72)
+                }
+            }
+        }
+    }
+
+    private func gridMetrics(for width: CGFloat) -> (columns: Int, card: CGFloat) {
+        let target: CGFloat = 280
+        var columns = max(1, Int((width + cardGap) / (target + cardGap)))
+        func card(for columns: Int) -> CGFloat {
+            (width - cardGap * CGFloat(max(columns - 1, 0))) / CGFloat(columns)
+        }
+        var size = card(for: columns)
+        if size > cardMax {
+            let fitted = max(columns, Int(ceil((width + cardGap) / (cardMax + cardGap))))
+            let fittedSize = card(for: fitted)
+            if fittedSize >= 220 {
+                columns = fitted
+                size = min(cardMax, fittedSize)
+            } else {
+                size = cardMax
+            }
+        }
+        return (columns, size)
+    }
+
+    private func shotList(previewHeight: CGFloat) -> some View {
+        ForEach(library.shots) { shot in
+            ShotCard(
+                shot: shot,
+                image: library.thumbs[shot.id],
+                selected: library.selected.contains(shot.id),
+                showsCheck: !library.selected.isEmpty,
+                kindTitle: library.kinds[shot.id]?.title,
+                layout: layout,
+                previewHeight: previewHeight,
+                onChoose: { library.choose(shot.id) },
+                onToggle: { library.toggle(shot.id) },
+                onOpen: { EditorModel.shared.load(url: shot.url) },
+                onRename: { library.rename(shot) },
+                onDelete: {
+                    if !library.selected.contains(shot.id) { library.selectOnly(shot.id) }
+                    library.deleteSelected()
+                },
+                onSelectAll: { library.selectAll() },
+                onFile: { kind in
+                    if !library.selected.contains(shot.id) { library.selectOnly(shot.id) }
+                    library.fileSelected(as: kind)
+                }
+            )
+        }
+    }
+
+    private var headerDetail: String {
+        let count = library.shots.count
+        let noun = count == 1 ? "screenshot" : "screenshots"
+        if !library.selected.isEmpty { return "\(library.selected.count) selected · \(count) \(noun)" }
+        if library.source == .screenshots,
+           LibraryFolders.screenshots.standardizedFileURL.path == LibraryFolders.desktop.standardizedFileURL.path {
+            return "\(count) \(noun) · Same pictures as Desktop"
+        }
+        if library.kindFilter != nil {
+            let sorting = library.sorting ? "Sorting on this Mac…" : "Sorted on this Mac"
+            return "\(count) \(noun) · \(sorting)"
+        }
+        return "\(count) \(noun) · \(library.source.detail)"
+    }
+
+    private func headerButton(_ title: String, prominent: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(ink)
+                .foregroundColor(prominent ? Color(nsColor: NSColor(hex: "#C13636")!) : ink)
                 .padding(.horizontal, 10)
-                .frame(height: 28)
+                .frame(height: 30)
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .help(prominent ? "Move the selected screenshots to the Trash" : title)
     }
 
     private var searchField: some View {
@@ -665,24 +897,44 @@ struct LibraryHome: View {
             }
         }
         .padding(.horizontal, 8)
-        .frame(width: 196, height: 28)
+        .frame(maxWidth: .infinity)
+        .frame(height: 28)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
     }
 
     private var empty: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(library.message ?? "Nothing here yet.")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-            Text("You can also drop a PNG, JPEG, or WebP onto this window.")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
+        VStack(spacing: 10) {
+            if library.query.isEmpty {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 28, weight: .regular))
+                    .foregroundColor(.secondary)
+                Text(library.message ?? "Nothing here yet.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(ink)
+                    .multilineTextAlignment(.center)
+                Text("Drop a PNG, JPEG, or WebP here, or open one from your Mac.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                openButton
+                    .padding(.top, 4)
+            } else {
+                Text(library.message ?? "Nothing matches.")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.06), lineWidth: 1))
+        .padding(24)
+        .frame(maxWidth: 380)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct LibraryWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -692,9 +944,12 @@ private struct ShotCard: View {
     var selected: Bool
     var showsCheck: Bool
     var kindTitle: String? = nil
+    var layout: LibraryLayout = .grid
+    var previewHeight: CGFloat = 180
     var onChoose: () -> Void
     var onToggle: () -> Void
     var onOpen: () -> Void
+    var onRename: () -> Void
     var onDelete: () -> Void
     var onSelectAll: () -> Void
     var onFile: (ShotKind) -> Void
@@ -703,58 +958,35 @@ private struct ShotCard: View {
     private let accent = Color(nsColor: NSColor(hex: "#3478F6")!)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white)
-                if let image {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .padding(8)
-                }
-                if showsCheck || hovered || selected {
-                    Button(action: onToggle) {
-                        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(selected ? accent : Color.white)
-                            .shadow(color: Color.black.opacity(0.35), radius: 2, y: 1)
-                            .frame(width: 22, height: 22)
-                            .contentShape(Rectangle())
+        Group {
+            if layout == .list {
+                HStack(spacing: 12) {
+                    preview
+                        .frame(width: 112, height: previewHeight)
+                    VStack(alignment: .leading, spacing: 3) {
+                        fileName
+                        meta
                     }
-                    .buttonStyle(.plain)
-                    .padding(6)
-                    .help(selected ? "Deselect" : "Select")
+                    Spacer(minLength: 0)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    preview
+                        .frame(height: previewHeight)
+                    fileName
+                    meta
                 }
             }
-            .frame(height: 128)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.black.opacity(hovered ? 0.14 : 0.06), lineWidth: 1)
-            )
-            Text(shot.name)
-                .font(.system(size: 12))
-                .foregroundColor(Color(nsColor: NSColor(hex: "#222222")!))
-                .lineLimit(1)
-            HStack(spacing: 4) {
-                if let kindTitle {
-                    Text(kindTitle)
-                    Text("·")
-                }
-                Text(shot.modified, style: .relative)
-            }
-            .font(.system(size: 11))
-            .foregroundColor(.secondary)
-            .lineLimit(1)
         }
         .padding(8)
+        .frame(maxWidth: layout == .list ? .infinity : nil, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(selected ? accent.opacity(0.08) : (hovered ? Color.white : Color.white.opacity(0.001)))
+                .fill(selected ? accent.opacity(0.1) : (hovered ? Color.white : Color.white.opacity(0.55)))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(selected ? accent : Color.clear, lineWidth: 2)
+                .stroke(selected ? accent : Color.black.opacity(hovered ? 0.08 : 0.04), lineWidth: selected ? 2 : 1)
         )
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .gesture(
@@ -762,11 +994,11 @@ private struct ShotCard: View {
                 .exclusively(before: TapGesture(count: 1).onEnded { onChoose() })
         )
         .onHover { hovered = $0 }
-        .animation(.easeOut(duration: 0.16), value: hovered)
-        .animation(.easeOut(duration: 0.16), value: selected)
-        .animation(.easeOut(duration: 0.2), value: image != nil)
+        .animation(.easeOut(duration: 0.12), value: hovered)
+        .animation(.easeOut(duration: 0.12), value: selected)
         .contextMenu {
             Button("Open", action: onOpen)
+            Button("Rename", action: onRename)
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([shot.url])
             }
@@ -788,12 +1020,65 @@ private struct ShotCard: View {
             Button("Select All", action: onSelectAll)
             Button("Delete", action: onDelete)
         }
-        .help("\(shot.name). Drag into another app.")
+        .help("\(shot.name)\n\(shot.modified.formatted(date: .abbreviated, time: .shortened))")
         .onDrag {
             let provider = NSItemProvider(contentsOf: shot.url) ?? NSItemProvider()
             provider.suggestedName = shot.name
             return provider
         }
+    }
+
+    private var preview: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white)
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(layout == .list ? 4 : 10)
+            }
+            if showsCheck || hovered || selected {
+                Button(action: onToggle) {
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(selected ? accent : Color.white)
+                        .shadow(color: Color.black.opacity(0.35), radius: 2, y: 1)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(6)
+                .help(selected ? "Deselect" : "Select")
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    private var fileName: some View {
+        Text(shot.name)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundColor(Color(nsColor: NSColor(hex: "#222222")!))
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(shot.name)
+    }
+
+    private var meta: some View {
+        HStack(spacing: 4) {
+            if let kindTitle {
+                Text(kindTitle)
+                Text("·")
+            }
+            Text(shot.modified, style: .relative)
+        }
+        .font(.system(size: 11))
+        .foregroundColor(.secondary)
+        .lineLimit(1)
     }
 }
 
