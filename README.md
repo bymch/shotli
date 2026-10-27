@@ -39,7 +39,7 @@ macOS may ask you to Control-click and Open again after an update, because the a
 ## What you can do
 
 - Browse Recent, Screenshots, Desktop, Pictures, and Shotli from the library on the left. The back button at the top left, or the View menu (⌘L), comes back to that list.
-- Capture the full screen, one window, or an area from the menu bar, or with the shortcuts in Settings. The area selector dims the screen, shows the size as you drag, and lets you move or resize the box before Return captures it. Escape cancels.
+- Capture the full screen, one window, or an area from the menu bar, or with the shortcuts in Settings. The area selector dims the screen, shows the size as you drag, and lets you move or resize the box before Return captures it. Escape cancels. Return on a second area grab adds that picture to the composition you already have open.
 - Import a PNG, JPEG, or WebP file, drop it on the window, or paste an image.
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
 - Presets set the background, padding, corner radius, shadow and frame together. Add screenshot keeps the current picture and adds another as its own layer. With one screenshot the layout list is the single-image presets. With two, or three or more, it switches to layouts that place every screenshot. A composition holds up to six. Export, Copy, and Save to Project include each one.

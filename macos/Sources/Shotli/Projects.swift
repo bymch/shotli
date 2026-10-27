@@ -1200,6 +1200,15 @@ enum ProjectVerify {
         try checkLibraryKeys()
         try checkLibraryGrid()
         try checkMultiScreenshot(in: root)
+        if ScreenCapture.addsToOpenComposition(areaCapture: true, hasPicture: false) {
+            throw Failure("first area grab joined an empty editor")
+        }
+        if !ScreenCapture.addsToOpenComposition(areaCapture: true, hasPicture: true) {
+            throw Failure("second area grab replaced the open screenshot")
+        }
+        if ScreenCapture.addsToOpenComposition(areaCapture: false, hasPicture: true) {
+            throw Failure("full screen capture joined the open screenshot")
+        }
         if let issue = ShotliAppearance.check() { throw Failure(issue) }
     }
 
