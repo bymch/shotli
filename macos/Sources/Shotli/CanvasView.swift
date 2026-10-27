@@ -18,6 +18,7 @@ struct CanvasView: NSViewRepresentable {
 
     func updateNSView(_ view: EditorCanvas, context: Context) {
         view.model = model
+        view.toolTip = model.picture != nil && model.tool == .select ? "Drag the picture into another app" : nil
         if view.viewport != viewport {
             view.viewport = viewport
             view.needsDisplay = true
@@ -67,9 +68,11 @@ final class EditorCanvas: NSView {
         case resize(Annotation, Handle, CGPoint)
         case crop(CGPoint)
         case pan(CGPoint, CGPoint)
+        case share(CGPoint)
     }
 
     private var drag: Drag = .none
+    private var sharingOut = false
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -77,6 +80,52 @@ final class EditorCanvas: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
+        window?.acceptsMouseMovedEvents = true
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSCursor.arrow.set()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard model?.picture != nil, model.tool == .select, pictureFrame()?.contains(point) == true,
+              let imagePoint = imagePoint(from: point) else {
+            NSCursor.arrow.set()
+            return
+        }
+        let slop = 8 / max(currentScale(), 0.05)
+        if hitAnnotation(model.annotations, imagePoint, slop: slop) != nil {
+            NSCursor.arrow.set()
+            return
+        }
+        if let selected = model.selected, hitHandle(selected, imagePoint, slop: slop) != nil {
+            NSCursor.arrow.set()
+            return
+        }
+        NSCursor.openHand.set()
+    }
+
+    private func beginShare(_ event: NSEvent) {
+        guard let file = model.shareFile() else { return }
+        let writer = ShareWriter(url: file.url, png: file.png)
+        let item = NSDraggingItem(pasteboardWriter: writer)
+        let frame = pictureFrame() ?? bounds
+        item.setDraggingFrame(frame, contents: file.preview)
+        beginDraggingSession(with: [item], event: event, source: self)
+    }
+
+    private func pictureFrame() -> CGRect? {
+        guard model?.picture != nil else { return nil }
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let place = placement(for: layout.size)
+        return CGRect(x: place.origin.x, y: place.origin.y, width: layout.size.width * place.scale, height: layout.size.height * place.scale)
     }
 
     override init(frame frameRect: NSRect) {
@@ -156,6 +205,9 @@ final class EditorCanvas: NSView {
                 drag = .move(hit, imagePoint)
             } else {
                 model.selectedID = nil
+                if pictureFrame()?.contains(viewPoint) == true {
+                    drag = .share(viewPoint)
+                }
             }
         case .crop:
             model.beginGesture()
@@ -196,6 +248,15 @@ final class EditorCanvas: NSView {
         case .create(let start, let seed):
             guard let point = imagePoint(from: viewPoint) else { return }
             draft = updated(seed, from: start, to: point, shift: shift)
+        case .share(let start):
+            guard !sharingOut else { return }
+            let dx = viewPoint.x - start.x
+            let dy = viewPoint.y - start.y
+            if dx * dx + dy * dy >= 25 {
+                sharingOut = true
+                drag = .none
+                beginShare(event)
+            }
         default:
             break
         }
@@ -223,9 +284,10 @@ final class EditorCanvas: NSView {
             model.tool = .select
         case .move, .resize:
             model.endGesture()
-        case .pan, .none:
+        case .share, .pan, .none:
             break
         }
+        sharingOut = false
         drag = .none
         needsDisplay = true
     }
@@ -501,5 +563,40 @@ final class EditorCanvas: NSView {
         let comp = CGPoint(x: (viewPoint.x - place.origin.x) / place.scale, y: (viewPoint.y - place.origin.y) / place.scale)
         let crop = activeCrop(picture: model.picture, crop: model.crop) ?? .zero
         return CGPoint(x: comp.x - layout.image.minX + crop.minX, y: comp.y - layout.image.minY + crop.minY)
+    }
+}
+
+extension EditorCanvas: NSDraggingSource {
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        .copy
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        sharingOut = false
+    }
+}
+
+private final class ShareWriter: NSObject, NSPasteboardWriting {
+    let url: URL
+    let png: Data
+
+    init(url: URL, png: Data) {
+        self.url = url
+        self.png = png
+    }
+
+    func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+        [.fileURL, .png]
+    }
+
+    func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        switch type {
+        case .fileURL:
+            return (url as NSURL).pasteboardPropertyList(forType: type)
+        case .png:
+            return png
+        default:
+            return nil
+        }
     }
 }

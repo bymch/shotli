@@ -594,7 +594,12 @@ private struct ShotCard: View {
             Button("Select All", action: onSelectAll)
             Button("Delete", action: onDelete)
         }
-        .help(shot.name)
+        .help("\(shot.name). Drag into another app.")
+        .onDrag {
+            let provider = NSItemProvider(contentsOf: shot.url) ?? NSItemProvider()
+            provider.suggestedName = shot.name
+            return provider
+        }
     }
 }
 
