@@ -64,7 +64,10 @@ struct ShotliCommands: Commands {
             Button("Export PNG") { model.exportPNG() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(model.picture == nil)
-            Button("Save to Project…") { model.showSaveProjects = true }
+            Button("Save to Project…") {
+                model.prepareSavePopover()
+                model.showSaveProjects = true
+            }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
                 .disabled(model.picture == nil)
             Button("Copy PNG") { model.copyPNG() }
