@@ -80,7 +80,7 @@ final class MotionSession: ObservableObject {
     func export(_ model: EditorModel) {
         guard !exporting, let picture = model.picture else { return }
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.mpeg4]
+        panel.allowedContentTypes = [.mpeg4Movie]
         panel.nameFieldStringValue = "shotli-motion.mp4"
         panel.title = "Export video"
         panel.directoryURL = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
