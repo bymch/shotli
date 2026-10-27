@@ -534,6 +534,22 @@ final class EditorModel: ObservableObject {
         notice = "Copied"
     }
 
+    func shareFile() -> (url: URL, png: Data, preview: NSImage)? {
+        guard picture != nil,
+              let image = renderComposition(picture: picture, crop: crop, style: style, annotations: annotations, draft: nil, interactive: false),
+              let png = pngData(image) else { return nil }
+        let base = (picture?.name ?? "screenshot")
+            .replacingOccurrences(of: "\\.[^.]+$", with: "", options: .regularExpression)
+        let safe = base.replacingOccurrences(of: "[^A-Za-z0-9._-]+", with: "-", options: .regularExpression)
+        let name = "Shotli-\(safe.isEmpty ? "screenshot" : safe)-\(UUID().uuidString.prefix(6)).png"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        do { try png.write(to: url) } catch { return nil }
+        let edge = max(CGFloat(image.width), CGFloat(image.height))
+        let scale = edge > 1 ? min(1, 720 / edge) : 1
+        let preview = NSImage(cgImage: image, size: NSSize(width: CGFloat(image.width) * scale, height: CGFloat(image.height) * scale))
+        return (url, png, preview)
+    }
+
     func applyPreset(_ preset: Preset) {
         guard preset.style != style else { return }
         pushUndo()
