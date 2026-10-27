@@ -718,14 +718,16 @@ final class EditorModel: ObservableObject {
 
     func startOver() {
         guard picture != nil else { return }
-        let alert = NSAlert()
-        alert.messageText = "Are you sure?"
-        alert.informativeText = "This clears the screenshot you're editing."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Start Over")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if ShotliSettings.shared.confirmStartOver {
+            let alert = NSAlert()
+            alert.messageText = "Are you sure?"
+            alert.informativeText = "This clears the screenshot you're editing."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Start Over")
+            alert.addButton(withTitle: "Cancel")
+            NSApp.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
         tool = .select
         showLibrary()
     }

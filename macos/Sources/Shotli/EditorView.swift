@@ -29,6 +29,8 @@ struct EditorView: View {
     @State private var showMagic = false
     @State private var magicColors: [MagicColor] = []
     @State private var magicBackgrounds: [MagicBackground] = []
+    @State private var settingsSheet = false
+    @ObservedObject private var settings = ShotliSettings.shared
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
@@ -92,6 +94,17 @@ struct EditorView: View {
         .onChange(of: pictureKey) { _ in
             refreshMagic()
             if model.picture == nil { showTemplates = false }
+        }
+        .onChange(of: settings.openRequest) { _ in
+            if model.picture == nil {
+                LibraryModel.shared.showSettings()
+            } else {
+                settingsSheet = true
+            }
+        }
+        .sheet(isPresented: $settingsSheet) {
+            SettingsPane(onDone: { settingsSheet = false })
+                .frame(width: 560, height: 640)
         }
     }
 
