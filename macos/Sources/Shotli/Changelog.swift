@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.36", notes: [
+            "Each release in the changelog sits on its own card, so the notes are easier to read.",
+        ]),
         ChangelogEntry(version: "0.2.35", notes: [
             "Changelog is in the Shotli menu.",
         ]),
@@ -73,7 +76,7 @@ enum Changelog {
             return
         }
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 600),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -90,28 +93,61 @@ enum Changelog {
 
 private struct ChangelogView: View {
     private let ink = Color(nsColor: NSColor(hex: "#222222")!)
+    private let accent = Color(nsColor: NSColor(hex: "#3478F6")!)
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                ForEach(Changelog.entries) { entry in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(entry.version)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(ink)
-                        ForEach(entry.notes, id: \.self) { note in
-                            Text(note)
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(Changelog.entries.enumerated()), id: \.element.id) { index, entry in
+                    card(entry, current: index == 0)
                 }
             }
-            .padding(22)
+            .padding(16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: NSColor(srgbRed: 0.965, green: 0.965, blue: 0.968, alpha: 1)))
+        .background(Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)))
+    }
+
+    private func card(_ entry: ChangelogEntry, current: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(entry.version)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(ink)
+                if current {
+                    Text("This version")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(accent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(accent.opacity(0.12)))
+                }
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(entry.notes, id: \.self) { note in
+                    noteRow(note, marked: entry.notes.count > 1)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.black.opacity(current ? 0.14 : 0.06), lineWidth: 1))
+    }
+
+    private func noteRow(_ note: String, marked: Bool) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            if marked {
+                Circle()
+                    .fill(Color.black.opacity(0.28))
+                    .frame(width: 5, height: 5)
+                    .padding(.top, 6)
+            }
+            Text(note)
+                .font(.system(size: 13))
+                .foregroundColor(ink.opacity(0.82))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
