@@ -189,6 +189,18 @@ private func warpCard(_ image: CGImage, tiltX: CGFloat, tiltY: CGFloat) -> CGIma
     return rendered
 }
 
+private enum SceneOp {
+    case vertical([(CGFloat, String)])
+    case glow(CGFloat, CGFloat, CGFloat, String, CGFloat)
+    case disc(CGFloat, CGFloat, CGFloat, String)
+    case hill(CGFloat, CGFloat, CGFloat, CGFloat, String)
+    case band(CGFloat, CGFloat, CGFloat, CGFloat, String, CGFloat, CGFloat)
+    case oval(CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, String, CGFloat)
+    case ring(CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, String, CGFloat)
+    case stars
+    case vignette(String, CGFloat)
+}
+
 private struct Painter {
     let context: CGContext
     let height: CGFloat
@@ -343,12 +355,13 @@ private struct Painter {
                 x += 18
             }
             context.strokePath()
-        case .dusk, .night, .harbour, .hills, .aurora, .sorbet, .studio, .porcelain, .bloom, .tide, .sand, .ink, .citrus, .glacier, .clay, .moss:
+        default:
             drawScene(id, size)
         }
     }
 
     func drawScene(_ id: WallpaperID, _ size: CGSize) {
+        if SceneLibrary.render(id, painter: self, size: size) { return }
         switch id {
         case .dusk:
             vertical(size, [(0, "#FF8A5B"), (0.42, "#F6B7C5"), (0.72, "#7C6BD4"), (1, "#2A2148")])
@@ -435,7 +448,8 @@ private struct Painter {
             glow(size, 0.3, 0.28, 0.42, "#E7F5C8", 0.78)
             glow(size, 0.74, 0.64, 0.34, "#1F6B4A", 0.62)
         default:
-            break
+            context.setFillColor(paint("#E7E5E4"))
+            context.fill(CGRect(origin: .zero, size: size))
         }
     }
 
@@ -603,6 +617,54 @@ private struct Painter {
         context.addPath(path)
         context.setFillColor(paint(hex))
         context.fillPath()
+    }
+
+    func oval(_ size: CGSize, _ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ rotation: CGFloat, _ hex: String, _ alpha: CGFloat) {
+        context.saveGState()
+        let center = cg(CGPoint(x: size.width * x, y: size.height * y))
+        context.translateBy(x: center.x, y: center.y)
+        context.rotate(by: rotation)
+        context.setFillColor(paint(hex, alpha: alpha))
+        let width = size.width * w
+        let height = size.height * h
+        context.fillEllipse(in: CGRect(x: -width / 2, y: -height / 2, width: width, height: height))
+        context.restoreGState()
+    }
+
+    func ring(_ size: CGSize, _ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ rotation: CGFloat, _ hex: String, _ line: CGFloat) {
+        context.saveGState()
+        let center = cg(CGPoint(x: size.width * x, y: size.height * y))
+        context.translateBy(x: center.x, y: center.y)
+        context.rotate(by: rotation)
+        context.setStrokeColor(paint(hex, alpha: 0.85))
+        context.setLineWidth(max(size.width, size.height) * line)
+        let width = size.width * w
+        let height = size.height * h
+        context.strokeEllipse(in: CGRect(x: -width / 2, y: -height / 2, width: width, height: height))
+        context.restoreGState()
+    }
+
+    func play(_ op: SceneOp, _ size: CGSize) {
+        switch op {
+        case .vertical(let stops):
+            vertical(size, stops)
+        case .glow(let x, let y, let radius, let hex, let alpha):
+            glow(size, x, y, radius, hex, alpha)
+        case .disc(let x, let y, let radius, let hex):
+            disc(size, x, y, radius, hex)
+        case .hill(let base, let amp, let waves, let phase, let hex):
+            hill(size, base, amp, waves, phase, hex)
+        case .band(let base, let amp, let waves, let phase, let hex, let thickness, let alpha):
+            band(size, base, amp, waves, phase, hex, thickness, alpha)
+        case .oval(let x, let y, let w, let h, let rotation, let hex, let alpha):
+            oval(size, x, y, w, h, rotation, hex, alpha)
+        case .ring(let x, let y, let w, let h, let rotation, let hex, let line):
+            ring(size, x, y, w, h, rotation, hex, line)
+        case .stars:
+            stars(size)
+        case .vignette(let hex, let alpha):
+            vignette(size, hex, alpha)
+        }
     }
 
     func band(_ size: CGSize, _ base: CGFloat, _ amp: CGFloat, _ waves: CGFloat, _ phase: CGFloat, _ hex: String, _ thickness: CGFloat, _ alpha: CGFloat) {
@@ -979,6 +1041,246 @@ private struct Painter {
             value.removeLast()
         }
         return value + "…"
+    }
+}
+
+private enum SceneLibrary {
+    static func render(_ id: WallpaperID, painter: Painter, size: CGSize) -> Bool {
+        guard let ops = catalog(id) else { return false }
+        for op in ops { painter.play(op, size) }
+        return true
+    }
+
+    static func catalog(_ id: WallpaperID) -> [SceneOp]? {
+        switch id {
+        case .flare:
+            return [
+                .vertical([(0, "#FF4B6E"), (0.55, "#FF7A59"), (1, "#FFB086")]),
+                .glow(0.12, 0.28, 0.55, "#FF2D55", 0.95),
+                .glow(0.84, 0.22, 0.48, "#FF8A3D", 0.9),
+                .glow(0.48, 0.72, 0.42, "#FFD0A8", 0.75),
+                .glow(0.62, 0.4, 0.22, "#FFFFFF", 0.35),
+            ]
+        case .iris:
+            return [
+                .vertical([(0, "#5B4DFF"), (0.5, "#7C5CFF"), (1, "#3B82F6")]),
+                .glow(0.18, 0.24, 0.5, "#C084FC", 0.85),
+                .glow(0.82, 0.18, 0.46, "#67E8F9", 0.7),
+                .glow(0.55, 0.78, 0.48, "#F9A8D4", 0.8),
+                .glow(0.42, 0.42, 0.2, "#FFFFFF", 0.28),
+            ]
+        case .blush:
+            return [
+                .vertical([(0, "#FFE4EC"), (0.5, "#FFC7D4"), (1, "#FFC4A8")]),
+                .glow(0.16, 0.3, 0.5, "#FB7185", 0.7),
+                .glow(0.84, 0.24, 0.46, "#FDBA74", 0.75),
+                .glow(0.5, 0.74, 0.4, "#FFFFFF", 0.85),
+            ]
+        case .prism:
+            return [
+                .vertical([(0, "#120C2E"), (1, "#1E1648")]),
+                .glow(0.2, 0.22, 0.48, "#7C3AED", 0.9),
+                .glow(0.78, 0.3, 0.42, "#22D3EE", 0.75),
+                .glow(0.55, 0.72, 0.4, "#F472B6", 0.7),
+                .band(0.42, 0.08, 1.1, 0.4, "#E0E7FF", 0.04, 0.55),
+            ]
+        case .ripple:
+            return [
+                .vertical([(0, "#123A8F"), (1, "#38BDF8")]),
+                .band(0.26, 0.06, 1.5, 0.2, "#FFFFFF", 0.07, 0.4),
+                .band(0.38, 0.08, 1.7, 1.2, "#E0F2FE", 0.14, 0.55),
+                .band(0.52, 0.05, 1.3, 2.1, "#7DD3FC", 0.16, 0.5),
+                .band(0.66, 0.07, 1.6, 0.7, "#1D4ED8", 0.12, 0.45),
+                .band(0.8, 0.04, 2.1, 1.5, "#FFFFFF", 0.05, 0.55),
+                .glow(0.18, 0.32, 0.28, "#FFFFFF", 0.28),
+            ]
+        case .emberglass:
+            return [
+                .vertical([(0, "#C2410C"), (0.5, "#F97316"), (1, "#FBBF24")]),
+                .band(0.24, 0.05, 1.8, 0.3, "#FFF7ED", 0.06, 0.45),
+                .band(0.4, 0.08, 1.4, 1.4, "#FFEDD5", 0.16, 0.55),
+                .band(0.56, 0.06, 2.0, 0.6, "#EA580C", 0.14, 0.4),
+                .band(0.72, 0.05, 1.5, 2.2, "#FFFFFF", 0.05, 0.5),
+                .glow(0.7, 0.3, 0.3, "#FEF3C7", 0.4),
+            ]
+        case .gilt:
+            return [
+                .vertical([(0, "#F8E7B5"), (0.55, "#E8B15A"), (1, "#C4842A")]),
+                .band(0.22, 0.03, 2.4, 0.2, "#FFFBEB", 0.035, 0.7),
+                .band(0.36, 0.04, 2.2, 1.1, "#FDE68A", 0.05, 0.65),
+                .band(0.5, 0.035, 2.6, 0.5, "#FFFFFF", 0.03, 0.55),
+                .band(0.66, 0.04, 2.1, 1.8, "#B45309", 0.045, 0.35),
+                .band(0.8, 0.03, 2.5, 0.9, "#FFF7ED", 0.03, 0.6),
+            ]
+        case .current:
+            return [
+                .vertical([(0, "#082F49"), (0.45, "#0369A1"), (1, "#38BDF8")]),
+                .band(0.3, 0.07, 1.2, 0.4, "#E0F2FE", 0.1, 0.35),
+                .band(0.46, 0.09, 1.4, 1.6, "#7DD3FC", 0.18, 0.45),
+                .band(0.62, 0.06, 1.1, 0.8, "#FFFFFF", 0.08, 0.4),
+                .band(0.76, 0.05, 1.6, 2.2, "#0C4A6E", 0.12, 0.4),
+                .glow(0.5, 0.4, 0.25, "#F0F9FF", 0.3),
+            ]
+        case .nebula:
+            return [
+                .vertical([(0, "#070614"), (1, "#140C28")]),
+                .stars,
+                .glow(0.22, 0.32, 0.5, "#7C3AED", 0.85),
+                .glow(0.74, 0.28, 0.46, "#EC4899", 0.7),
+                .glow(0.5, 0.7, 0.4, "#312E81", 0.9),
+                .glow(0.62, 0.42, 0.16, "#F5D0FE", 0.35),
+            ]
+        case .void:
+            return [
+                .vertical([(0, "#050508"), (1, "#0C0A12")]),
+                .stars,
+                .glow(0.78, 0.22, 0.42, "#4C1D95", 0.8),
+                .glow(0.3, 0.7, 0.36, "#1E1B4B", 0.9),
+                .disc(0.78, 0.22, 0.02, "#EDE9FE"),
+            ]
+        case .orbit:
+            return [
+                .vertical([(0, "#070B18"), (1, "#111827")]),
+                .stars,
+                .glow(0.62, 0.4, 0.4, "#1D4ED8", 0.7),
+                .disc(0.62, 0.4, 0.09, "#93C5FD"),
+                .disc(0.6, 0.38, 0.05, "#1E3A8A"),
+                .ring(0.62, 0.4, 0.34, 0.1, -0.4, "#DBEAFE", 0.012),
+            ]
+        case .pulsar:
+            return [
+                .vertical([(0, "#140818"), (1, "#2A0A22")]),
+                .stars,
+                .glow(0.4, 0.42, 0.5, "#BE185D", 0.85),
+                .glow(0.72, 0.3, 0.36, "#7C3AED", 0.75),
+                .disc(0.4, 0.42, 0.025, "#FDF2F8"),
+                .glow(0.4, 0.42, 0.12, "#FFFFFF", 0.45),
+            ]
+        case .veil:
+            return [
+                .vertical([(0, "#F8F9FC"), (1, "#EEF2FF")]),
+                .glow(0.22, 0.72, 0.55, "#93C5FD", 0.85),
+                .glow(0.78, 0.24, 0.4, "#C4B5FD", 0.45),
+                .glow(0.5, 0.4, 0.3, "#FFFFFF", 0.8),
+            ]
+        case .halo:
+            return [
+                .vertical([(0, "#F4F7FF"), (1, "#E0E7FF")]),
+                .glow(0.5, 0.48, 0.42, "#FFFFFF", 0.95),
+                .band(0.46, 0.08, 1.2, 0.5, "#60A5FA", 0.1, 0.45),
+                .band(0.52, 0.06, 1.4, 1.2, "#A78BFA", 0.06, 0.35),
+                .glow(0.5, 0.5, 0.16, "#DBEAFE", 0.7),
+            ]
+        case .drift:
+            return [
+                .vertical([(0, "#F8F7FC"), (1, "#F3E8FF")]),
+                .glow(0.18, 0.3, 0.4, "#C4B5FD", 0.55),
+                .glow(0.8, 0.62, 0.48, "#7DD3FC", 0.5),
+                .glow(0.46, 0.78, 0.32, "#F9A8D4", 0.35),
+                .glow(0.55, 0.36, 0.22, "#FFFFFF", 0.8),
+            ]
+        case .linen:
+            return [
+                .vertical([(0, "#F7F4EF"), (1, "#E7E5E4")]),
+                .glow(0.3, 0.28, 0.4, "#FFFFFF", 0.9),
+                .glow(0.72, 0.74, 0.42, "#93C5FD", 0.35),
+                .glow(0.16, 0.8, 0.3, "#F5D0C8", 0.4),
+            ]
+        case .peaks:
+            return [
+                .vertical([(0, "#8EC8F5"), (0.55, "#E8F4FF"), (1, "#F8FBFF")]),
+                .disc(0.74, 0.28, 0.06, "#FFF7ED"),
+                .glow(0.74, 0.28, 0.2, "#FFFFFF", 0.7),
+                .hill(0.58, 0.07, 1.3, 0.4, "#9BBBE0"),
+                .hill(0.7, 0.09, 1.6, 1.3, "#4C78B8"),
+                .hill(0.84, 0.07, 1.15, 0.3, "#1E3A5F"),
+            ]
+        case .coast:
+            return [
+                .vertical([(0, "#F7D7B5"), (0.42, "#8ECAE6"), (1, "#1D4E89")]),
+                .hill(0.52, 0.02, 0.6, 0.2, "#1E6091"),
+                .band(0.5, 0.012, 1.2, 0.4, "#FFFFFF", 0.012, 0.7),
+                .oval(0.22, 0.7, 0.18, 0.16, 0.2, "#1C1917", 1),
+                .oval(0.7, 0.66, 0.28, 0.14, -0.3, "#292524", 1),
+                .oval(0.86, 0.78, 0.16, 0.12, 0.4, "#44403C", 1),
+                .glow(0.7, 0.3, 0.18, "#FFF7ED", 0.55),
+            ]
+        case .shore:
+            return [
+                .vertical([(0, "#FB923C"), (0.4, "#FDBA74"), (0.7, "#7DD3FC"), (1, "#0369A1")]),
+                .disc(0.72, 0.32, 0.07, "#FFF7ED"),
+                .glow(0.72, 0.32, 0.28, "#FED7AA", 0.8),
+                .hill(0.62, 0.015, 0.8, 0.2, "#0284C7"),
+                .hill(0.8, 0.04, 1.1, 0.6, "#F5D0A9"),
+            ]
+        case .ridge:
+            return [
+                .vertical([(0, "#312E81"), (0.4, "#7C3AED"), (0.7, "#F9A8D4"), (1, "#1E1B4B")]),
+                .hill(0.55, 0.05, 1.4, 0.3, "#6D28D9"),
+                .hill(0.68, 0.06, 1.7, 1.2, "#4C1D95"),
+                .hill(0.82, 0.05, 1.2, 0.5, "#1E1B4B"),
+                .glow(0.3, 0.24, 0.22, "#FDE68A", 0.45),
+            ]
+        case .fold:
+            return [
+                .vertical([(0, "#1D4ED8"), (1, "#2563EB")]),
+                .oval(0.28, 0.4, 0.7, 0.55, 0.5, "#FB923C", 1),
+                .oval(0.72, 0.58, 0.62, 0.48, -0.4, "#1E3A8A", 1),
+                .oval(0.48, 0.72, 0.5, 0.28, 0.2, "#FEF3C7", 1),
+            ]
+        case .swell:
+            return [
+                .vertical([(0, "#2A1848"), (1, "#3B0764")]),
+                .oval(0.3, 0.38, 0.7, 0.5, 0.6, "#F59E0B", 1),
+                .oval(0.7, 0.55, 0.6, 0.55, -0.5, "#E879F9", 1),
+                .oval(0.46, 0.74, 0.55, 0.3, 0.15, "#38BDF8", 1),
+            ]
+        case .dune:
+            return [
+                .vertical([(0, "#FF7A3C"), (1, "#FDBA74")]),
+                .oval(0.62, 0.42, 0.8, 0.5, -0.35, "#1D4ED8", 1),
+                .oval(0.28, 0.62, 0.6, 0.4, 0.4, "#FFF7ED", 1),
+                .hill(0.78, 0.06, 1.3, 0.8, "#C2410C"),
+            ]
+        case .petal:
+            return [
+                .vertical([(0, "#FF5C8A"), (1, "#FB7185")]),
+                .oval(0.3, 0.36, 0.55, 0.42, 0.7, "#FDBA74", 1),
+                .oval(0.68, 0.4, 0.5, 0.46, -0.5, "#FDE68A", 1),
+                .oval(0.48, 0.68, 0.62, 0.36, 0.2, "#7C3AED", 0.9),
+            ]
+        case .canyon:
+            return [
+                .vertical([(0, "#FED7AA"), (0.4, "#EA580C"), (1, "#7C2D12")]),
+                .glow(0.3, 0.28, 0.4, "#FFEDD5", 0.75),
+                .hill(0.62, 0.06, 1.4, 0.4, "#C2410C"),
+                .hill(0.78, 0.05, 1.2, 1.5, "#7C2D12"),
+            ]
+        case .canopy:
+            return [
+                .vertical([(0, "#ECFCCB"), (0.45, "#65A30D"), (1, "#14532D")]),
+                .glow(0.24, 0.26, 0.36, "#FDE68A", 0.7),
+                .hill(0.6, 0.07, 1.5, 0.3, "#3F6212"),
+                .hill(0.78, 0.05, 1.2, 1.4, "#14532D"),
+            ]
+        case .mesa:
+            return [
+                .vertical([(0, "#DDD6FE"), (0.4, "#A78BFA"), (1, "#F5D0A9")]),
+                .glow(0.7, 0.24, 0.28, "#FDE68A", 0.7),
+                .hill(0.64, 0.05, 1.3, 0.6, "#C4B5FD"),
+                .hill(0.8, 0.06, 1.1, 1.2, "#D6A37A"),
+            ]
+        case .basin:
+            return [
+                .vertical([(0, "#BAE6FD"), (0.45, "#0284C7"), (1, "#0F766E")]),
+                .glow(0.5, 0.36, 0.3, "#E0F2FE", 0.55),
+                .hill(0.62, 0.04, 1.2, 0.4, "#0F766E"),
+                .oval(0.3, 0.74, 0.36, 0.16, 0.2, "#D9F99D", 1),
+                .hill(0.84, 0.04, 1.4, 1.1, "#115E59"),
+            ]
+        default:
+            return nil
+        }
     }
 }
 

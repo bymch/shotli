@@ -233,6 +233,7 @@ struct EditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     screenshotRow
+                    backgroundGallery
                     magicPresetRow
                     mediaWell
                     styleGrid
@@ -925,6 +926,73 @@ struct EditorView: View {
         }
     }
 
+    private var backgroundGallery: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            swatchGrid("Gradient", WallpaperID.fields)
+            swatchGrid("Glass", WallpaperID.glass)
+            swatchGrid("Cosmic", WallpaperID.cosmic)
+            swatchGrid("Mystic", WallpaperID.mystic)
+            swatchGrid("Desktop", WallpaperID.desktop)
+            swatchGrid("Abstract", WallpaperID.abstract)
+            swatchGrid("Earth", WallpaperID.earth)
+            swatchGrid("Studio", WallpaperID.backdrops)
+            swatchGrid("Scenes", WallpaperID.scenes)
+            caption("Linear")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                ForEach(Array(Presets.gradients.enumerated()), id: \.offset) { _, gradient in
+                    let active: Bool = {
+                        if case .gradient(let from, let mid, let to, _) = model.style.background {
+                            return gradient.from == from && gradient.mid == mid && gradient.to == to
+                        }
+                        return false
+                    }()
+                    Button(action: { model.setBackground(.gradient(from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle)) }) {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(LinearGradient(
+                                colors: [Color(nsColor: NSColor(hex: gradient.from)!), Color(nsColor: NSColor(hex: gradient.mid)!), Color(nsColor: NSColor(hex: gradient.to)!)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ))
+                            .frame(height: 58)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help(gradient.name)
+                }
+            }
+            swatchGrid("Pattern", WallpaperID.patterns)
+        }
+    }
+
+    private func swatchGrid(_ title: String, _ items: [WallpaperID]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption(title)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                ForEach(items) { wallpaper in
+                    let active: Bool = {
+                        if case .wallpaper(let selected) = model.style.background { return selected == wallpaper }
+                        return false
+                    }()
+                    Button(action: { model.setBackground(.wallpaper(wallpaper)) }) {
+                        wallpaperPreview(wallpaper)
+                            .frame(height: 58)
+                            .frame(maxWidth: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help(wallpaper.label)
+                }
+            }
+        }
+    }
+
     private var backgroundControls: some View {
         VStack(alignment: .leading, spacing: 12) {
             caption("Colour")
@@ -1195,6 +1263,20 @@ struct EditorView: View {
 
     @ViewBuilder
     private func wallpaperPreview(_ id: WallpaperID) -> some View {
+        if WallpaperID.patterns.contains(id) {
+            patternSwatch(id)
+        } else if let image = SceneThumbs.image(id) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            Color(nsColor: NSColor(hex: "#E7E5E4")!)
+        }
+    }
+
+    @ViewBuilder
+    private func patternSwatch(_ id: WallpaperID) -> some View {
         switch id {
         case .dots: Color(nsColor: NSColor(hex: "#E8E6E3")!)
         case .grid: Color(nsColor: NSColor(hex: "#F7F7F7")!)
@@ -1202,15 +1284,7 @@ struct EditorView: View {
         case .stripes: Color(nsColor: NSColor(hex: "#F4F1EC")!)
         case .mesh: Color(nsColor: NSColor(hex: "#F6F7F8")!)
         case .cross: Color(nsColor: NSColor(hex: "#F4F7FB")!)
-        case .dusk, .night, .harbour, .hills, .aurora, .sorbet, .studio, .porcelain, .bloom, .tide, .sand, .ink, .citrus, .glacier, .clay, .moss:
-            if let image = SceneThumbs.image(id) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                Color(nsColor: NSColor(hex: "#1C1430")!)
-            }
+        default: Color(nsColor: NSColor(hex: "#F4F4F5")!)
         }
     }
 
