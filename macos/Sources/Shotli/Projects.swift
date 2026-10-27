@@ -528,8 +528,8 @@ enum ProjectStore {
             throw ProjectError.unreadable("The project file couldn't be read.")
         }
         var relative = draft.reuseRelative
-        if let relative {
-            let existing = try resolve(relative, in: folder)
+        if let reuse = relative {
+            let existing = try resolve(reuse, in: folder)
             if !FileManager.default.fileExists(atPath: existing.path) { relative = nil }
         }
         if relative == nil {
