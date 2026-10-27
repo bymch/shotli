@@ -429,13 +429,18 @@ final class ShortcutWellView: NSView {
         }
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
         let path = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
-        NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1).setFill()
+        ShotliGlass.controlFill.setFill()
         path.fill()
-        let ink = NSColor(srgbRed: 0.133, green: 0.133, blue: 0.133, alpha: 1)
-        (recording ? ink : NSColor.black.withAlphaComponent(0.08)).setStroke()
+        let ink = ShotliGlass.inkColor
+        (recording ? ink : ShotliGlass.hairlineColor).setStroke()
         path.lineWidth = recording ? 1.5 : 1
         path.stroke()
         let title = recording ? "Press keys" : (shortcut?.label ?? "None")

@@ -254,7 +254,9 @@ struct MotionStudio: View {
     var onClose: () -> Void
     @StateObject private var session = MotionSession()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showAdjust = false
+    private var ink: Color { ShotliGlass.ink(colorScheme) }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -313,7 +315,7 @@ struct MotionStudio: View {
                     Text("Editor")
                         .font(.system(size: 13, weight: .medium))
                 }
-                .foregroundColor(ShotliGlass.ink)
+                .foregroundColor(ink)
                 .padding(.horizontal, 10)
                 .frame(height: ShotliGlass.controlHeight)
                 .contentShape(Rectangle())
@@ -323,7 +325,7 @@ struct MotionStudio: View {
             .accessibilityLabel("Back to the editor")
             Text("Motion")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(ShotliGlass.ink)
+                .foregroundColor(ink)
             Spacer()
             if session.exporting {
                 Text("Exporting \(Int((session.progress * 100).rounded()))%")
@@ -343,7 +345,7 @@ struct MotionStudio: View {
                     Text("Export video")
                         .font(.system(size: 13, weight: .semibold))
                 }
-                .foregroundColor(ShotliGlass.ink)
+                .foregroundColor(ink)
                 .padding(.horizontal, 12)
                 .frame(height: ShotliGlass.controlHeight)
                 .shotliCapsuleChip()
@@ -386,7 +388,7 @@ struct MotionStudio: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(preset.title)
                     .font(.system(size: 13, weight: on ? .semibold : .medium))
-                    .foregroundColor(ShotliGlass.ink)
+                    .foregroundColor(ink)
                 Text(preset.detail)
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
@@ -398,7 +400,7 @@ struct MotionStudio: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(on ? Color.white.opacity(0.78) : Color.clear)
+                    .fill(on ? ShotliGlass.segment(colorScheme) : Color.clear)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(on ? ShotliGlass.accent : Color.clear, lineWidth: on ? 1.5 : 0)
@@ -427,7 +429,7 @@ struct MotionStudio: View {
         .clipShape(RoundedRectangle(cornerRadius: ShotliGlass.radiusPanel, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: ShotliGlass.radiusPanel, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(ShotliGlass.hairline(colorScheme), lineWidth: 1)
         )
         .accessibilityLabel("Motion preview")
     }
@@ -437,7 +439,7 @@ struct MotionStudio: View {
             Button(action: session.restart) {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(ShotliGlass.ink)
+                    .foregroundColor(ink)
                     .frame(width: 32, height: 32)
                     .shotliRoundedChip(radius: 10)
             }
@@ -447,7 +449,7 @@ struct MotionStudio: View {
             Button(action: session.togglePlay) {
                 Image(systemName: session.playing ? "pause.fill" : "play.fill")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(ShotliGlass.ink)
+                    .foregroundColor(ink)
                     .frame(width: 36, height: 32)
                     .shotliRoundedChip(radius: 10)
             }
@@ -457,7 +459,7 @@ struct MotionStudio: View {
             Text(clock(session.time))
                 .font(.system(size: 11, weight: .medium))
                 .monospacedDigit()
-                .foregroundColor(ShotliGlass.ink)
+                .foregroundColor(ink)
                 .frame(width: 42, alignment: .trailing)
             Slider(
                 value: Binding(
@@ -486,7 +488,7 @@ struct MotionStudio: View {
                 Toggle(isOn: loopBinding) {
                     Text("Loop")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(ShotliGlass.ink)
+                        .foregroundColor(ink)
                 }
                 .toggleStyle(.checkbox)
                 .help("Repeat without a jump")
@@ -501,7 +503,7 @@ struct MotionStudio: View {
                     HStack {
                         Text("Adjust")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(ShotliGlass.ink)
+                            .foregroundColor(ink)
                         Spacer()
                         Image(systemName: showAdjust ? "chevron.up" : "chevron.down")
                             .font(.system(size: 11, weight: .semibold))
@@ -522,14 +524,14 @@ struct MotionStudio: View {
                         Toggle(isOn: flagBinding(\.entrance)) {
                             Text("Entrance")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(ShotliGlass.ink)
+                                .foregroundColor(ink)
                         }
                         .toggleStyle(.checkbox)
                         .help("Ease in from rest")
                         Toggle(isOn: flagBinding(\.exit)) {
                             Text("Exit")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(ShotliGlass.ink)
+                                .foregroundColor(ink)
                         }
                         .toggleStyle(.checkbox)
                         .help("Ease back to rest")
@@ -559,7 +561,7 @@ struct MotionStudio: View {
                     Button(action: session.clearMusic) {
                         Text("Clear")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(ShotliGlass.ink)
+                            .foregroundColor(ink)
                     }
                     .buttonStyle(PressFadeButtonStyle())
                     .help("Remove the music")
@@ -575,7 +577,7 @@ struct MotionStudio: View {
                         .truncationMode(.middle)
                     Spacer(minLength: 0)
                 }
-                .foregroundColor(ShotliGlass.ink)
+                .foregroundColor(ink)
                 .padding(.horizontal, 10)
                 .frame(height: 30)
                 .frame(maxWidth: .infinity)
@@ -597,7 +599,7 @@ struct MotionStudio: View {
                 Text(label)
                     .font(.system(size: 11, weight: .medium))
                     .monospacedDigit()
-                    .foregroundColor(ShotliGlass.ink)
+                    .foregroundColor(ink)
             }
             Slider(value: value, in: range)
                 .accessibilityLabel(title)

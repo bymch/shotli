@@ -4,8 +4,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private let accent = ShotliGlass.accent
-private let ink = ShotliGlass.ink
-private let line = ShotliGlass.line
 private let leftRailMin: CGFloat = 232
 private let leftRailIdeal: CGFloat = 280
 private let rightRailMin: CGFloat = 248
@@ -79,6 +77,9 @@ struct EditorView: View {
     @State private var magicBackgrounds: [MagicBackground] = []
     @State private var settingsSheet = false
     @ObservedObject private var settings = ShotliSettings.shared
+    @Environment(\.colorScheme) private var colorScheme
+    private var ink: Color { ShotliGlass.ink(colorScheme) }
+    private var line: Color { ShotliGlass.line(colorScheme) }
     @ObservedObject private var projectPrompt = ProjectPrompt.shared
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
@@ -114,7 +115,7 @@ struct EditorView: View {
                         .clipShape(RoundedRectangle(cornerRadius: ShotliGlass.radiusPanel, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: ShotliGlass.radiusPanel, style: .continuous)
-                                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                                .stroke(ShotliGlass.hairline(colorScheme), lineWidth: 1)
                                 .allowsHitTesting(false)
                         )
                         if model.picture != nil {
@@ -147,6 +148,7 @@ struct EditorView: View {
             }
         }
         .background(ShotliWorkspaceWash().ignoresSafeArea())
+        .shotliAppearance()
         .overlay {
             if showTemplates {
                 TemplatesPanel(model: model, shot: shotImage) { showTemplates = false }
@@ -172,6 +174,9 @@ struct EditorView: View {
         .onChange(of: model.style) { _ in model.scheduleProjectSave() }
         .onChange(of: model.annotations) { _ in model.scheduleProjectSave() }
         .onChange(of: model.crop) { _ in model.scheduleProjectSave() }
+        .onChange(of: colorScheme) { _ in
+            settings.appearance.apply()
+        }
         .onChange(of: settings.openRequest) { _ in
             if model.picture == nil {
                 LibraryModel.shared.showSettings()
@@ -265,7 +270,7 @@ struct EditorView: View {
             if !model.saveState.label.isEmpty {
                 Text(model.saveState.label)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(model.saveState.isFailure ? Color(nsColor: NSColor(hex: "#C13636")!) : .secondary)
+                    .foregroundColor(model.saveState.isFailure ? ShotliGlass.error(colorScheme) : .secondary)
                     .lineLimit(1)
             }
         }
@@ -402,7 +407,7 @@ struct EditorView: View {
                 }
             }
             .padding(3)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.05)))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
             .padding(.horizontal, railInset)
             .padding(.vertical, 10)
             if model.style.frame != .none {
@@ -411,7 +416,7 @@ struct EditorView: View {
                     tabButton("Window", on: model.style.frame == .desktop) { model.setFrame(.desktop) }
                 }
                 .padding(3)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.05)))
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
                 .padding(.horizontal, railInset)
                 .padding(.bottom, 8)
             }
@@ -451,7 +456,7 @@ struct EditorView: View {
                         densityButton("Airy", padding: 120)
                     }
                     .padding(3)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black.opacity(0.05)))
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Padding")
                 }
@@ -529,7 +534,7 @@ struct EditorView: View {
                     .frame(height: 28)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(tilted ? Color.white.opacity(0.78) : Color.clear)
+                            .fill(tilted ? ShotliGlass.segment(colorScheme) : Color.clear)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .strokeBorder(Color.black.opacity(tilted ? 0.06 : 0), lineWidth: 0.5)
@@ -548,7 +553,7 @@ struct EditorView: View {
                     .frame(height: 28)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(tilted ? Color.clear : Color.white.opacity(0.78))
+                            .fill(tilted ? Color.clear : ShotliGlass.segment(colorScheme))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .strokeBorder(Color.black.opacity(tilted ? 0 : 0.06), lineWidth: 0.5)
@@ -561,7 +566,7 @@ struct EditorView: View {
             .accessibilityAddTraits(tilted ? AccessibilityTraits() : .isSelected)
         }
         .padding(3)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black.opacity(0.05)))
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Tilt")
     }
@@ -574,7 +579,7 @@ struct EditorView: View {
                 layoutCard(preset.style)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color.white.opacity(active ? 0.9 : 0), lineWidth: 1)
+                            .stroke(active ? ShotliGlass.focusRing(colorScheme) : Color.clear, lineWidth: 1)
                             .padding(2)
                     )
                     .overlay(
@@ -649,10 +654,10 @@ struct EditorView: View {
                 .frame(height: 30)
                 .background(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(on ? Color.white.opacity(0.78) : Color.clear)
+                        .fill(on ? ShotliGlass.segment(colorScheme) : Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .strokeBorder(Color.white.opacity(on ? 0.8 : 0), lineWidth: 0.6)
+                                .strokeBorder(on ? ShotliGlass.segmentEdge(colorScheme) : Color.clear, lineWidth: 0.6)
                         )
                 )
         }
@@ -675,7 +680,7 @@ struct EditorView: View {
                 .frame(height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(on ? Color.white.opacity(0.78) : Color.clear)
+                        .fill(on ? ShotliGlass.segment(colorScheme) : Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .strokeBorder(Color.black.opacity(on ? 0.06 : 0), lineWidth: 0.5)
@@ -782,7 +787,7 @@ struct EditorView: View {
             .padding(8)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white)
+                    .fill(ShotliGlass.surface(colorScheme))
                     .shadow(color: Color.black.opacity(0.06), radius: 8, y: 2)
             )
         }
@@ -842,7 +847,7 @@ struct EditorView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(showMagic ? 0.07 : 0.045)))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(showMagic ? ShotliGlass.pressed(colorScheme) : ShotliGlass.quiet(colorScheme)))
             if showMagic {
                 magicPanel
             }
@@ -925,10 +930,10 @@ struct EditorView: View {
                 VStack(spacing: 10) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color.black.opacity(0.045))
+                            .fill(ShotliGlass.quiet(colorScheme))
                             .frame(height: 96)
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.white)
+                            .fill(ShotliGlass.surface(colorScheme))
                             .frame(width: 56, height: 48)
                             .shadow(color: Color.black.opacity(0.07), radius: 5, y: 2)
                             .overlay(Image(systemName: "plus").font(.system(size: 18, weight: .medium)).foregroundColor(ink))
@@ -954,7 +959,7 @@ struct EditorView: View {
                                 .frame(height: 54)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(active ? Color.black.opacity(0.82) : Color.black.opacity(0.06), lineWidth: active ? 2 : 1)
+                                        .stroke(active ? ShotliGlass.emphasis(colorScheme) : ShotliGlass.hairline(colorScheme), lineWidth: active ? 2 : 1)
                                 )
                             Text(card.title)
                                 .font(.system(size: 10, weight: active ? .semibold : .medium))
@@ -981,7 +986,7 @@ struct EditorView: View {
                 cornerButton("Round", radius: 48, curve: 18)
             }
             .padding(4)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.black.opacity(0.045)))
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
             metricSlider("Radius", value: Binding(get: { model.style.radius }, set: { model.beginGesture(); model.setRadius($0) }), range: 0...64)
         }
     }
@@ -1001,7 +1006,7 @@ struct EditorView: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(on ? Color.white : Color.clear)
+                    .fill(on ? ShotliGlass.segmentSolid(colorScheme) : Color.clear)
                     .shadow(color: on ? Color.black.opacity(0.08) : .clear, radius: 4, y: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1031,7 +1036,7 @@ struct EditorView: View {
                                 .frame(height: 46)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .stroke(active ? Color.black.opacity(0.82) : Color.clear, lineWidth: 2)
+                                        .stroke(active ? ShotliGlass.emphasis(colorScheme) : Color.clear, lineWidth: 2)
                                 )
                             Text(kind.title)
                                 .font(.system(size: 10, weight: active ? .semibold : .medium))
@@ -1082,7 +1087,7 @@ struct EditorView: View {
                 .padding(.vertical, 11)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(model.style.hideMockup ? Color.white : Color.black.opacity(0.05))
+                        .fill(model.style.hideMockup ? ShotliGlass.segmentSolid(colorScheme) : ShotliGlass.quiet(colorScheme))
                         .shadow(color: model.style.hideMockup ? Color.black.opacity(0.06) : .clear, radius: 4, y: 1)
                 )
             }
@@ -1101,7 +1106,7 @@ struct EditorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                    .stroke(ShotliGlass.line(colorScheme), lineWidth: 1)
             )
         }
     }
@@ -1138,7 +1143,7 @@ struct EditorView: View {
         .padding(.leading, 4)
         .padding(.trailing, 8)
         .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.045)))
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
     }
 
     private func caption(_ title: String) -> some View {
@@ -1454,7 +1459,7 @@ struct EditorView: View {
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(ink)
                             .frame(width: 28, height: 28)
-                            .background(Circle().fill(Color.black.opacity(0.06)))
+                            .background(Circle().fill(ShotliGlass.quiet(colorScheme)))
                     }
                     .buttonStyle(.plain)
                     .help("Close")
@@ -1586,7 +1591,7 @@ struct EditorView: View {
                             .frame(maxWidth: .infinity)
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color(nsColor: NSColor(srgbRed: 0.96, green: 0.96, blue: 0.97, alpha: 1)))
+                                    .fill(ShotliGlass.surfaceSecondary(colorScheme))
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
@@ -1709,7 +1714,7 @@ struct EditorView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 26)
                         .foregroundColor(ink)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(option.1 == selected ? accent.opacity(0.14) : Color.black.opacity(0.04)))
+                        .background(RoundedRectangle(cornerRadius: 6).fill(option.1 == selected ? ShotliGlass.selectedNav(colorScheme) : ShotliGlass.quiet(colorScheme)))
                 }
                 .buttonStyle(.plain)
             }
@@ -1963,6 +1968,7 @@ private struct SelectWell<Content: View>: View {
     @State private var hovering = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     init(height: CGFloat, active: Bool, help: String, label: String, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
         self.height = height
@@ -1996,11 +2002,11 @@ private struct SelectWell<Content: View>: View {
         ZStack {
             if active || focused {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.white.opacity(0.92), lineWidth: 1)
+                    .stroke(ShotliGlass.focusRing(colorScheme), lineWidth: 1)
                     .padding(2)
             }
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(active || focused ? accent : (hovering ? Color.black.opacity(0.28) : Color.black.opacity(0.10)), lineWidth: active || focused ? 2 : 1)
+                .stroke(active || focused ? accent : (hovering ? ShotliGlass.line(colorScheme) : ShotliGlass.hairline(colorScheme)), lineWidth: active || focused ? 2 : 1)
         }
         .allowsHitTesting(false)
     }
@@ -2012,6 +2018,8 @@ private struct PlusButton<Popover: View>: View {
     var popover: Popover
     @State private var hovering = false
     @FocusState private var focused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    private var ink: Color { ShotliGlass.ink(colorScheme) }
 
     init(label: String, presented: Binding<Bool>, @ViewBuilder popover: () -> Popover) {
         self.label = label
@@ -2045,6 +2053,8 @@ private struct LibraryMoreTile: View {
     var action: () -> Void
     @State private var hovering = false
     @FocusState private var focused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    private var ink: Color { ShotliGlass.ink(colorScheme) }
 
     var body: some View {
         Button(action: action) {
@@ -2056,15 +2066,15 @@ private struct LibraryMoreTile: View {
             }
             .frame(height: thumbHeight)
             .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(hovering ? Color.black.opacity(0.08) : Color.black.opacity(0.05)))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(hovering ? ShotliGlass.pressed(colorScheme) : ShotliGlass.quiet(colorScheme)))
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.white.opacity(focused ? 0.9 : 0), lineWidth: 1)
+                    .stroke(focused ? ShotliGlass.focusRing(colorScheme) : Color.clear, lineWidth: 1)
                     .padding(2)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(focused ? accent : Color.black.opacity(hovering ? 0.28 : 0.10), lineWidth: focused ? 2 : 1)
+                    .stroke(focused ? accent : (hovering ? ShotliGlass.line(colorScheme) : ShotliGlass.hairline(colorScheme)), lineWidth: focused ? 2 : 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
@@ -2280,6 +2290,8 @@ private struct TemplatesPanel: View {
     var onClose: () -> Void
     @State private var filter: TemplateFilter = .all
     @State private var group: String?
+    @Environment(\.colorScheme) private var colorScheme
+    private var ink: Color { ShotliGlass.ink(colorScheme) }
 
     var body: some View {
         ZStack {
@@ -2333,7 +2345,7 @@ private struct TemplatesPanel: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(ink)
                     .frame(width: 28, height: 28)
-                    .background(Circle().fill(Color.black.opacity(0.06)))
+                    .background(Circle().fill(ShotliGlass.quiet(colorScheme)))
             }
             .buttonStyle(.plain)
         }
@@ -2353,10 +2365,10 @@ private struct TemplatesPanel: View {
                         Text(item.title)
                             .font(.system(size: 13, weight: .semibold))
                     }
-                    .foregroundColor(on ? .white : ink)
+                    .foregroundColor(on ? ShotliGlass.selectedControlInk(colorScheme) : ink)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .background(Capsule().fill(on ? Color.black : Color.clear))
+                    .background(Capsule().fill(on ? ShotliGlass.selectedControl(colorScheme) : Color.clear))
                 }
                 .buttonStyle(.plain)
             }
@@ -2378,7 +2390,7 @@ private struct TemplatesPanel: View {
                             .foregroundColor(ink)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Capsule().fill(Color.black.opacity(0.06)))
+                            .background(Capsule().fill(ShotliGlass.quiet(colorScheme)))
                     }
                     .buttonStyle(.plain)
                 }

@@ -132,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             exit(Int32(code))
         }
         NSWindow.allowsAutomaticWindowTabbing = false
+        ShotliSettings.shared.appearance.apply()
         ShotShortcuts.shared.install()
         setMenuBarVisible(ShotliSettings.shared.showMenuBar)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
