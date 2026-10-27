@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.44", notes: [
+            "Renaming a screenshot keeps its category and the words Shotli already read.",
+        ]),
         ChangelogEntry(version: "0.2.43", notes: [
             "The library uses larger screenshots, and the grid follows the window width.",
             "Sort by most recent, oldest, or name. Rename, reveal, and delete are in the thumbnail menu.",

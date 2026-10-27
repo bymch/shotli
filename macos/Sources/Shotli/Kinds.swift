@@ -232,6 +232,15 @@ final class ShotSorter {
         }
     }
 
+    func moveReading(from oldID: String, to shot: LibraryShot) {
+        queue.async {
+            self.loadIfNeeded()
+            guard let record = self.items.removeValue(forKey: oldID) else { return }
+            self.items[shot.id] = record
+            self.save()
+        }
+    }
+
     func file(_ shot: LibraryShot, as kind: ShotKind) {
         queue.async {
             self.loadIfNeeded()
