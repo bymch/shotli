@@ -174,6 +174,7 @@ struct EditorView: View {
         .onChange(of: model.style) { _ in model.scheduleProjectSave() }
         .onChange(of: model.annotations) { _ in model.scheduleProjectSave() }
         .onChange(of: model.crop) { _ in model.scheduleProjectSave() }
+        .onChange(of: model.layers) { _ in model.scheduleProjectSave() }
         .onChange(of: colorScheme) { _ in
             settings.appearance.apply()
         }
@@ -199,6 +200,7 @@ struct EditorView: View {
                 if model.picture != nil || model.projectFolder != nil {
                     iconButton("chevron.left", help: "Library") { model.showLibrary() }
                     projectTitle
+                        .frame(minWidth: 72, idealWidth: 160, maxWidth: 240, alignment: .leading)
                     if model.picture != nil {
                     Button(action: { showTemplates = true }) {
                         HStack(spacing: 6) {
@@ -207,6 +209,8 @@ struct EditorView: View {
                                 .frame(width: 16, height: 16)
                             Text("Templates")
                                 .font(.system(size: 13, weight: .medium))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundColor(.secondary)
@@ -214,15 +218,18 @@ struct EditorView: View {
                         .foregroundColor(ink)
                         .padding(.horizontal, 4)
                         .frame(height: 32)
+                        .fixedSize(horizontal: true, vertical: false)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(2)
                     .help("Templates")
                     }
                 }
             }
             .padding(.leading, 8)
-            .frame(minWidth: leftRailMin, idealWidth: leftRailIdeal, maxWidth: leftRailIdeal, alignment: .leading)
+            .frame(minWidth: leftRailMin, alignment: .leading)
 
             HStack(spacing: 8) {
                 if model.picture != nil {
@@ -267,11 +274,13 @@ struct EditorView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(ink)
                 .lineLimit(1)
+                .truncationMode(.tail)
             if !model.saveState.label.isEmpty {
                 Text(model.saveState.label)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(model.saveState.isFailure ? ShotliGlass.error(colorScheme) : .secondary)
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
         .accessibilityElement(children: .combine)
@@ -423,6 +432,9 @@ struct EditorView: View {
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 16) {
                     screenshotRow
+                    if model.picture != nil {
+                        addScreenshotButton
+                    }
                     backgroundGallery
                     magicPresetRow
                     mediaWell
@@ -488,18 +500,37 @@ struct EditorView: View {
             .padding(.horizontal, railInset)
             .padding(.top, 14)
 
-            caption("Layout presets")
+            caption(model.layoutHeadline)
                 .padding(.horizontal, railInset)
                 .padding(.top, 18)
-                .padding(.bottom, 8)
+            if let note = model.layoutNote {
+                Text(note)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, railInset)
+                    .padding(.top, 4)
+            }
+            if model.screenshotCount >= 2 {
+                layerStrip
+                    .padding(.horizontal, railInset)
+                    .padding(.top, 10)
+            }
 
             ScrollView(.vertical) {
                 VStack(spacing: 12) {
-                    ForEach(Presets.all) { preset in
-                        presetCard(preset)
+                    if model.screenshotCount <= 1 {
+                        ForEach(Presets.all) { preset in
+                            presetCard(preset)
+                        }
+                    } else {
+                        ForEach(ShotLayouts.choices(for: model.screenshotCount)) { preset in
+                            layoutPresetCard(preset)
+                        }
                     }
                 }
                 .padding(.horizontal, railInset)
+                .padding(.top, 8)
                 .padding(.bottom, 14)
             }
         }
@@ -792,6 +823,119 @@ struct EditorView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private var addScreenshotButton: some View {
+        Button(action: { model.addScreenshots() }) {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .bold))
+                Text(model.screenshotCount >= ShotLayouts.maximum ? "6 screenshots" : "Add screenshot")
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .foregroundColor(ink)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+        }
+        .buttonStyle(.plain)
+        .disabled(model.screenshotCount >= ShotLayouts.maximum)
+        .help(model.screenshotCount >= ShotLayouts.maximum ? "This composition holds 6 screenshots." : "Add a screenshot to this composition")
+        .accessibilityLabel("Add screenshot")
+    }
+
+    private var layerStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(model.layers.sorted { $0.order < $1.order }) { layer in
+                let selected = model.selectedLayerID == layer.id
+                HStack(spacing: 4) {
+                    Button(action: { model.selectLayer(layer.id) }) {
+                        Text(layer.name)
+                            .font(.system(size: 11, weight: selected ? .semibold : .medium))
+                            .foregroundColor(selected ? ink : .secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    layerIcon("square.on.square", help: "Duplicate") { model.duplicateLayer(layer.id) }
+                    layerIcon("chevron.down", help: "Send backward") { model.sendLayer(layer.id, forward: false) }
+                    layerIcon("chevron.up", help: "Bring forward") { model.sendLayer(layer.id, forward: true) }
+                    layerIcon("trash", help: "Delete screenshot") { model.removeLayer(layer.id) }
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(selected ? ShotliGlass.selectedNav(colorScheme) : ShotliGlass.quiet(colorScheme))
+                )
+            }
+            HStack(spacing: 8) {
+                Text("Spacing")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(ink)
+                    .frame(width: 54, alignment: .leading)
+                Slider(
+                    value: Binding(get: { model.layerGap }, set: { model.setLayerGap($0) }),
+                    in: 0.02...0.10,
+                    onEditingChanged: { editing in
+                        if editing { model.beginGesture() } else { model.endGesture() }
+                    }
+                )
+                .accessibilityLabel("Layout spacing")
+            }
+        }
+    }
+
+    private func layerIcon(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondary)
+                .frame(width: 16, height: 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+    }
+
+    private func layoutPresetCard(_ preset: ShotLayoutPreset) -> some View {
+        let active = model.activeLayoutID == preset.id.rawValue
+        let hovered = hoveredPreset == preset.id.rawValue
+        return Button(action: { model.applyLayout(preset) }) {
+            VStack(alignment: .leading, spacing: 6) {
+                LayoutSketch(boxes: ShotLayouts.boxes(preset.id, count: model.screenshotCount, gap: model.layerGap))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(active ? accent : (hovered ? Color.black.opacity(0.2) : Color.clear), lineWidth: active ? 2 : 1)
+                    )
+                Text(preset.name)
+                    .font(.system(size: 12, weight: active ? .semibold : .medium))
+                    .foregroundColor(active ? ink : .secondary)
+                    .lineLimit(1)
+                Text(preset.detail)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .onHover { hovering in
+            if hovering {
+                hoveredPreset = preset.id.rawValue
+            } else if hoveredPreset == preset.id.rawValue {
+                hoveredPreset = nil
+            }
+        }
+        .help(preset.detail)
+        .accessibilityLabel("\(preset.name) layout")
+        .accessibilityAddTraits(active ? .isSelected : AccessibilityTraits())
     }
 
     private var shotThumb: some View {
@@ -2519,5 +2663,27 @@ private enum TitlebarClicks {
             return nil
         }
         method_setImplementation(method, imp_implementationWithBlock(block))
+    }
+}
+
+private struct LayoutSketch: View {
+    var boxes: [LayerBox]
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(nsColor: NSColor(srgbRed: 0.93, green: 0.94, blue: 0.95, alpha: 1)))
+                ForEach(Array(boxes.enumerated()), id: \.offset) { _, box in
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white)
+                        .shadow(color: Color.black.opacity(0.16), radius: 3, y: 1)
+                        .frame(width: max(4, geo.size.width * box.width), height: max(4, geo.size.height * box.height))
+                        .offset(x: geo.size.width * box.x, y: geo.size.height * box.y)
+                }
+            }
+        }
+        .frame(height: 78)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }

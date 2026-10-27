@@ -46,6 +46,141 @@ func renderComposition(
     )
 }
 
+func renderShot(
+    picture: LoadedPicture?,
+    crop: CGRect?,
+    style: ShotliStyle,
+    annotations: [Annotation],
+    layers: [ShotLayer],
+    draft: Annotation?,
+    interactive: Bool,
+    cropDraft: CGRect? = nil,
+    selectedID: String? = nil,
+    selectedLayerID: String? = nil,
+    omitBackground: Bool = false
+) -> CGImage? {
+    if layers.count < 2 {
+        return renderComposition(
+            picture: picture,
+            crop: crop,
+            style: style,
+            annotations: annotations,
+            draft: draft,
+            interactive: interactive,
+            cropDraft: cropDraft,
+            selectedID: selectedID,
+            omitBackground: omitBackground
+        )
+    }
+    return renderLayered(
+        picture: picture,
+        layers: layers,
+        crop: crop,
+        style: style,
+        annotations: annotations,
+        draft: draft,
+        interactive: interactive,
+        cropDraft: cropDraft,
+        selectedID: selectedID,
+        selectedLayerID: selectedLayerID,
+        omitBackground: omitBackground
+    )
+}
+
+private func renderLayered(
+    picture: LoadedPicture?,
+    layers: [ShotLayer],
+    crop: CGRect?,
+    style: ShotliStyle,
+    annotations: [Annotation],
+    draft: Annotation?,
+    interactive: Bool,
+    cropDraft: CGRect?,
+    selectedID: String?,
+    selectedLayerID: String?,
+    omitBackground: Bool
+) -> CGImage? {
+    guard let primary = layers.first else { return nil }
+    let base = picture ?? LoadedPicture(image: primary.image, name: primary.name, scaled: false)
+    let layout = composition(picture: base, crop: crop, style: style)
+    guard let context = bitmapContext(layout.size) else { return nil }
+    let painter = Painter(context: context, height: layout.size.height)
+    if !omitBackground {
+        painter.drawBackground(style.background, layout.size)
+    }
+    let ordered = layers.sorted { $0.order < $1.order }
+    let slots = layerSlots(layers: layers, canvas: layout.size, style: style, picture: base, crop: crop)
+    let marks = draft == nil ? annotations : annotations + [draft!]
+    for layer in ordered {
+        guard let slot = slots.first(where: { $0.id == layer.id }) else { continue }
+        let radius = cornerRadius(layer.radius, span: min(slot.fitted.width, slot.fitted.height))
+        let isPrimary = layer.id == primary.id
+        let cropRect = isPrimary
+            ? (activeCrop(picture: base, crop: crop) ?? CGRect(x: 0, y: 0, width: base.width, height: base.height))
+            : CGRect(x: 0, y: 0, width: CGFloat(layer.image.width), height: CGFloat(layer.image.height))
+        let bake = isPrimary && (!marks.isEmpty || abs(style.light) > 0.01 || (interactive && (cropDraft != nil || selectedID != nil)))
+        let source = bake
+            ? (annotatedLayer(layer.image, crop: cropRect, marks: marks, light: style.light, interactive: interactive, cropDraft: cropDraft, selectedID: selectedID, draftID: draft?.id) ?? layer.image)
+            : layer.image
+        let sourceCrop = source === layer.image
+            ? cropRect
+            : CGRect(x: 0, y: 0, width: CGFloat(source.width), height: CGFloat(source.height))
+        painter.drawRoundedImage(
+            source,
+            crop: sourceCrop,
+            dest: slot.fitted,
+            radius: radius,
+            shadow: layer.shadow,
+            shadowOpacity: style.shadowOpacity
+        )
+    }
+    if interactive, let selectedLayerID, let slot = slots.first(where: { $0.id == selectedLayerID }) {
+        let radius = cornerRadius(18, span: min(slot.fitted.width, slot.fitted.height))
+        context.setStrokeColor(NSColor(srgbRed: 18.0 / 255.0, green: 120.0 / 255.0, blue: 180.0 / 255.0, alpha: 1).cgColor)
+        context.setLineWidth(2)
+        painter.strokeRound(slot.fitted.insetBy(dx: 1, dy: 1), radius: radius)
+        let handle = CGRect(x: slot.fitted.maxX - 8, y: slot.fitted.maxY - 8, width: 12, height: 12)
+        painter.fillRound(handle, radius: 3, color: .white)
+        painter.strokeRound(handle, radius: 3)
+    }
+    return context.makeImage()
+}
+
+private func annotatedLayer(
+    _ image: CGImage,
+    crop: CGRect,
+    marks: [Annotation],
+    light: CGFloat,
+    interactive: Bool,
+    cropDraft: CGRect?,
+    selectedID: String?,
+    draftID: String?
+) -> CGImage? {
+    let size = CGSize(width: max(1, crop.width), height: max(1, crop.height))
+    guard let context = bitmapContext(size) else { return nil }
+    let painter = Painter(context: context, height: size.height)
+    let local = CGRect(origin: .zero, size: size)
+    let placed = Composition(image: local, window: local, size: size)
+    painter.drawImage(image, crop: crop, dest: local)
+    for annotation in marks {
+        if case .shape(let mark) = annotation, mark.kind == .pixelate || mark.kind == .blur {
+            painter.drawRedaction(image, mark, layout: placed, crop: crop)
+        }
+    }
+    painter.applyLight(light, rect: local)
+    for annotation in marks {
+        if case .shape(let mark) = annotation, mark.kind == .pixelate || mark.kind == .blur { continue }
+        painter.drawAnnotation(annotation, layout: placed, crop: crop)
+    }
+    if interactive, let cropDraft {
+        painter.drawCropOverlay(visible: crop, draft: cropDraft, layout: placed)
+    }
+    if interactive, let selectedID, let selected = marks.first(where: { $0.id == selectedID }), selected.id != draftID {
+        painter.drawSelection(selected, layout: placed, crop: crop)
+    }
+    return context.makeImage()
+}
+
 func renderBackdrop(_ background: Background, size: CGSize) -> CGImage? {
     guard let context = bitmapContext(size) else { return nil }
     Painter(context: context, height: size.height).drawBackground(background, size)
@@ -930,6 +1065,24 @@ private struct Painter {
         context.interpolationQuality = .high
         context.clip(to: cg(dest))
         context.draw(image, in: cg(full))
+        context.restoreGState()
+    }
+
+    func drawRoundedImage(_ image: CGImage, crop: CGRect, dest: CGRect, radius: CGFloat, shadow: CGFloat, shadowOpacity: CGFloat) {
+        if shadow > 0.5 {
+            let alpha = min(0.42, (shadow / 64) * max(0.2, shadowOpacity / 40) * 0.5)
+            context.saveGState()
+            context.setShadow(
+                offset: CGSize(width: 0, height: -max(8, shadow * 0.35)),
+                blur: max(10, shadow * 0.7),
+                color: NSColor.black.withAlphaComponent(alpha).cgColor
+            )
+            fillRound(dest, radius: radius, color: .white)
+            context.restoreGState()
+        }
+        context.saveGState()
+        clipRound(dest, radius: radius)
+        drawImage(image, crop: crop, dest: dest)
         context.restoreGState()
     }
 

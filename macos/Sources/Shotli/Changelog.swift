@@ -9,6 +9,10 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.57", notes: [
+            "The editor title stays on one line, and truncates only when the window is too narrow.",
+            "Add screenshot puts more pictures in the same composition. Layout presets follow how many you have.",
+        ]),
         ChangelogEntry(version: "0.2.56", notes: [
             "Settings has Appearance: System, Light, or Dark. System follows the Mac, and the choice is remembered.",
             "Dark mode keeps the glass documents, with the picture showing through. Exported images keep their colours.",
