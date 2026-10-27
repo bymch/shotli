@@ -13,19 +13,33 @@ fi
 rm -rf "$ROOT/build" "$ROOT/dist"
 mkdir -p "$ROOT/build/Shotli.app/Contents/MacOS" "$ROOT/build/Shotli.app/Contents/Resources" "$ROOT/dist"
 
+SDK_PATH="$(xcrun --show-sdk-path 2>/dev/null || true)"
+FM_LINK=""
+FM_DEFINE=""
+if [[ -n "$SDK_PATH" && -d "$SDK_PATH/System/Library/Frameworks/FoundationModels.framework" ]]; then
+  FM_LINK="-Xlinker -weak_framework -Xlinker FoundationModels"
+  if grep -R -q "struct Attachment" "$SDK_PATH/System/Library/Frameworks/FoundationModels.framework/Modules" 2>/dev/null; then
+    FM_DEFINE="-D SHOTLI_APPLE_VISION"
+  fi
+fi
+
 echo "Compiling arm64…"
 swiftc -swift-version 5 -O -parse-as-library \
   -target arm64-apple-macos12.0 \
-  -framework AppKit -framework SwiftUI -framework ImageIO -framework UniformTypeIdentifiers -framework CoreImage \
+  $FM_DEFINE \
+  -framework AppKit -framework SwiftUI -framework ImageIO -framework UniformTypeIdentifiers -framework CoreImage -framework Vision \
   -Xlinker -weak_framework -Xlinker ScreenCaptureKit \
+  $FM_LINK \
   -o "$ROOT/build/Shotli-arm64" \
   "$ROOT"/macos/Sources/Shotli/*.swift
 
 echo "Compiling x86_64…"
 swiftc -swift-version 5 -O -parse-as-library \
   -target x86_64-apple-macos12.0 \
-  -framework AppKit -framework SwiftUI -framework ImageIO -framework UniformTypeIdentifiers -framework CoreImage \
+  $FM_DEFINE \
+  -framework AppKit -framework SwiftUI -framework ImageIO -framework UniformTypeIdentifiers -framework CoreImage -framework Vision \
   -Xlinker -weak_framework -Xlinker ScreenCaptureKit \
+  $FM_LINK \
   -o "$ROOT/build/Shotli-x64" \
   "$ROOT"/macos/Sources/Shotli/*.swift
 

@@ -10,6 +10,7 @@ final class ShotliSettings: ObservableObject {
     @Published var confirmStartOver: Bool
     @Published var confirmDelete: Bool
     @Published var startIn: LibrarySource
+    @Published var sortShots: Bool
 
     @Published var opensAtLogin = false
     @Published var loginAvailable = false
@@ -24,6 +25,7 @@ final class ShotliSettings: ObservableObject {
         static let startOver = "shotli.confirmStartOver"
         static let delete = "shotli.confirmDelete"
         static let startIn = "shotli.startIn"
+        static let sort = "shotli.sortShots"
     }
 
     static var version: String {
@@ -37,6 +39,7 @@ final class ShotliSettings: ObservableObject {
         confirmDelete = Self.storedBool(Key.delete, default: true)
         let raw = UserDefaults.standard.string(forKey: Key.startIn) ?? LibrarySource.recent.rawValue
         startIn = LibrarySource(rawValue: raw) ?? .recent
+        sortShots = Self.storedBool(Key.sort, default: true)
         refreshLoginItem()
     }
 
@@ -73,6 +76,17 @@ final class ShotliSettings: ObservableObject {
         guard startIn != value else { return }
         startIn = value
         defaults.set(value.rawValue, forKey: Key.startIn)
+    }
+
+    func setSortShots(_ value: Bool) {
+        guard sortShots != value else { return }
+        sortShots = value
+        defaults.set(value, forKey: Key.sort)
+        if value {
+            ShotSorter.shared.schedule(LibraryModel.shared.allShots())
+        } else {
+            ShotSorter.shared.stop()
+        }
     }
 
     func setOpensAtLogin(_ enabled: Bool) {
@@ -134,6 +148,7 @@ final class ShotliSettings: ObservableObject {
 struct SettingsPane: View {
     var onDone: (() -> Void)?
     @ObservedObject private var settings = ShotliSettings.shared
+    @ObservedObject private var permissions = ShotliPermissions.shared
 
     private let ink = Color(nsColor: NSColor(hex: "#222222")!)
 
@@ -158,6 +173,12 @@ struct SettingsPane: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    card("Permissions") {
+                        ForEach(Array(ShotliPermissions.Kind.allCases.enumerated()), id: \.element.id) { index, kind in
+                            if index > 0 { divider }
+                            permissionRow(kind)
+                        }
+                    }
                     card("General") {
                         toggleRow(
                             "Show Shotli in the menu bar",
@@ -194,6 +215,12 @@ struct SettingsPane: View {
                             .frame(width: 148)
                         }
                         .padding(.vertical, 8)
+                        divider
+                        toggleRow(
+                            "Sort screenshots",
+                            AppleShotKind.detail,
+                            isOn: Binding(get: { settings.sortShots }, set: { settings.setSortShots($0) })
+                        )
                         divider
                         HStack(alignment: .center, spacing: 16) {
                             copy("Shotli folder", shotliPath)
@@ -239,7 +266,33 @@ struct SettingsPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)))
-        .onAppear { settings.refreshLoginItem() }
+        .onAppear {
+            settings.refreshLoginItem()
+            permissions.beginWatching()
+        }
+        .onDisappear { permissions.endWatching() }
+    }
+
+    private func permissionRow(_ kind: ShotliPermissions.Kind) -> some View {
+        let granted = permissions.isGranted(kind)
+        return HStack(alignment: .center, spacing: 16) {
+            Image(systemName: kind.symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 16)
+                .foregroundColor(granted ? ink : .secondary)
+            copy(kind.title, kind.detail)
+            if granted {
+                Label("Allowed", systemImage: "checkmark")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .labelStyle(.titleAndIcon)
+            } else {
+                plainButton("Allow", fill: cardButton) {
+                    permissions.allow(kind)
+                }
+            }
+        }
+        .padding(.vertical, 8)
     }
 
     private var shotliPath: String {
