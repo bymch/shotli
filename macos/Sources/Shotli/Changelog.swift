@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.39", notes: [
+            "Set keyboard shortcuts for full screen, window, and area capture. They work while another app is in front.",
+        ]),
         ChangelogEntry(version: "0.2.38", notes: [
             "Screen Recording stays allowed after an update. This version asks one last time.",
         ]),

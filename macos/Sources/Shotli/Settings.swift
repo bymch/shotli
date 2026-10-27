@@ -29,7 +29,7 @@ final class ShotliSettings: ObservableObject {
     }
 
     static var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.38"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.39"
     }
 
     private init() {
@@ -149,6 +149,7 @@ struct SettingsPane: View {
     var onDone: (() -> Void)?
     @ObservedObject private var settings = ShotliSettings.shared
     @ObservedObject private var permissions = ShotliPermissions.shared
+    @ObservedObject private var shortcuts = ShotShortcuts.shared
 
     private let ink = Color(nsColor: NSColor(hex: "#222222")!)
 
@@ -198,6 +199,32 @@ struct SettingsPane: View {
                             "Look for a new version when Shotli opens.",
                             isOn: Binding(get: { settings.checkForUpdates }, set: { settings.setCheckForUpdates($0) })
                         )
+                    }
+                    card("Shortcuts") {
+                        Text("These work while you are in another app. Click a shortcut, then press the keys. Delete clears it.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
+                        shortcutRow(.full, "Full screen", "The main display.")
+                        divider
+                        shortcutRow(.window, "Window", "Click the window you want.")
+                        divider
+                        shortcutRow(.area, "Area", "Drag a box, then press Return.")
+                        if let note = shortcuts.note {
+                            Text(note)
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.bottom, 8)
+                        }
+                        divider
+                        HStack {
+                            Spacer(minLength: 0)
+                            plainButton("Restore defaults", fill: cardButton) { shortcuts.restoreDefaults() }
+                        }
+                        .padding(.vertical, 8)
                     }
                     card("Library") {
                         HStack(alignment: .center, spacing: 16) {
@@ -271,6 +298,16 @@ struct SettingsPane: View {
             permissions.beginWatching()
         }
         .onDisappear { permissions.endWatching() }
+    }
+
+    private func shortcutRow(_ action: CaptureAction, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            copy(title, detail)
+            ShortcutWell(action: action)
+                .frame(width: 168, height: 28)
+                .help("Click, then press a shortcut. Delete clears it.")
+        }
+        .padding(.vertical, 8)
     }
 
     private func permissionRow(_ kind: ShotliPermissions.Kind) -> some View {
@@ -367,7 +404,14 @@ struct SettingsPane: View {
 func showShotliShortcuts() {
     let alert = NSAlert()
     alert.messageText = "Shortcuts"
+    let shortcuts = ShotShortcuts.shared
     alert.informativeText = """
+    Capture full screen \(shortcuts.label(for: .full))
+    Capture window \(shortcuts.label(for: .window))
+    Capture area \(shortcuts.label(for: .area))
+
+    Change a capture shortcut in Settings. Delete clears it. These work from any app.
+
     Undo ⌘Z
     Redo ⌘⇧Z, or ⌘Y
     Open ⌘O

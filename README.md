@@ -20,6 +20,8 @@ Requires macOS 12 or newer. One download works on Apple silicon and Intel. The a
 
 Shotli stays in the menu bar. Click the viewfinder and choose **Capture Full Screen**, **Capture Window**, or **Capture Area**. The picture opens in Shotli. Closing the window leaves the menu bar item in place. Quit is in that menu.
 
+The same three captures have keyboard shortcuts. Change them in Settings. The defaults are ⌃⌥⌘1 for the full screen, ⌃⌥⌘2 for a window, and ⌃⌥⌘3 for an area. They work while another app is in front. Click a shortcut in Settings and press the keys you want. Delete clears it.
+
 The first time you capture, macOS asks for Screen & System Audio Recording. That dialog is Apple's, and it mentions audio even though Shotli never records any. Its Open System Settings button often does nothing. Shotli opens the Screen Recording pane itself. Turn Shotli on, quit the app, and open it again. If the switch does nothing, select Shotli, click the minus button, and try the capture once more. Shotli has to be the copy in Applications. A copy opened from the disk image cannot keep the permission. Allow Screen Recording once for Shotli 0.2.38 or newer. Later updates keep it. Dropping, pasting, or opening a picture does not ask.
 
 The first time you open it, macOS may say the developer cannot be verified. Control-click Shotli, choose **Open**, then choose **Open** again. I don't have an Apple developer account yet, so the app isn't notarized.
@@ -37,7 +39,7 @@ macOS may ask you to Control-click and Open again after an update, because the a
 ## What you can do
 
 - Browse Recent, Screenshots, Desktop, Pictures, and Shotli from the library on the left. The back button at the top left, or the View menu (⌘L), comes back to that list.
-- Capture the full screen, one window, or an area from the menu bar. The area selector dims the screen, shows the size as you drag, and lets you move or resize the box before Return captures it. Escape cancels.
+- Capture the full screen, one window, or an area from the menu bar, or with the shortcuts in Settings. The area selector dims the screen, shows the size as you drag, and lets you move or resize the box before Return captures it. Escape cancels.
 - Import a PNG, JPEG, or WebP file, drop it on the window, or paste an image.
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
 - Presets set the background, padding, corner radius, shadow and frame together.
