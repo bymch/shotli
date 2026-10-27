@@ -9,6 +9,44 @@ private let line = Color(nsColor: NSColor(hex: "#DADADA")!)
 private let workspace = Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1))
 private let panel = Color(nsColor: NSColor(srgbRed: 0.965, green: 0.965, blue: 0.968, alpha: 1))
 
+private enum BackgroundShelf: String, Identifiable {
+    case gradient, glass, cosmic, mystic, desktop, abstract, earth, studio, scenes, linear, pattern
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .gradient: return "Gradient"
+        case .glass: return "Glass"
+        case .cosmic: return "Cosmic"
+        case .mystic: return "Mystic"
+        case .desktop: return "Desktop"
+        case .abstract: return "Abstract"
+        case .earth: return "Earth"
+        case .studio: return "Studio"
+        case .scenes: return "Scenes"
+        case .linear: return "Linear"
+        case .pattern: return "Pattern"
+        }
+    }
+
+    var wallpapers: [WallpaperID] {
+        switch self {
+        case .gradient: return WallpaperID.fields
+        case .glass: return WallpaperID.glass
+        case .cosmic: return WallpaperID.cosmic
+        case .mystic: return WallpaperID.mystic
+        case .desktop: return WallpaperID.desktop
+        case .abstract: return WallpaperID.abstract
+        case .earth: return WallpaperID.earth
+        case .studio: return WallpaperID.backdrops
+        case .scenes: return WallpaperID.scenes
+        case .pattern: return WallpaperID.patterns
+        case .linear: return []
+        }
+    }
+}
+
 private enum SceneThumbs {
     static var cache: [String: NSImage] = [:]
     static func image(_ id: WallpaperID) -> NSImage? {
@@ -26,6 +64,7 @@ struct EditorView: View {
     @State private var animatePop = false
     @State private var adjustingLight = false
     @State private var showTemplates = false
+    @State private var backgroundShelf: BackgroundShelf?
     @State private var showMagic = false
     @State private var magicColors: [MagicColor] = []
     @State private var magicBackgrounds: [MagicBackground] = []
@@ -86,6 +125,9 @@ struct EditorView: View {
             if showTemplates {
                 TemplatesPanel(model: model, shot: shotImage) { showTemplates = false }
             }
+            if let backgroundShelf {
+                backgroundBrowser(backgroundShelf)
+            }
         }
         .onAppear {
             refreshMagic()
@@ -93,7 +135,10 @@ struct EditorView: View {
         }
         .onChange(of: pictureKey) { _ in
             refreshMagic()
-            if model.picture == nil { showTemplates = false }
+            if model.picture == nil {
+                showTemplates = false
+                backgroundShelf = nil
+            }
         }
         .onChange(of: settings.openRequest) { _ in
             if model.picture == nil {
@@ -928,69 +973,185 @@ struct EditorView: View {
 
     private var backgroundGallery: some View {
         VStack(alignment: .leading, spacing: 14) {
-            swatchGrid("Gradient", WallpaperID.fields)
-            swatchGrid("Glass", WallpaperID.glass)
-            swatchGrid("Cosmic", WallpaperID.cosmic)
-            swatchGrid("Mystic", WallpaperID.mystic)
-            swatchGrid("Desktop", WallpaperID.desktop)
-            swatchGrid("Abstract", WallpaperID.abstract)
-            swatchGrid("Earth", WallpaperID.earth)
-            swatchGrid("Studio", WallpaperID.backdrops)
-            swatchGrid("Scenes", WallpaperID.scenes)
-            caption("Linear")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                ForEach(Array(Presets.gradients.enumerated()), id: \.offset) { _, gradient in
-                    let active: Bool = {
-                        if case .gradient(let from, let mid, let to, _) = model.style.background {
-                            return gradient.from == from && gradient.mid == mid && gradient.to == to
-                        }
-                        return false
-                    }()
-                    Button(action: { model.setBackground(.gradient(from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle)) }) {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(LinearGradient(
-                                colors: [Color(nsColor: NSColor(hex: gradient.from)!), Color(nsColor: NSColor(hex: gradient.mid)!), Color(nsColor: NSColor(hex: gradient.to)!)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ))
-                            .frame(height: 58)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help(gradient.name)
-                }
-            }
-            swatchGrid("Pattern", WallpaperID.patterns)
+            wallpaperShelf("Gradient", WallpaperID.fields, .gradient)
+            wallpaperShelf("Glass", WallpaperID.glass, .glass)
+            wallpaperShelf("Cosmic", WallpaperID.cosmic, .cosmic)
+            wallpaperShelf("Mystic", WallpaperID.mystic, .mystic)
+            wallpaperShelf("Desktop", WallpaperID.desktop, .desktop)
+            wallpaperShelf("Abstract", WallpaperID.abstract, .abstract)
+            wallpaperShelf("Earth", WallpaperID.earth, .earth)
+            wallpaperShelf("Studio", WallpaperID.backdrops, .studio)
+            wallpaperShelf("Scenes", WallpaperID.scenes, .scenes)
+            gradientShelf
+            wallpaperShelf("Pattern", WallpaperID.patterns, .pattern)
         }
     }
 
-    private func swatchGrid(_ title: String, _ items: [WallpaperID]) -> some View {
+    private func wallpaperShelf(_ title: String, _ items: [WallpaperID], _ shelf: BackgroundShelf) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             caption(title)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                ForEach(items) { wallpaper in
-                    let active: Bool = {
-                        if case .wallpaper(let selected) = model.style.background { return selected == wallpaper }
-                        return false
-                    }()
-                    Button(action: { model.setBackground(.wallpaper(wallpaper)) }) {
-                        wallpaperPreview(wallpaper)
-                            .frame(height: 58)
-                            .frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help(wallpaper.label)
+            HStack(spacing: 8) {
+                ForEach(visibleWallpapers(items)) { wallpaper in
+                    wallpaperSwatch(wallpaper, height: 58)
+                }
+                if items.count > 3 {
+                    moreSwatch(title) { backgroundShelf = shelf }
                 }
             }
         }
+    }
+
+    private var gradientShelf: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Linear")
+            HStack(spacing: 8) {
+                ForEach(visibleGradients(), id: \.name) { gradient in
+                    gradientSwatch(gradient, height: 58)
+                }
+                if Presets.gradients.count > 3 {
+                    moreSwatch("Linear") { backgroundShelf = .linear }
+                }
+            }
+        }
+    }
+
+    private func visibleWallpapers(_ items: [WallpaperID]) -> [WallpaperID] {
+        let head = Array(items.prefix(3))
+        guard case .wallpaper(let selected) = model.style.background,
+              let index = items.firstIndex(of: selected),
+              index >= 3 else { return head }
+        return Array(items.prefix(2)) + [selected]
+    }
+
+    private func visibleGradients() -> [(name: String, from: String, mid: String, to: String, angle: CGFloat)] {
+        let head = Array(Presets.gradients.prefix(3))
+        guard case .gradient(let from, let mid, let to, _) = model.style.background,
+              let match = Presets.gradients.first(where: { $0.from == from && $0.mid == mid && $0.to == to }),
+              !head.contains(where: { $0.name == match.name }) else { return head }
+        return Array(Presets.gradients.prefix(2)) + [match]
+    }
+
+    private func wallpaperSwatch(_ wallpaper: WallpaperID, height: CGFloat) -> some View {
+        let active: Bool = {
+            if case .wallpaper(let selected) = model.style.background { return selected == wallpaper }
+            return false
+        }()
+        return Button(action: { model.setBackground(.wallpaper(wallpaper)) }) {
+            wallpaperPreview(wallpaper)
+                .frame(height: height)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(swatchStroke(active))
+        }
+        .buttonStyle(.plain)
+        .help(wallpaper.label)
+    }
+
+    private func gradientSwatch(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat), height: CGFloat) -> some View {
+        let active: Bool = {
+            if case .gradient(let from, let mid, let to, _) = model.style.background {
+                return gradient.from == from && gradient.mid == mid && gradient.to == to
+            }
+            return false
+        }()
+        return Button(action: { model.setBackground(.gradient(from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle)) }) {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [Color(nsColor: NSColor(hex: gradient.from)!), Color(nsColor: NSColor(hex: gradient.mid)!), Color(nsColor: NSColor(hex: gradient.to)!)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+                .frame(height: height)
+                .frame(maxWidth: .infinity)
+                .overlay(swatchStroke(active))
+        }
+        .buttonStyle(.plain)
+        .help(gradient.name)
+    }
+
+    private func moreSwatch(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.black.opacity(0.05))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(ink)
+            }
+            .frame(height: 58)
+            .frame(maxWidth: .infinity)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .help("More \(title.lowercased()) backgrounds")
+    }
+
+    private func swatchStroke(_ active: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1)
+    }
+
+    private func backgroundBrowser(_ shelf: BackgroundShelf) -> some View {
+        ZStack {
+            Color.black.opacity(0.22)
+                .ignoresSafeArea()
+                .onTapGesture { backgroundShelf = nil }
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(shelf.title)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(ink)
+                    Spacer()
+                    Button(action: { backgroundShelf = nil }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(ink)
+                            .frame(width: 28, height: 28)
+                            .background(Circle().fill(Color.black.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Close")
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 20)
+                .padding(.bottom, 14)
+                ScrollView {
+                    if shelf == .linear {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
+                            ForEach(Presets.gradients, id: \.name) { gradient in
+                                VStack(spacing: 6) {
+                                    gradientSwatch(gradient, height: 92)
+                                    Text(gradient.name)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(ink)
+                                }
+                            }
+                        }
+                    } else {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
+                            ForEach(shelf.wallpapers) { wallpaper in
+                                VStack(spacing: 6) {
+                                    wallpaperSwatch(wallpaper, height: 92)
+                                    Text(wallpaper.label)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(ink)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 22)
+                .padding(.bottom, 22)
+            }
+            .frame(width: 680, height: 520)
+            .background(Color(nsColor: NSColor(srgbRed: 0.95, green: 0.95, blue: 0.96, alpha: 1)))
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .shadow(color: Color.black.opacity(0.18), radius: 30, y: 12)
+        }
+        .onExitCommand { backgroundShelf = nil }
     }
 
     private var backgroundControls: some View {

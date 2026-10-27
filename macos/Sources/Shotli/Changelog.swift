@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.41", notes: [
+            "Each background row shows three. More opens the rest over the picture.",
+        ]),
         ChangelogEntry(version: "0.2.40", notes: [
             "More backgrounds: gradients, glass waves, cosmic colour, soft fields, landscapes, abstract shapes, and earth tones. They are at the top of the mockup panel.",
         ]),

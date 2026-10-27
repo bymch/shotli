@@ -43,7 +43,7 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - Import a PNG, JPEG, or WebP file, drop it on the window, or paste an image.
 - **Use a sample** loads a local demo screenshot so you can try the tools immediately.
 - Presets set the background, padding, corner radius, shadow and frame together.
-- Backgrounds are at the top of the mockup panel. Gradient, Glass, Cosmic, Mystic, Desktop, Abstract, and Earth sit above the studio sweeps, city scenes, linear gradients, and patterns.
+- Backgrounds stay at the top of the mockup panel. Each row shows three. More opens the rest of that set over the picture.
 - The editor is three columns. The left side is the mockup: card style, corners, shadow, light, and hide mockup. The picture sits in the middle on its background. Zoom and layout presets are on the right. Drawing tools are along the top. The back arrow returns to your screenshots.
 - Templates, at the top left, opens a gallery. Each one sets a background, a position, and an angle. Product shots use studio sweeps. Abstract colour uses bloom, tide, citrus, and the rest. Angled ones lean the screenshot so the background stays in frame.
 - Fit keeps the whole screenshot in the window, with the background around it. The picture stays put until you zoom in past the window. Canvas width and height are in the panel.
