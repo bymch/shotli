@@ -48,6 +48,7 @@ struct ShotliCommands: Commands {
             }
             Divider()
             Button("Check for Updates…") { AppUpdate.shared.check(interactive: true) }
+            Button("Changelog") { Changelog.show() }
         }
         CommandGroup(replacing: .newItem) {
             Button("Capture Full Screen") { ScreenCapture.shared.capture(.full) }
