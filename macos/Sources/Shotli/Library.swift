@@ -50,15 +50,18 @@ final class LibraryModel: ObservableObject {
     @Published var thumbs: [String: NSImage] = [:]
     @Published var message: String?
     @Published var query = ""
+    @Published var selected: Set<String> = []
 
     private var cache: [LibrarySource: [LibraryShot]] = [:]
     private var notes: [LibrarySource: String] = [:]
+    private var selectionAnchor: String?
     private var refreshToken = 0
     private init() {}
 
     func select(_ source: LibrarySource) {
         guard source != self.source else { return }
         self.source = source
+        clearSelection()
         apply()
         warm(refreshToken)
     }
@@ -105,6 +108,87 @@ final class LibraryModel: ObservableObject {
             shots = list.filter { $0.name.lowercased().contains(needle) }
             message = shots.isEmpty ? "Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”." : nil
         }
+        let visible = Set(shots.map(\.id))
+        selected = selected.intersection(visible)
+        if let anchor = selectionAnchor, !visible.contains(anchor) { selectionAnchor = selected.first }
+    }
+
+    func selectOnly(_ id: String) {
+        selected = [id]
+        selectionAnchor = id
+    }
+
+    func toggle(_ id: String) {
+        if selected.contains(id) {
+            selected.remove(id)
+        } else {
+            selected.insert(id)
+        }
+        selectionAnchor = id
+    }
+
+    func extend(to id: String) {
+        let anchor = selectionAnchor ?? selected.first ?? id
+        guard let start = shots.firstIndex(where: { $0.id == anchor }),
+              let end = shots.firstIndex(where: { $0.id == id }) else {
+            selectOnly(id)
+            return
+        }
+        let lower = min(start, end)
+        let upper = max(start, end)
+        selected = Set(shots[lower...upper].map(\.id))
+        selectionAnchor = anchor
+    }
+
+    func selectAll() {
+        selected = Set(shots.map(\.id))
+        if selectionAnchor == nil { selectionAnchor = shots.first?.id }
+    }
+
+    func clearSelection() {
+        selected = []
+        selectionAnchor = nil
+    }
+
+    func choose(_ id: String) {
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.command) {
+            toggle(id)
+        } else if flags.contains(.shift) {
+            extend(to: id)
+        } else {
+            selectOnly(id)
+        }
+    }
+
+    func deleteSelected() {
+        let chosen = shots.filter { selected.contains($0.id) }
+        guard !chosen.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "Are you sure?"
+        alert.informativeText = chosen.count == 1
+            ? "“\(chosen[0].name)” will be moved to the Trash."
+            : "\(chosen.count) screenshots will be moved to the Trash."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Move to Trash")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let paths = Set(chosen.map(\.id))
+        for shot in chosen {
+            try? FileManager.default.trashItem(at: shot.url, resultingItemURL: nil)
+        }
+        for key in Array(cache.keys) {
+            guard var list = cache[key] else { continue }
+            list.removeAll { paths.contains($0.id) }
+            cache[key] = list
+        }
+        counts = Dictionary(uniqueKeysWithValues: LibrarySource.allCases.map { source in
+            (source, cache[source]?.count ?? 0)
+        })
+        clearSelection()
+        apply()
+        refresh()
     }
 
     private func warm(_ token: Int) {
@@ -246,7 +330,16 @@ struct LibraryHome: View {
             content
         }
         .onAppear { library.refresh() }
-        .background(LibraryKeys(onUp: { library.step(-1) }, onDown: { library.step(1) }).frame(width: 0, height: 0))
+        .background(
+            LibraryKeys(
+                onUp: { library.step(-1) },
+                onDown: { library.step(1) },
+                onSelectAll: { library.selectAll() },
+                onDelete: { library.deleteSelected() },
+                onClear: { library.clearSelection() }
+            )
+            .frame(width: 0, height: 0)
+        )
     }
 
     private var sidebar: some View {
@@ -310,12 +403,20 @@ struct LibraryHome: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(library.source.title)
                         .font(.system(size: 18, weight: .semibold))
-                    Text(library.source.detail)
+                    Text(library.selected.isEmpty ? library.source.detail : "\(library.selected.count) selected")
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 12)
+                if !library.shots.isEmpty {
+                    headerButton(allSelected ? "Deselect" : "Select All") {
+                        if allSelected { library.clearSelection() } else { library.selectAll() }
+                    }
+                }
+                if !library.selected.isEmpty {
+                    headerButton("Delete") { library.deleteSelected() }
+                }
                 searchField
             }
             .padding(.horizontal, 22)
@@ -329,9 +430,20 @@ struct LibraryHome: View {
                     } else {
                         LazyVGrid(columns: columns, spacing: 14) {
                             ForEach(library.shots) { shot in
-                                ShotCard(shot: shot, image: library.thumbs[shot.id]) {
-                                    EditorModel.shared.load(url: shot.url)
-                                }
+                                ShotCard(
+                                    shot: shot,
+                                    image: library.thumbs[shot.id],
+                                    selected: library.selected.contains(shot.id),
+                                    showsCheck: !library.selected.isEmpty,
+                                    onChoose: { library.choose(shot.id) },
+                                    onToggle: { library.toggle(shot.id) },
+                                    onOpen: { EditorModel.shared.load(url: shot.url) },
+                                    onDelete: {
+                                        if !library.selected.contains(shot.id) { library.selectOnly(shot.id) }
+                                        library.deleteSelected()
+                                    },
+                                    onSelectAll: { library.selectAll() }
+                                )
                             }
                         }
                         .padding(.horizontal, 22)
@@ -346,6 +458,23 @@ struct LibraryHome: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)))
+    }
+
+    private var allSelected: Bool {
+        !library.shots.isEmpty && library.selected.count == library.shots.count
+    }
+
+    private func headerButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private var searchField: some View {
@@ -389,50 +518,81 @@ struct LibraryHome: View {
 private struct ShotCard: View {
     var shot: LibraryShot
     var image: NSImage?
-    var action: () -> Void
+    var selected: Bool
+    var showsCheck: Bool
+    var onChoose: () -> Void
+    var onToggle: () -> Void
+    var onOpen: () -> Void
+    var onDelete: () -> Void
+    var onSelectAll: () -> Void
     @State private var hovered = false
 
+    private let accent = Color(nsColor: NSColor(hex: "#3478F6")!)
+
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white)
-                    if let image {
-                        Image(nsImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .padding(8)
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white)
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(8)
                 }
-                .frame(height: 128)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.black.opacity(hovered ? 0.14 : 0.06), lineWidth: 1)
-                )
-                Text(shot.name)
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(nsColor: NSColor(hex: "#222222")!))
-                    .lineLimit(1)
-                Text(shot.modified, style: .relative)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                if showsCheck || hovered || selected {
+                    Button(action: onToggle) {
+                        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(selected ? accent : Color.white)
+                            .shadow(color: Color.black.opacity(0.35), radius: 2, y: 1)
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(6)
+                    .help(selected ? "Deselect" : "Select")
+                }
             }
-            .padding(8)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(hovered ? Color.white : Color.white.opacity(0.001))
+            .frame(height: 128)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.black.opacity(hovered ? 0.14 : 0.06), lineWidth: 1)
             )
+            Text(shot.name)
+                .font(.system(size: 12))
+                .foregroundColor(Color(nsColor: NSColor(hex: "#222222")!))
+                .lineLimit(1)
+            Text(shot.modified, style: .relative)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
         }
-        .buttonStyle(.plain)
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(selected ? accent.opacity(0.08) : (hovered ? Color.white : Color.white.opacity(0.001)))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(selected ? accent : Color.clear, lineWidth: 2)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .gesture(
+            TapGesture(count: 2).onEnded { onOpen() }
+                .exclusively(before: TapGesture(count: 1).onEnded { onChoose() })
+        )
         .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.16), value: hovered)
+        .animation(.easeOut(duration: 0.16), value: selected)
         .animation(.easeOut(duration: 0.2), value: image != nil)
         .contextMenu {
-            Button("Open") { action() }
+            Button("Open", action: onOpen)
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([shot.url])
             }
+            Divider()
+            Button("Select All", action: onSelectAll)
+            Button("Delete", action: onDelete)
         }
         .help(shot.name)
     }
@@ -441,22 +601,34 @@ private struct ShotCard: View {
 private struct LibraryKeys: NSViewRepresentable {
     var onUp: () -> Void
     var onDown: () -> Void
+    var onSelectAll: () -> Void
+    var onDelete: () -> Void
+    var onClear: () -> Void
 
     func makeNSView(context: Context) -> KeyView {
         let view = KeyView()
         view.onUp = onUp
         view.onDown = onDown
+        view.onSelectAll = onSelectAll
+        view.onDelete = onDelete
+        view.onClear = onClear
         return view
     }
 
     func updateNSView(_ view: KeyView, context: Context) {
         view.onUp = onUp
         view.onDown = onDown
+        view.onSelectAll = onSelectAll
+        view.onDelete = onDelete
+        view.onClear = onClear
     }
 
     final class KeyView: NSView {
         var onUp: (() -> Void)?
         var onDown: (() -> Void)?
+        var onSelectAll: (() -> Void)?
+        var onDelete: (() -> Void)?
+        var onClear: (() -> Void)?
         private var monitor: Any?
 
         deinit {
@@ -472,7 +644,7 @@ private struct LibraryKeys: NSViewRepresentable {
             }
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, self.window != nil else { return event }
+                guard let self, self.window != nil, NSApp.modalWindow == nil else { return event }
                 let responder = self.window?.firstResponder
                 if responder is NSTextView || responder is NSTextField { return event }
                 if event.keyCode == 126 {
@@ -481,6 +653,20 @@ private struct LibraryKeys: NSViewRepresentable {
                 }
                 if event.keyCode == 125 {
                     self.onDown?()
+                    return nil
+                }
+                if event.keyCode == 53 {
+                    self.onClear?()
+                    return nil
+                }
+                if event.keyCode == 51 || event.keyCode == 117 {
+                    self.onDelete?()
+                    return nil
+                }
+                let flags = event.modifierFlags
+                if flags.contains(.command), !flags.contains(.shift), !flags.contains(.option),
+                   event.charactersIgnoringModifiers?.lowercased() == "a" {
+                    self.onSelectAll?()
                     return nil
                 }
                 return event
