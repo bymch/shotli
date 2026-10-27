@@ -1054,6 +1054,7 @@ enum ProjectVerify {
         try? FileManager.default.removeItem(at: original)
         try checkPopoverSave()
         try checkLibraryKeys()
+        try checkLibraryGrid()
     }
 
     private static func checkPopoverSave() throws {
@@ -1108,6 +1109,16 @@ enum ProjectVerify {
         if LibraryKeyGate.shouldPassThrough(modalPresented: false, namingSheet: false, savePopover: false, hostHasSheet: false, eventOnHost: true, hostIsKey: true, editingText: false) {
             throw Failure("library delete was not handled")
         }
+    }
+
+    private static func checkLibraryGrid() throws {
+        let wide = LibraryGrid.metrics(for: 640)
+        if wide.columns < 2 { throw Failure("wide library stayed one column") }
+        let pair = LibraryGrid.metrics(for: 460)
+        if pair.columns < 2 { throw Failure("two cards did not fit side by side") }
+        let narrow = LibraryGrid.metrics(for: 220)
+        if narrow.columns != 1 { throw Failure("narrow library invented a column") }
+        if pair.card < LibraryGrid.minCard { throw Failure("card narrower than the minimum") }
     }
 
     private static func folders(in root: URL) throws -> Int {
