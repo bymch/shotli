@@ -1151,18 +1151,8 @@ struct EditorView: View {
     }
 
     private func wallpaperSwatch(_ wallpaper: WallpaperID, height: CGFloat, shelf: BackgroundShelf? = nil) -> some View {
-        let active: Bool = {
-            if case .wallpaper(let selected) = model.style.background { return selected == wallpaper }
-            return false
-        }()
-        return ZStack(alignment: .topTrailing) {
-            SelectWell(height: height, active: active, help: wallpaper.label, label: "Use \(wallpaper.label) background", action: {
-                model.setBackground(.wallpaper(wallpaper))
-                backgroundPopover = nil
-                gradientPopover = nil
-            }) {
-                wallpaperPreview(wallpaper)
-            }
+        ZStack(alignment: .topTrailing) {
+            wallpaperChoice(wallpaper, height: height)
             if let shelf {
                 PlusButton(label: "Related \(shelf.title) backgrounds", presented: wallpaperPresented(wallpaper)) {
                     categoryPopover(shelf)
@@ -1171,30 +1161,48 @@ struct EditorView: View {
         }
     }
 
+    private func wallpaperChoice(_ wallpaper: WallpaperID, height: CGFloat) -> some View {
+        let active: Bool = {
+            if case .wallpaper(let selected) = model.style.background { return selected == wallpaper }
+            return false
+        }()
+        return SelectWell(height: height, active: active, help: wallpaper.label, label: "Use \(wallpaper.label) background", action: {
+            model.setBackground(.wallpaper(wallpaper))
+            backgroundPopover = nil
+            gradientPopover = nil
+        }) {
+            wallpaperPreview(wallpaper)
+        }
+    }
+
     private func gradientSwatch(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat), height: CGFloat, shelf: BackgroundShelf? = nil) -> some View {
+        ZStack(alignment: .topTrailing) {
+            gradientChoice(gradient, height: height)
+            if shelf != nil {
+                PlusButton(label: "Related linear backgrounds", presented: gradientPresented(gradient.name)) {
+                    categoryPopover(.linear)
+                }
+            }
+        }
+    }
+
+    private func gradientChoice(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat), height: CGFloat) -> some View {
         let active: Bool = {
             if case .gradient(let from, let mid, let to, _) = model.style.background {
                 return gradient.from == from && gradient.mid == mid && gradient.to == to
             }
             return false
         }()
-        return ZStack(alignment: .topTrailing) {
-            SelectWell(height: height, active: active, help: gradient.name, label: "Use \(gradient.name) background", action: {
-                model.setBackground(.gradient(from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle))
-                backgroundPopover = nil
-                gradientPopover = nil
-            }) {
-                LinearGradient(
-                    colors: [Color(nsColor: NSColor(hex: gradient.from)!), Color(nsColor: NSColor(hex: gradient.mid)!), Color(nsColor: NSColor(hex: gradient.to)!)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-            if shelf != nil {
-                PlusButton(label: "Related linear backgrounds", presented: gradientPresented(gradient.name)) {
-                    categoryPopover(.linear)
-                }
-            }
+        return SelectWell(height: height, active: active, help: gradient.name, label: "Use \(gradient.name) background", action: {
+            model.setBackground(.gradient(from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle))
+            backgroundPopover = nil
+            gradientPopover = nil
+        }) {
+            LinearGradient(
+                colors: [Color(nsColor: NSColor(hex: gradient.from)!), Color(nsColor: NSColor(hex: gradient.mid)!), Color(nsColor: NSColor(hex: gradient.to)!)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 
@@ -1237,13 +1245,13 @@ struct EditorView: View {
                 if shelf == .linear {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: thumbGap), GridItem(.flexible(), spacing: thumbGap)], spacing: thumbGap) {
                         ForEach(Presets.gradients, id: \.name) { gradient in
-                            gradientSwatch(gradient, height: 64)
+                            gradientChoice(gradient, height: 64)
                         }
                     }
                 } else {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: thumbGap), GridItem(.flexible(), spacing: thumbGap)], spacing: thumbGap) {
                         ForEach(shelf.wallpapers) { wallpaper in
-                            wallpaperSwatch(wallpaper, height: 64)
+                            wallpaperChoice(wallpaper, height: 64)
                         }
                     }
                 }
