@@ -211,7 +211,7 @@ final class ShotShortcuts: ObservableObject {
         }
     }
 
-    func shortcut(for action: CaptureAction) -> ShotShortcut? {
+    func keys(for action: CaptureAction) -> ShotShortcut? {
         switch action {
         case .full: return full
         case .window: return window
@@ -220,7 +220,7 @@ final class ShotShortcuts: ObservableObject {
     }
 
     func label(for action: CaptureAction) -> String {
-        shortcut(for: action)?.label ?? "None"
+        keys(for: action)?.label ?? "None"
     }
 
     var isDefault: Bool {
@@ -247,7 +247,7 @@ final class ShotShortcuts: ObservableObject {
             note = "\(shortcut.label) is already used for \(other.menuTitle)."
             return
         }
-        let previous = shortcut(for: action)
+        let previous = keys(for: action)
         assign(shortcut, to: action)
         unregisterAll()
         if let shortcut, !probe(shortcut) {
@@ -297,7 +297,7 @@ final class ShotShortcuts: ObservableObject {
     func apply(to menu: NSMenu) {
         for item in menu.items {
             if let action = CaptureAction.matching(menuTitle: item.title) {
-                let shortcut = shortcut(for: action)
+                let shortcut = keys(for: action)
                 item.keyEquivalent = shortcut?.keyEquivalent ?? ""
                 item.keyEquivalentModifierMask = shortcut?.modifierMask ?? []
             }
@@ -309,7 +309,7 @@ final class ShotShortcuts: ObservableObject {
 
     private func conflict(_ shortcut: ShotShortcut, ignoring action: CaptureAction) -> CaptureAction? {
         CaptureAction.allCases.first { other in
-            other != action && shortcut(for: other) == shortcut
+            other != action && keys(for: other) == shortcut
         }
     }
 
@@ -326,7 +326,7 @@ final class ShotShortcuts: ObservableObject {
         unregisterAll()
         var registered: [UInt32: EventHotKeyRef] = [:]
         for action in CaptureAction.allCases {
-            guard let shortcut = shortcut(for: action) else { continue }
+            guard let shortcut = keys(for: action) else { continue }
             guard let ref = register(shortcut, id: action.hotkeyID) else {
                 for existing in registered.values { UnregisterEventHotKey(existing) }
                 return false
@@ -373,7 +373,7 @@ final class ShotShortcuts: ObservableObject {
     }
 
     private func persist(_ action: CaptureAction) {
-        let box = ShortcutBox(shortcut: shortcut(for: action))
+        let box = ShortcutBox(shortcut: keys(for: action))
         if let data = try? JSONEncoder().encode(box) {
             defaults.set(data, forKey: Self.key(action))
         }
@@ -404,7 +404,7 @@ struct ShortcutWell: NSViewRepresentable {
 
     func updateNSView(_ view: ShortcutWellView, context: Context) {
         view.action = action
-        view.shortcut = ShotShortcuts.shared.shortcut(for: action)
+        view.shortcut = ShotShortcuts.shared.keys(for: action)
         view.needsDisplay = true
     }
 }
@@ -507,7 +507,7 @@ final class ShortcutWellView: NSView {
         mouseMonitor = nil
         toolTip = "Click, then press a shortcut. Delete clears it."
         ShotShortcuts.shared.setPaused(false)
-        shortcut = ShotShortcuts.shared.shortcut(for: action)
+        shortcut = ShotShortcuts.shared.keys(for: action)
         needsDisplay = true
     }
 
