@@ -8,6 +8,13 @@ private let ink = Color(nsColor: NSColor(hex: "#222222")!)
 private let line = Color(nsColor: NSColor(hex: "#DADADA")!)
 private let workspace = Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1))
 private let panel = Color(nsColor: NSColor(srgbRed: 0.965, green: 0.965, blue: 0.968, alpha: 1))
+private let leftRailMin: CGFloat = 232
+private let leftRailIdeal: CGFloat = 280
+private let rightRailMin: CGFloat = 248
+private let rightRailIdeal: CGFloat = 292
+private let railInset: CGFloat = 14
+private let thumbGap: CGFloat = 8
+private let thumbHeight: CGFloat = 58
 
 private enum BackgroundShelf: String, Identifiable {
     case gradient, glass, cosmic, mystic, desktop, abstract, earth, studio, scenes, linear, pattern
@@ -65,6 +72,9 @@ struct EditorView: View {
     @State private var adjustingLight = false
     @State private var showTemplates = false
     @State private var backgroundShelf: BackgroundShelf?
+    @State private var backgroundPopover: WallpaperID?
+    @State private var gradientPopover: String?
+    @State private var hoveredPreset: String?
     @State private var showMagic = false
     @State private var magicColors: [MagicColor] = []
     @State private var magicBackgrounds: [MagicBackground] = []
@@ -84,8 +94,7 @@ struct EditorView: View {
                 studioBar
                 HStack(alignment: .top, spacing: 12) {
                     leftRail
-                        .frame(width: 280)
-                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: leftRailMin, idealWidth: leftRailIdeal, maxWidth: leftRailIdeal)
                         .frame(maxHeight: .infinity)
                     VStack(spacing: 12) {
                         stage {
@@ -95,6 +104,11 @@ struct EditorView: View {
                             }
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                                .allowsHitTesting(false)
+                        )
                         .scaleEffect(animatePop ? 1.015 : 1)
                         Button(action: playAnimate) {
                             HStack(spacing: 6) {
@@ -108,12 +122,14 @@ struct EditorView: View {
                             .padding(.vertical, 8)
                             .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.12), radius: 10, y: 3))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressFadeButtonStyle())
+                        .help("Preview a short motion")
+                        .accessibilityLabel("Animate")
                     }
-                    .frame(maxHeight: .infinity)
+                    .frame(minWidth: 360, idealWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
+                    .layoutPriority(1)
                     rightRail
-                        .frame(width: 292)
-                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: rightRailMin, idealWidth: rightRailIdeal, maxWidth: rightRailIdeal)
                         .frame(maxHeight: .infinity)
                 }
                 .padding(.horizontal, 12)
@@ -138,6 +154,8 @@ struct EditorView: View {
             if model.picture == nil {
                 showTemplates = false
                 backgroundShelf = nil
+                backgroundPopover = nil
+                gradientPopover = nil
             }
         }
         .onChange(of: settings.openRequest) { _ in
@@ -178,27 +196,32 @@ struct EditorView: View {
                     .help("Templates")
                 }
             }
-            .frame(width: 280, alignment: .leading)
+            .frame(minWidth: leftRailMin, idealWidth: leftRailIdeal, maxWidth: leftRailIdeal, alignment: .leading)
 
             HStack(spacing: 8) {
                 if model.picture != nil {
                     HStack(spacing: 2) {
-                        iconButton("arrow.uturn.backward", help: "Undo") { model.undo() }
+                        iconButton("arrow.uturn.backward", help: "Undo (⌘Z)") { model.undo() }
                             .disabled(!model.canUndo)
-                        iconButton("arrow.uturn.forward", help: "Redo") { model.redo() }
+                            .opacity(model.canUndo ? 1 : 0.35)
+                        iconButton("arrow.uturn.forward", help: "Redo (⌘⇧Z)") { model.redo() }
                             .disabled(!model.canRedo)
+                            .opacity(model.canRedo ? 1 : 0.35)
                     }
-                    barCapsule("Start Over", action: { model.startOver() })
+                    barCapsule("Start Over", help: "Clear this screenshot", action: { model.startOver() })
                     toolDock
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(minWidth: 360, idealWidth: 520, maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .layoutPriority(1)
 
             if model.picture != nil {
                 exportButton
-                    .frame(width: 292, alignment: .trailing)
+                    .frame(minWidth: rightRailMin, idealWidth: rightRailIdeal, maxWidth: rightRailIdeal, alignment: .trailing)
             } else {
-                Color.clear.frame(width: 292, height: 32)
+                Color.clear
+                    .frame(minWidth: rightRailMin, idealWidth: rightRailIdeal, maxWidth: rightRailIdeal)
+                    .frame(height: 32)
             }
         }
         .padding(.horizontal, 12)
@@ -223,9 +246,10 @@ struct EditorView: View {
                 .frame(height: 32)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressFadeButtonStyle())
             .disabled(model.picture == nil)
             .help("Export PNG (⌘S)")
+            .accessibilityLabel("Export PNG")
             Rectangle()
                 .fill(line)
                 .frame(width: 1, height: 14)
@@ -236,14 +260,15 @@ struct EditorView: View {
                     .frame(width: 34, height: 32)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressFadeButtonStyle())
             .disabled(model.picture == nil)
             .help("Copy PNG (⌘C)")
+            .accessibilityLabel("Copy PNG")
         }
         .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.1), radius: 8, y: 2))
     }
 
-    private func barCapsule(_ title: String, action: @escaping () -> Void) -> some View {
+    private func barCapsule(_ title: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: .medium))
@@ -253,7 +278,9 @@ struct EditorView: View {
                 .background(Capsule().fill(Color.white).shadow(color: Color.black.opacity(0.08), radius: 6, y: 2))
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressFadeButtonStyle())
+        .help(help)
+        .accessibilityLabel(help)
     }
 
     private var leftRail: some View {
@@ -266,16 +293,17 @@ struct EditorView: View {
                     if model.style.frame == .none { model.setFrame(.browser) }
                 }
             }
-            .padding(10)
+            .padding(.horizontal, railInset)
+            .padding(.vertical, 10)
             if model.style.frame != .none {
                 HStack(spacing: 4) {
                     tabButton("Browser", on: model.style.frame == .browser) { model.setFrame(.browser) }
                     tabButton("Window", on: model.style.frame == .desktop) { model.setFrame(.desktop) }
                 }
-                .padding(.horizontal, 10)
+                .padding(.horizontal, railInset)
                 .padding(.bottom, 8)
             }
-            ScrollView {
+            ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 16) {
                     screenshotRow
                     backgroundGallery
@@ -292,7 +320,8 @@ struct EditorView: View {
                         markControls
                     }
                 }
-                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, railInset)
                 .padding(.bottom, 18)
             }
         }
@@ -303,89 +332,160 @@ struct EditorView: View {
 
     private var rightRail: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 2) {
-                densityButton("Tight", padding: 28)
-                densityButton("Even", padding: 72)
-                densityButton("Airy", padding: 120)
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    caption("Padding")
+                    HStack(spacing: 2) {
+                        densityButton("Tight", padding: 28)
+                        densityButton("Even", padding: 72)
+                        densityButton("Airy", padding: 120)
+                    }
+                    .padding(3)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black.opacity(0.05)))
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Padding")
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    zoomRow
+                    tiltRow
+                }
             }
-            .padding(3)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.05)))
-            .padding(12)
+            .padding(railInset)
+
+            Divider()
+                .padding(.horizontal, railInset)
+
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Text("Zoom")
-                        .font(.system(size: 12, weight: .medium))
+                HStack {
+                    Text("This picture")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(ink)
-                    Slider(value: Binding(get: { model.zoomMultiplier }, set: { model.setZoomMultiplier($0) }), in: 0.4...2)
-                    Text("\(Int((model.zoomMultiplier * 100).rounded()))%")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .frame(width: 36, alignment: .trailing)
-                }
-                HStack(spacing: 8) {
-                    let tilted = abs(model.style.tiltX) + abs(model.style.tiltY) > 0.5
-                    Button(action: { model.setTilt(x: 8, y: -14) }) {
-                        Text("Tilt")
-                            .font(.system(size: 12, weight: tilted ? .semibold : .regular))
-                            .foregroundColor(tilted ? ink : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                    Spacer()
-                    Button(action: { model.setTilt(x: 0, y: 0) }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: tilted ? "circle" : "circle.inset.filled")
-                                .font(.system(size: 11))
-                            Text("Precision mode")
-                                .font(.system(size: 12))
-                        }
-                        .foregroundColor(ink)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12)
-            layoutCard(model.style)
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-            HStack {
-                Text("This picture")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(ink)
-                Spacer()
-                Button("Fit") { model.fit() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(accent)
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 6)
-            caption("Layout presets")
-                .padding(.horizontal, 14)
-                .padding(.top, 14)
-            ScrollView {
-                VStack(spacing: 10) {
-                    ForEach(Presets.all) { preset in
-                        let active = preset.style == model.style
-                        Button(action: { model.applyPreset(preset) }) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                layoutCard(preset.style)
-                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(active ? accent : Color.clear, lineWidth: 2))
-                                Text(preset.name)
-                                    .font(.system(size: 12, weight: active ? .semibold : .medium))
-                                    .foregroundColor(active ? ink : .secondary)
-                                    .padding(.leading, 2)
-                            }
-                        }
+                    Spacer(minLength: 8)
+                    Button("Fit") { model.fit() }
                         .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(accent)
+                        .help("Fit the picture in the window (⌘0)")
+                        .accessibilityLabel("Fit the picture in the window")
+                }
+                layoutCard(model.style)
+            }
+            .padding(.horizontal, railInset)
+            .padding(.top, 14)
+
+            caption("Layout presets")
+                .padding(.horizontal, railInset)
+                .padding(.top, 18)
+                .padding(.bottom, 8)
+
+            ScrollView(.vertical) {
+                VStack(spacing: 12) {
+                    ForEach(Presets.all) { preset in
+                        presetCard(preset)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
+                .padding(.horizontal, railInset)
+                .padding(.bottom, 14)
             }
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(color: Color.black.opacity(0.05), radius: 10, y: 2)
+    }
+
+    private var zoomRow: some View {
+        HStack(spacing: 8) {
+            Text("Zoom")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .frame(width: 44, alignment: .leading)
+            Slider(value: Binding(get: { model.zoomMultiplier }, set: { model.setZoomMultiplier($0) }), in: 0.4...2)
+                .accessibilityLabel("Zoom")
+            Text("\(Int((model.zoomMultiplier * 100).rounded()))%")
+                .font(.system(size: 11, weight: .medium))
+                .monospacedDigit()
+                .foregroundColor(.secondary)
+                .frame(width: 40, alignment: .trailing)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var tiltRow: some View {
+        let tilted = abs(model.style.tiltX) + abs(model.style.tiltY) > 0.5
+        return HStack(spacing: 2) {
+            Button(action: { model.setTilt(x: 8, y: -14) }) {
+                Text("Tilt")
+                    .font(.system(size: 12, weight: tilted ? .semibold : .medium))
+                    .foregroundColor(tilted ? ink : .secondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(tilted ? Color.white : Color.clear)
+                            .shadow(color: tilted ? Color.black.opacity(0.08) : .clear, radius: 3, y: 1)
+                    )
+            }
+            .buttonStyle(PressFadeButtonStyle())
+            .help("Tilt the picture")
+            .accessibilityLabel("Tilt the picture")
+            .accessibilityAddTraits(tilted ? .isSelected : AccessibilityTraits())
+            Button(action: { model.setTilt(x: 0, y: 0) }) {
+                Text("Precision")
+                    .font(.system(size: 12, weight: tilted ? .medium : .semibold))
+                    .foregroundColor(tilted ? .secondary : ink)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(tilted ? Color.clear : Color.white)
+                            .shadow(color: tilted ? .clear : Color.black.opacity(0.08), radius: 3, y: 1)
+                    )
+            }
+            .buttonStyle(PressFadeButtonStyle())
+            .help("Precision mode keeps the picture straight")
+            .accessibilityLabel("Precision mode")
+            .accessibilityAddTraits(tilted ? AccessibilityTraits() : .isSelected)
+        }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black.opacity(0.05)))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Tilt")
+    }
+
+    private func presetCard(_ preset: Preset) -> some View {
+        let active = preset.style == model.style
+        let hovered = hoveredPreset == preset.id
+        return Button(action: { model.applyPreset(preset) }) {
+            VStack(alignment: .leading, spacing: 6) {
+                layoutCard(preset.style)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(active ? accent : (hovered ? Color.black.opacity(0.2) : Color.clear), lineWidth: active ? 2 : 1)
+                    )
+                Text(preset.name)
+                    .font(.system(size: 12, weight: active ? .semibold : .medium))
+                    .foregroundColor(active ? ink : .secondary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 2)
+            }
+            .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(hovered && !active ? Color.black.opacity(0.035) : Color.clear)
+            )
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .onHover { hovering in
+            if hovering {
+                hoveredPreset = preset.id
+            } else if hoveredPreset == preset.id {
+                hoveredPreset = nil
+            }
+        }
+        .help(preset.name)
+        .accessibilityLabel("\(preset.name) layout")
+        .accessibilityAddTraits(active ? .isSelected : AccessibilityTraits())
     }
 
     private func playAnimate() {
@@ -437,7 +537,9 @@ struct EditorView: View {
                 .frame(height: 30)
                 .background(RoundedRectangle(cornerRadius: 9).fill(on ? ink : Color.black.opacity(0.05)))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressFadeButtonStyle())
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
     }
 
     private func densityButton(_ title: String, padding: CGFloat) -> some View {
@@ -454,8 +556,10 @@ struct EditorView: View {
                 .frame(height: 28)
                 .background(RoundedRectangle(cornerRadius: 8).fill(on ? Color.white : Color.clear).shadow(color: on ? Color.black.opacity(0.08) : .clear, radius: 3, y: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressFadeButtonStyle())
         .help("\(title) padding")
+        .accessibilityLabel("\(title) padding")
+        .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
     }
 
     private var pictureAspect: CGFloat {
@@ -733,7 +837,10 @@ struct EditorView: View {
                                 .minimumScaleFactor(0.8)
                         }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressFadeButtonStyle())
+                    .help(card.title)
+                    .accessibilityLabel(card.title)
+                    .accessibilityAddTraits(active ? .isSelected : AccessibilityTraits())
                 }
             }
         }
@@ -773,8 +880,10 @@ struct EditorView: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressFadeButtonStyle())
         .help(title)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
     }
 
     private func cornerIsOn(_ radius: CGFloat) -> Bool {
@@ -915,6 +1024,8 @@ struct EditorView: View {
             .font(.system(size: 10, weight: .semibold))
             .kerning(0.6)
             .foregroundColor(.secondary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var toolDock: some View {
@@ -990,12 +1101,16 @@ struct EditorView: View {
     private func wallpaperShelf(_ title: String, _ items: [WallpaperID], _ shelf: BackgroundShelf) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             caption(title)
-            HStack(spacing: 8) {
+            HStack(spacing: thumbGap) {
                 ForEach(visibleWallpapers(items)) { wallpaper in
-                    wallpaperSwatch(wallpaper, height: 58)
+                    wallpaperSwatch(wallpaper, height: thumbHeight, shelf: shelf)
                 }
                 if items.count > 3 {
-                    moreSwatch(title) { backgroundShelf = shelf }
+                    moreSwatch(title) {
+                        backgroundPopover = nil
+                        gradientPopover = nil
+                        backgroundShelf = shelf
+                    }
                 }
             }
         }
@@ -1004,12 +1119,16 @@ struct EditorView: View {
     private var gradientShelf: some View {
         VStack(alignment: .leading, spacing: 8) {
             caption("Linear")
-            HStack(spacing: 8) {
+            HStack(spacing: thumbGap) {
                 ForEach(visibleGradients(), id: \.name) { gradient in
-                    gradientSwatch(gradient, height: 58)
+                    gradientSwatch(gradient, height: thumbHeight, shelf: .linear)
                 }
                 if Presets.gradients.count > 3 {
-                    moreSwatch("Linear") { backgroundShelf = .linear }
+                    moreSwatch("Linear") {
+                        backgroundPopover = nil
+                        gradientPopover = nil
+                        backgroundShelf = .linear
+                    }
                 }
             }
         }
@@ -1031,62 +1150,159 @@ struct EditorView: View {
         return Array(Presets.gradients.prefix(2)) + [match]
     }
 
-    private func wallpaperSwatch(_ wallpaper: WallpaperID, height: CGFloat) -> some View {
+    private func wallpaperSwatch(_ wallpaper: WallpaperID, height: CGFloat, shelf: BackgroundShelf? = nil) -> some View {
         let active: Bool = {
             if case .wallpaper(let selected) = model.style.background { return selected == wallpaper }
             return false
         }()
-        return Button(action: { model.setBackground(.wallpaper(wallpaper)) }) {
-            wallpaperPreview(wallpaper)
-                .frame(height: height)
-                .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(swatchStroke(active))
+        return ZStack(alignment: .topTrailing) {
+            SelectWell(height: height, active: active, help: wallpaper.label, label: "Use \(wallpaper.label) background", action: {
+                model.setBackground(.wallpaper(wallpaper))
+                backgroundPopover = nil
+                gradientPopover = nil
+            }) {
+                wallpaperPreview(wallpaper)
+            }
+            if let shelf {
+                PlusButton(label: "Related \(shelf.title) backgrounds", presented: wallpaperPresented(wallpaper)) {
+                    categoryPopover(shelf)
+                }
+            }
         }
-        .buttonStyle(.plain)
-        .help(wallpaper.label)
     }
 
-    private func gradientSwatch(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat), height: CGFloat) -> some View {
+    private func gradientSwatch(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat), height: CGFloat, shelf: BackgroundShelf? = nil) -> some View {
         let active: Bool = {
             if case .gradient(let from, let mid, let to, _) = model.style.background {
                 return gradient.from == from && gradient.mid == mid && gradient.to == to
             }
             return false
         }()
-        return Button(action: { model.setBackground(.gradient(from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle)) }) {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(LinearGradient(
+        return ZStack(alignment: .topTrailing) {
+            SelectWell(height: height, active: active, help: gradient.name, label: "Use \(gradient.name) background", action: {
+                model.setBackground(.gradient(from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle))
+                backgroundPopover = nil
+                gradientPopover = nil
+            }) {
+                LinearGradient(
                     colors: [Color(nsColor: NSColor(hex: gradient.from)!), Color(nsColor: NSColor(hex: gradient.mid)!), Color(nsColor: NSColor(hex: gradient.to)!)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
-                ))
-                .frame(height: height)
-                .frame(maxWidth: .infinity)
-                .overlay(swatchStroke(active))
+                )
+            }
+            if shelf != nil {
+                PlusButton(label: "Related linear backgrounds", presented: gradientPresented(gradient.name)) {
+                    categoryPopover(.linear)
+                }
+            }
         }
-        .buttonStyle(.plain)
-        .help(gradient.name)
+    }
+
+    private func wallpaperPresented(_ wallpaper: WallpaperID) -> Binding<Bool> {
+        Binding(
+            get: { backgroundPopover == wallpaper },
+            set: { on in
+                if on {
+                    gradientPopover = nil
+                    backgroundPopover = wallpaper
+                } else if backgroundPopover == wallpaper {
+                    backgroundPopover = nil
+                }
+            }
+        )
+    }
+
+    private func gradientPresented(_ name: String) -> Binding<Bool> {
+        Binding(
+            get: { gradientPopover == name },
+            set: { on in
+                if on {
+                    backgroundPopover = nil
+                    gradientPopover = name
+                } else if gradientPopover == name {
+                    gradientPopover = nil
+                }
+            }
+        )
+    }
+
+    private func categoryPopover(_ shelf: BackgroundShelf) -> some View {
+        let count = shelf == .linear ? Presets.gradients.count : shelf.wallpapers.count
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(shelf.title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(ink)
+                .accessibilityAddTraits(.isHeader)
+            popoverChoices(count: count) {
+                if shelf == .linear {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: thumbGap), GridItem(.flexible(), spacing: thumbGap)], spacing: thumbGap) {
+                        ForEach(Presets.gradients, id: \.name) { gradient in
+                            gradientSwatch(gradient, height: 64)
+                        }
+                    }
+                } else {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: thumbGap), GridItem(.flexible(), spacing: thumbGap)], spacing: thumbGap) {
+                        ForEach(shelf.wallpapers) { wallpaper in
+                            wallpaperSwatch(wallpaper, height: 64)
+                        }
+                    }
+                }
+            }
+            Button(action: {
+                backgroundPopover = nil
+                gradientPopover = nil
+                backgroundShelf = shelf
+            }) {
+                Text("See all")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(accent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("See all \(shelf.title.lowercased()) backgrounds")
+            .accessibilityLabel("See all \(shelf.title.lowercased()) backgrounds")
+        }
+        .padding(12)
+        .frame(width: 248)
+        .onExitCommand {
+            backgroundPopover = nil
+            gradientPopover = nil
+        }
+    }
+
+    @ViewBuilder
+    private func popoverChoices<Content: View>(count: Int, @ViewBuilder content: () -> Content) -> some View {
+        if count > 6 {
+            ScrollView(.vertical) {
+                content()
+            }
+            .frame(height: 248)
+        } else {
+            content()
+        }
     }
 
     private func moreSwatch(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.black.opacity(0.05))
+                Color.clear
                 Image(systemName: "chevron.down")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(ink)
             }
-            .frame(height: 58)
+            .frame(height: thumbHeight)
             .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.05)))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(Color.black.opacity(0.08), lineWidth: 1)
             )
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressFadeButtonStyle())
         .help("More \(title.lowercased()) backgrounds")
+        .accessibilityLabel("More \(title.lowercased()) backgrounds")
     }
 
     private func swatchStroke(_ active: Bool) -> some View {
@@ -1325,8 +1541,10 @@ struct EditorView: View {
                 .background(RoundedRectangle(cornerRadius: 6).fill(active ? accent.opacity(0.16) : Color.clear))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressFadeButtonStyle())
         .help(help)
+        .accessibilityLabel(help)
+        .accessibilityAddTraits(active ? .isSelected : AccessibilityTraits())
     }
 
     private func iconButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
@@ -1337,8 +1555,9 @@ struct EditorView: View {
                 .frame(width: 28, height: 32)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressFadeButtonStyle())
         .help(help)
+        .accessibilityLabel(help)
     }
 
     private func labelledSlider(_ title: String, value: Binding<CGFloat>, range: ClosedRange<CGFloat>) -> some View {
@@ -1592,6 +1811,90 @@ struct EditorView: View {
                 window.center()
             }
         }
+    }
+}
+
+private struct PressFadeButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.82 : 1)
+    }
+}
+
+private struct SelectWell<Content: View>: View {
+    var height: CGFloat
+    var active: Bool
+    var help: String
+    var label: String
+    var action: () -> Void
+    var content: Content
+    @State private var hovering = false
+    @FocusState private var focused: Bool
+
+    init(height: CGFloat, active: Bool, help: String, label: String, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.height = height
+        self.active = active
+        self.help = help
+        self.label = label
+        self.action = action
+        self.content = content()
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Color.clear
+                .frame(height: height)
+                .frame(maxWidth: .infinity)
+                .overlay { content.allowsHitTesting(false) }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(stroke)
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .help(help)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(active ? .isSelected : AccessibilityTraits())
+        .focused($focused)
+        .onHover { hovering = $0 }
+    }
+
+    private var stroke: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(active || focused ? accent : (hovering ? Color.black.opacity(0.28) : Color.black.opacity(0.08)), lineWidth: active || focused ? 2 : 1)
+            .allowsHitTesting(false)
+    }
+}
+
+private struct PlusButton<Popover: View>: View {
+    var label: String
+    @Binding var presented: Bool
+    var popover: Popover
+    @State private var hovering = false
+    @FocusState private var focused: Bool
+
+    init(label: String, presented: Binding<Bool>, @ViewBuilder popover: () -> Popover) {
+        self.label = label
+        self._presented = presented
+        self.popover = popover()
+    }
+
+    var body: some View {
+        Button(action: { presented.toggle() }) {
+            Image(systemName: "plus")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(ink)
+                .frame(width: 16, height: 16)
+                .background(Circle().fill(hovering || focused || presented ? Color.white.opacity(0.92) : Color.white))
+                .overlay(Circle().stroke(focused || presented ? accent : Color.black.opacity(0.12), lineWidth: focused || presented ? 1.5 : 0.5))
+                .shadow(color: Color.black.opacity(0.14), radius: 1.5, y: 0.5)
+                .contentShape(Circle())
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .padding(4)
+        .accessibilityLabel(label)
+        .help(label)
+        .focused($focused)
+        .onHover { hovering = $0 }
+        .popover(isPresented: $presented, arrowEdge: .trailing) { popover }
     }
 }
 
