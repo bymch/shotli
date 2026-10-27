@@ -46,6 +46,10 @@ final class LibraryModel: ObservableObject {
     static let shared = LibraryModel()
     @Published var source: LibrarySource
     @Published var showingSettings = false
+    @Published var kindFilter: ShotKind?
+    @Published var kinds: [String: ShotKind] = [:]
+    @Published var kindCounts: [ShotKind: Int] = [:]
+    @Published var sorting = false
     @Published var shots: [LibraryShot] = []
     @Published var counts: [LibrarySource: Int] = [:]
     @Published var thumbs: [String: NSImage] = [:]
@@ -63,10 +67,14 @@ final class LibraryModel: ObservableObject {
     }
 
     func select(_ source: LibrarySource) {
-        let leavingSettings = showingSettings
+        let leavingSettings = showingSettings || kindFilter != nil
         showingSettings = false
+        kindFilter = nil
         guard source != self.source else {
-            if leavingSettings { clearSelection() }
+            if leavingSettings {
+                clearSelection()
+                apply()
+            }
             return
         }
         self.source = source
@@ -78,11 +86,41 @@ final class LibraryModel: ObservableObject {
     func showSettings() {
         guard !showingSettings else { return }
         showingSettings = true
+        kindFilter = nil
         clearSelection()
     }
 
+    func selectKind(_ kind: ShotKind) {
+        let same = kindFilter == kind && !showingSettings
+        showingSettings = false
+        kindFilter = kind
+        clearSelection()
+        if same { return }
+        apply()
+    }
+
+    func setKind(id: String, kind: ShotKind) {
+        guard kinds[id] != kind else {
+            recomputeKindCounts()
+            return
+        }
+        kinds[id] = kind
+        apply()
+    }
+
+    func setSorting(_ value: Bool) {
+        guard sorting != value else { return }
+        sorting = value
+        if kindFilter != nil { apply() }
+    }
+
+    func allShots() -> [LibraryShot] {
+        var seen = Set<String>()
+        return LibrarySource.allCases.flatMap { cache[$0] ?? [] }.filter { seen.insert($0.id).inserted }
+    }
+
     func step(_ offset: Int) {
-        guard !showingSettings else { return }
+        guard !showingSettings, kindFilter == nil else { return }
         let order = LibrarySource.allCases
         guard let index = order.firstIndex(of: source) else { return }
         let next = order[(index + offset + order.count) % order.count]
@@ -108,25 +146,44 @@ final class LibraryModel: ObservableObject {
                 })
                 let keep = Set(catalog.shots.values.flatMap { $0.map(\.id) })
                 self.thumbs = self.thumbs.filter { keep.contains($0.key) }
+                let everything = self.allShots()
+                self.kinds = ShotSorter.shared.knownKinds(in: everything)
                 self.apply()
                 self.warm(token)
+                ShotSorter.shared.schedule(everything)
             }
         }
     }
 
     private func apply() {
-        let list = cache[source] ?? []
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if needle.isEmpty {
-            shots = list
-            message = list.isEmpty ? notes[source] : nil
+        recomputeKindCounts()
+        let base: [LibraryShot]
+        if let kindFilter {
+            base = allShots().filter { kinds[$0.id] == kindFilter }.sorted { $0.modified > $1.modified }
         } else {
-            shots = list.filter { $0.name.lowercased().contains(needle) }
-            message = shots.isEmpty ? "Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”." : nil
+            base = cache[source] ?? []
+        }
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let searched = needle.isEmpty ? base : base.filter { $0.name.lowercased().contains(needle) }
+        shots = searched
+        if !needle.isEmpty {
+            message = searched.isEmpty ? "Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”." : nil
+        } else if let kindFilter, searched.isEmpty {
+            message = sorting ? "Shotli is still sorting screenshots." : "No \(kindFilter.emptyNoun) yet."
+        } else {
+            message = searched.isEmpty ? notes[source] : nil
         }
         let visible = Set(shots.map(\.id))
         selected = selected.intersection(visible)
         if let anchor = selectionAnchor, !visible.contains(anchor) { selectionAnchor = selected.first }
+    }
+
+    private func recomputeKindCounts() {
+        var counts: [ShotKind: Int] = [:]
+        for shot in allShots() {
+            if let kind = kinds[shot.id] { counts[kind, default: 0] += 1 }
+        }
+        kindCounts = counts
     }
 
     func selectOnly(_ id: String) {
@@ -232,6 +289,8 @@ enum LibraryFolders {
     static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
     static var desktop: URL { home.appendingPathComponent("Desktop") }
     static var pictures: URL { home.appendingPathComponent("Pictures") }
+    static var documents: URL { home.appendingPathComponent("Documents") }
+    static var downloads: URL { home.appendingPathComponent("Downloads") }
     static var shotli: URL { pictures.appendingPathComponent("Shotli") }
 
     static var screenshots: URL {
@@ -303,25 +362,33 @@ private enum LibraryScan {
     }
 
     private static func listed(_ folder: URL, empty: String) -> Result {
-        let shots = images(in: folder).sorted { $0.modified > $1.modified }
-        if shots.isEmpty, !FileManager.default.isReadableFile(atPath: folder.path), FileManager.default.fileExists(atPath: folder.path) {
-            return Result(shots: [], message: "Shotli can't read \(folder.lastPathComponent). Allow it in System Settings → Privacy & Security.")
+        let found = images(in: folder)
+        if FileManager.default.fileExists(atPath: folder.path) {
+            ShotliPermissions.shared.note(folder: folder, allowed: found.readable)
+        }
+        let shots = found.shots.sorted { $0.modified > $1.modified }
+        if shots.isEmpty, !found.readable, FileManager.default.fileExists(atPath: folder.path) {
+            return Result(shots: [], message: "Shotli can't read \(folder.lastPathComponent). Allow it in Settings.")
         }
         return Result(shots: Array(shots.prefix(200)), message: shots.isEmpty ? empty : nil)
     }
 
-    private static func images(in folder: URL) -> [LibraryShot] {
+    private static func images(in folder: URL) -> (shots: [LibraryShot], readable: Bool) {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .isRegularFileKey, .isHiddenKey]
-        guard let items = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else {
-            return []
+        let items: [URL]
+        do {
+            items = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])
+        } catch {
+            return ([], false)
         }
         let allowed: Set<String> = ["png", "jpg", "jpeg", "webp", "tif", "tiff", "heic"]
-        return items.compactMap { url in
+        let shots = items.compactMap { url -> LibraryShot? in
             guard allowed.contains(url.pathExtension.lowercased()) else { return nil }
             let values = try? url.resourceValues(forKeys: Set(keys))
             guard values?.isRegularFile == true, values?.isHidden != true else { return nil }
             return LibraryShot(id: url.path, url: url, name: url.lastPathComponent, modified: values?.contentModificationDate ?? .distantPast)
         }
+        return (shots, true)
     }
 }
 
@@ -361,17 +428,31 @@ struct LibraryHome: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Library")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 14)
-                .padding(.top, 16)
-                .padding(.bottom, 6)
-            ForEach(LibrarySource.allCases) { source in
-                sourceButton(source)
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Library")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 16)
+                        .padding(.bottom, 6)
+                    ForEach(LibrarySource.allCases) { source in
+                        sourceButton(source)
+                    }
+                    Text("Sort")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 16)
+                        .padding(.bottom, 6)
+                    ForEach(ShotKind.allCases) { kind in
+                        kindButton(kind)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer()
+            Spacer(minLength: 0)
             Button(action: onOpen) {
                 Label("Open a screenshot…", systemImage: "folder")
                     .font(.system(size: 12))
@@ -389,46 +470,38 @@ struct LibraryHome: View {
         .background(Color.white)
         .animation(.spring(response: 0.38, dampingFraction: 0.84), value: library.source)
         .animation(.spring(response: 0.38, dampingFraction: 0.84), value: library.showingSettings)
+        .animation(.spring(response: 0.38, dampingFraction: 0.84), value: library.kindFilter)
     }
 
     private var settingsButton: some View {
-        let selected = library.showingSettings
-        return Button(action: { library.showSettings() }) {
-            HStack(spacing: 8) {
-                Image(systemName: "gearshape")
-                    .frame(width: 16)
-                Text("Settings")
-                    .font(.system(size: 13))
-                Spacer(minLength: 4)
-            }
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 28)
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .foregroundColor(selected ? .white : ink)
-            .background {
-                if selected {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(accent)
-                        .matchedGeometryEffect(id: "library-source", in: selection)
-                }
-            }
+        sidebarRow("Settings", symbol: "gearshape", count: nil, selected: library.showingSettings) {
+            library.showSettings()
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 8)
     }
 
     private func sourceButton(_ source: LibrarySource) -> some View {
-        let selected = library.source == source && !library.showingSettings
-        let count = library.counts[source] ?? 0
-        return Button(action: { library.select(source) }) {
+        let selected = library.source == source && !library.showingSettings && library.kindFilter == nil
+        return sidebarRow(source.title, symbol: source.symbol, count: library.counts[source] ?? 0, selected: selected) {
+            library.select(source)
+        }
+    }
+
+    private func kindButton(_ kind: ShotKind) -> some View {
+        let selected = library.kindFilter == kind && !library.showingSettings
+        return sidebarRow(kind.title, symbol: kind.symbol, count: library.kindCounts[kind] ?? 0, selected: selected) {
+            library.selectKind(kind)
+        }
+    }
+
+    private func sidebarRow(_ title: String, symbol: String, count: Int?, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             HStack(spacing: 8) {
-                Image(systemName: source.symbol)
+                Image(systemName: symbol)
                     .frame(width: 16)
-                Text(source.title)
+                Text(title)
                     .font(.system(size: 13))
                 Spacer(minLength: 4)
-                if count > 0 {
+                if let count, count > 0 {
                     Text("\(count)")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(selected ? Color.white.opacity(0.85) : .secondary)
@@ -467,9 +540,9 @@ struct LibraryHome: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(library.source.title)
+                    Text(library.kindFilter?.title ?? library.source.title)
                         .font(.system(size: 18, weight: .semibold))
-                    Text(library.selected.isEmpty ? library.source.detail : "\(library.selected.count) selected")
+                    Text(headerDetail)
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -501,6 +574,7 @@ struct LibraryHome: View {
                                     image: library.thumbs[shot.id],
                                     selected: library.selected.contains(shot.id),
                                     showsCheck: !library.selected.isEmpty,
+                                    kindTitle: library.kinds[shot.id]?.title,
                                     onChoose: { library.choose(shot.id) },
                                     onToggle: { library.toggle(shot.id) },
                                     onOpen: { EditorModel.shared.load(url: shot.url) },
@@ -516,7 +590,7 @@ struct LibraryHome: View {
                         .padding(.bottom, 24)
                     }
                 }
-                .id(library.source)
+                .id(library.kindFilter?.rawValue ?? library.source.rawValue)
                 .transition(.opacity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -524,6 +598,14 @@ struct LibraryHome: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)))
+    }
+
+    private var headerDetail: String {
+        if !library.selected.isEmpty { return "\(library.selected.count) selected" }
+        if library.kindFilter != nil {
+            return library.sorting ? "Sorting on this Mac…" : "Sorted on this Mac"
+        }
+        return library.source.detail
     }
 
     private var allSelected: Bool {
@@ -586,6 +668,7 @@ private struct ShotCard: View {
     var image: NSImage?
     var selected: Bool
     var showsCheck: Bool
+    var kindTitle: String? = nil
     var onChoose: () -> Void
     var onToggle: () -> Void
     var onOpen: () -> Void
@@ -629,9 +712,16 @@ private struct ShotCard: View {
                 .font(.system(size: 12))
                 .foregroundColor(Color(nsColor: NSColor(hex: "#222222")!))
                 .lineLimit(1)
-            Text(shot.modified, style: .relative)
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+            HStack(spacing: 4) {
+                if let kindTitle {
+                    Text(kindTitle)
+                    Text("·")
+                }
+                Text(shot.modified, style: .relative)
+            }
+            .font(.system(size: 11))
+            .foregroundColor(.secondary)
+            .lineLimit(1)
         }
         .padding(8)
         .background(
