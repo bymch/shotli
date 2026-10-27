@@ -79,17 +79,25 @@ enum WallpaperID: String, CaseIterable, Identifiable {
     case dots, grid, diagonal, stripes, mesh, cross
     case dusk, night, harbour, hills, aurora, sorbet
     case studio, porcelain, bloom, tide, sand, ink, citrus, glacier, clay, moss
+    case flare, iris, blush, prism
+    case ripple, emberglass, gilt, current
+    case nebula, void, orbit, pulsar
+    case veil, halo, drift, linen
+    case peaks, coast, shore, ridge
+    case fold, swell, dune, petal
+    case canyon, canopy, mesa, basin
     static let patterns: [WallpaperID] = [.dots, .grid, .diagonal, .stripes, .mesh, .cross]
     static let scenes: [WallpaperID] = [.dusk, .night, .harbour, .hills, .aurora, .sorbet]
     static let backdrops: [WallpaperID] = [.studio, .porcelain, .bloom, .tide, .sand, .ink, .citrus, .glacier, .clay, .moss]
+    static let fields: [WallpaperID] = [.flare, .iris, .blush, .prism]
+    static let glass: [WallpaperID] = [.ripple, .emberglass, .gilt, .current]
+    static let cosmic: [WallpaperID] = [.nebula, .void, .orbit, .pulsar]
+    static let mystic: [WallpaperID] = [.veil, .halo, .drift, .linen]
+    static let desktop: [WallpaperID] = [.peaks, .coast, .shore, .ridge]
+    static let abstract: [WallpaperID] = [.fold, .swell, .dune, .petal]
+    static let earth: [WallpaperID] = [.canyon, .canopy, .mesa, .basin]
     var id: String { rawValue }
-    var isScene: Bool {
-        switch self {
-        case .dusk, .night, .harbour, .hills, .aurora, .sorbet: return true
-        case .studio, .porcelain, .bloom, .tide, .sand, .ink, .citrus, .glacier, .clay, .moss: return true
-        default: return false
-        }
-    }
+    var isScene: Bool { !Self.patterns.contains(self) }
     var label: String {
         switch self {
         case .dots: return "Dots"
@@ -114,6 +122,34 @@ enum WallpaperID: String, CaseIterable, Identifiable {
         case .glacier: return "Glacier"
         case .clay: return "Clay"
         case .moss: return "Moss"
+        case .flare: return "Flare"
+        case .iris: return "Iris"
+        case .blush: return "Blush"
+        case .prism: return "Prism"
+        case .ripple: return "Ripple"
+        case .emberglass: return "Ember"
+        case .gilt: return "Gilt"
+        case .current: return "Current"
+        case .nebula: return "Nebula"
+        case .void: return "Void"
+        case .orbit: return "Orbit"
+        case .pulsar: return "Pulsar"
+        case .veil: return "Veil"
+        case .halo: return "Halo"
+        case .drift: return "Drift"
+        case .linen: return "Linen"
+        case .peaks: return "Peaks"
+        case .coast: return "Coast"
+        case .shore: return "Shore"
+        case .ridge: return "Ridge"
+        case .fold: return "Fold"
+        case .swell: return "Swell"
+        case .dune: return "Dune"
+        case .petal: return "Petal"
+        case .canyon: return "Canyon"
+        case .canopy: return "Canopy"
+        case .mesa: return "Mesa"
+        case .basin: return "Basin"
         }
     }
 }
@@ -323,7 +359,7 @@ struct ShotTemplate: Identifiable, Equatable {
 }
 
 enum TemplateLibrary {
-    static let groups = ["Product promotion", "Abstract colour"]
+    static let groups = ["Product promotion", "Abstract colour", "Colour"]
 
     static let all: [ShotTemplate] = [
         shot("stage", "Studio", "Product promotion", .image, 72, 18, 40, .none, .wallpaper(.studio), .sixteenNine, 0, 0, 0.22, 0),
@@ -338,6 +374,10 @@ enum TemplateLibrary {
         shot("citrus", "Citrus", "Abstract colour", .angled, 68, 22, 34, .none, .wallpaper(.citrus), .sixteenNine, 8, -22, -0.1, 0),
         shot("clay", "Clay", "Abstract colour", .image, 76, 18, 30, .none, .wallpaper(.clay), .threeTwo, 0, 0, -0.18, 0),
         shot("moss", "Moss", "Abstract colour", .angled, 64, 20, 40, .none, .wallpaper(.moss), .sixteenNine, 10, 20, 0.1, 0),
+        shot("ripple", "Ripple", "Colour", .image, 76, 22, 32, .none, .wallpaper(.ripple), .sixteenNine, 0, 0, 0, 0),
+        shot("nebula", "Nebula", "Colour", .image, 72, 20, 44, .none, .wallpaper(.nebula), .sixteenNine, 0, 0, 0.08, 0),
+        shot("peaks", "Peaks", "Colour", .image, 68, 16, 36, .none, .wallpaper(.peaks), .sixteenNine, 0, 0, 0, 0),
+        shot("canyon", "Canyon", "Colour", .angled, 64, 18, 40, .none, .wallpaper(.canyon), .sixteenNine, 10, 18, 0.08, 0),
     ]
 
     static func inGroup(_ group: String, kind: TemplateKind?) -> [ShotTemplate] {
