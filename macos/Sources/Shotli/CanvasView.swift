@@ -73,6 +73,8 @@ final class EditorCanvas: NSView {
 
     private var drag: Drag = .none
     private var sharingOut = false
+    private var stageBackdrop: CGImage?
+    private var stageBackdropKey = ""
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -173,7 +175,21 @@ final class EditorCanvas: NSView {
             width: fitted.width,
             height: fitted.height
         )
+        if place.scale > 0, !dest.insetBy(dx: -1, dy: -1).contains(bounds),
+           let backdrop = cachedStageBackdrop(background: model.style.background, canvas: layout.size, dest: dest) {
+            NSImage(cgImage: backdrop, size: NSSize(width: bounds.width, height: bounds.height)).draw(in: bounds)
+        }
         NSImage(cgImage: image, size: NSSize(width: pixel.width, height: pixel.height)).draw(in: dest)
+    }
+
+    private func cachedStageBackdrop(background: Background, canvas: CGSize, dest: CGRect) -> CGImage? {
+        let screen = window?.backingScaleFactor ?? 2
+        let key = "\(background)|\(canvas.width)x\(canvas.height)|\(dest.minX),\(dest.minY),\(dest.width)x\(dest.height)|\(bounds.width)x\(bounds.height)|\(screen)"
+        if key == stageBackdropKey, let stageBackdrop { return stageBackdrop }
+        guard let image = renderStageBackdrop(background: background, canvas: canvas, dest: dest, viewSize: bounds.size, screen: screen) else { return nil }
+        stageBackdrop = image
+        stageBackdropKey = key
+        return image
     }
 
     private func drawStage() {

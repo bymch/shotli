@@ -52,6 +52,28 @@ func renderBackdrop(_ background: Background, size: CGSize) -> CGImage? {
     return context.makeImage()
 }
 
+/// Background for the editor stage. The picture can shrink, and this keeps the same colour filling the view.
+func renderStageBackdrop(background: Background, canvas: CGSize, dest: CGRect, viewSize: CGSize, screen: CGFloat) -> CGImage? {
+    guard canvas.width > 1, canvas.height > 1, viewSize.width > 1, viewSize.height > 1, dest.width > 1, dest.height > 1 else { return nil }
+    let scaleX = dest.width / canvas.width
+    let scaleY = dest.height / canvas.height
+    guard scaleX > 0, scaleY > 0, scaleX.isFinite, scaleY.isFinite else { return nil }
+    let pixelScale = max(1, screen)
+    let pixels = CGSize(width: max(1, viewSize.width * pixelScale), height: max(1, viewSize.height * pixelScale))
+    guard let context = bitmapContext(pixels) else { return nil }
+    let region = CGRect(
+        x: -dest.minX / scaleX,
+        y: -dest.minY / scaleY,
+        width: viewSize.width / scaleX,
+        height: viewSize.height / scaleY
+    )
+    context.scaleBy(x: pixelScale, y: pixelScale)
+    context.translateBy(x: dest.minX, y: viewSize.height - dest.maxY)
+    context.scaleBy(x: scaleX, y: scaleY)
+    Painter(context: context, height: canvas.height).drawBackground(background, canvas, cover: region)
+    return context.makeImage()
+}
+
 func warpMotionCard(_ image: CGImage, tiltX: CGFloat, tiltY: CGFloat) -> CGImage {
     if abs(tiltX) < 0.15, abs(tiltY) < 0.15 { return image }
     return warpCard(image, tiltX: tiltX, tiltY: tiltY)
@@ -241,14 +263,19 @@ private struct Painter {
     }
 
     func drawBackground(_ background: Background, _ size: CGSize) {
+        drawBackground(background, size, cover: CGRect(origin: .zero, size: size))
+    }
+
+    func drawBackground(_ background: Background, _ size: CGSize, cover: CGRect) {
+        let area = CGRect(origin: .zero, size: size).union(cover)
         switch background {
         case .color(let hex):
             if hex == "transparent" {
-                drawChecker(size)
+                drawChecker(area)
                 return
             }
             context.setFillColor(paint(hex))
-            context.fill(CGRect(origin: .zero, size: size))
+            context.fill(cg(area))
         case .gradient(let from, let mid, let to, let angle):
             let radians = (angle - 90) * .pi / 180
             let length = abs(size.width * cos(radians)) + abs(size.height * sin(radians))
@@ -262,27 +289,45 @@ private struct Painter {
             }
             let colors = stops as CFArray
             guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: locations) else { return }
-            context.drawLinearGradient(gradient, start: cg(CGPoint(x: center.x - delta.x, y: center.y - delta.y)), end: cg(CGPoint(x: center.x + delta.x, y: center.y + delta.y)), options: [])
+            let extends = area.width > size.width + 0.5 || area.height > size.height + 0.5 || area.minX < -0.5 || area.minY < -0.5
+            let options: CGGradientDrawingOptions = extends ? [.drawsBeforeStartLocation, .drawsAfterEndLocation] : []
+            context.drawLinearGradient(gradient, start: cg(CGPoint(x: center.x - delta.x, y: center.y - delta.y)), end: cg(CGPoint(x: center.x + delta.x, y: center.y + delta.y)), options: options)
         case .wallpaper(let id):
+            if let base = wallpaperBase(id) {
+                context.setFillColor(paint(base))
+                context.fill(cg(area))
+            }
             drawWallpaper(id, size)
         }
     }
 
-    func drawChecker(_ size: CGSize) {
+    func wallpaperBase(_ id: WallpaperID) -> String? {
+        switch id {
+        case .dots: return "#E8E6E3"
+        case .grid: return "#F7F7F7"
+        case .diagonal: return "#EEF2FF"
+        case .stripes: return "#F4F1EC"
+        case .mesh: return "#F6F7F8"
+        case .cross: return "#F4F7FB"
+        default: return nil
+        }
+    }
+
+    func drawChecker(_ area: CGRect) {
         context.setFillColor(NSColor.white.cgColor)
-        context.fill(CGRect(origin: .zero, size: size))
+        context.fill(cg(area))
         context.setFillColor(NSColor(srgbRed: 0.925, green: 0.925, blue: 0.925, alpha: 1).cgColor)
         let step: CGFloat = 12
-        var y: CGFloat = 0
-        var row = 0
-        while y < size.height {
-            var x: CGFloat = row.isMultiple(of: 2) ? 0 : step
-            while x < size.width {
+        var y = floor(area.minY / step) * step
+        while y < area.maxY {
+            let row = Int(floor(y / step))
+            let odd = ((row % 2) + 2) % 2 == 1
+            var x = floor(area.minX / (step * 2)) * (step * 2) + (odd ? step : 0)
+            while x < area.maxX {
                 context.fill(cg(CGRect(x: x, y: y, width: step, height: step)))
                 x += step * 2
             }
             y += step
-            row += 1
         }
     }
 
