@@ -270,9 +270,8 @@ final class LibraryModel: ObservableObject {
             return
         }
         let updated = LibraryShot(id: destination.path, url: destination, name: destination.lastPathComponent, modified: shot.modified)
-        let kind = kinds[shot.id]
         retarget(from: shot.id, to: updated)
-        if let kind { ShotSorter.shared.file(updated, as: kind) }
+        ShotSorter.shared.moveReading(from: shot.id, to: updated)
     }
 
     private func renameFailed(_ message: String) {
