@@ -73,7 +73,6 @@ struct EditorView: View {
     @State private var gradientPopover: String?
     @State private var expandedShelves: Set<String> = []
     @State private var didSeedLibrary = false
-    @State private var backgroundQuery = ""
     @State private var hoveredPreset: String?
     @State private var showMagic = false
     @State private var magicColors: [MagicColor] = []
@@ -1112,13 +1111,9 @@ struct EditorView: View {
 
     private var backgroundGallery: some View {
         VStack(alignment: .leading, spacing: 12) {
-            backgroundLibraryHeader
-            if backgroundLibraryIsEmpty {
-                Text("No backgrounds match.")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text("Backgrounds")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(ink)
             wallpaperShelf("Gradient", WallpaperID.fields, .gradient)
             wallpaperShelf("Glass", WallpaperID.glass, .glass)
             wallpaperShelf("Cosmic", WallpaperID.cosmic, .cosmic)
@@ -1132,55 +1127,6 @@ struct EditorView: View {
             wallpaperShelf("Pattern", WallpaperID.patterns, .pattern)
         }
         .onAppear(perform: seedLibrary)
-    }
-
-    private var backgroundLibraryHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Backgrounds")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(ink)
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.secondary)
-                TextField("Search", text: $backgroundQuery)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .accessibilityLabel("Search backgrounds")
-                if !backgroundQuery.isEmpty {
-                    Button(action: { backgroundQuery = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Clear search")
-                    .accessibilityLabel("Clear search")
-                }
-            }
-            .padding(.horizontal, 8)
-            .frame(height: 28)
-            .frame(maxWidth: .infinity)
-            .shotliRoundedChip(radius: 8)
-        }
-    }
-
-    private var backgroundQueryText: String {
-        backgroundQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-
-    private var backgroundLibraryIsEmpty: Bool {
-        wallpaperPool(WallpaperID.fields, title: "Gradient") == nil
-            && wallpaperPool(WallpaperID.glass, title: "Glass") == nil
-            && wallpaperPool(WallpaperID.cosmic, title: "Cosmic") == nil
-            && wallpaperPool(WallpaperID.mystic, title: "Mystic") == nil
-            && wallpaperPool(WallpaperID.desktop, title: "Desktop") == nil
-            && wallpaperPool(WallpaperID.abstract, title: "Abstract") == nil
-            && wallpaperPool(WallpaperID.earth, title: "Earth") == nil
-            && wallpaperPool(WallpaperID.backdrops, title: "Studio") == nil
-            && wallpaperPool(WallpaperID.scenes, title: "Scenes") == nil
-            && wallpaperPool(WallpaperID.patterns, title: "Pattern") == nil
-            && gradientPool() == nil
     }
 
     private var activeBackgroundShelf: BackgroundShelf? {
@@ -1211,11 +1157,10 @@ struct EditorView: View {
     }
 
     private func shelfIsOpen(_ shelf: BackgroundShelf) -> Bool {
-        !backgroundQueryText.isEmpty || expandedShelves.contains(shelf.rawValue)
+        expandedShelves.contains(shelf.rawValue)
     }
 
     private func toggleShelf(_ shelf: BackgroundShelf) {
-        guard backgroundQueryText.isEmpty else { return }
         if expandedShelves.contains(shelf.rawValue) {
             expandedShelves.remove(shelf.rawValue)
         } else {
@@ -1248,19 +1193,17 @@ struct EditorView: View {
 
     @ViewBuilder
     private func wallpaperShelf(_ title: String, _ items: [WallpaperID], _ shelf: BackgroundShelf) -> some View {
-        if let pool = wallpaperPool(items, title: title) {
-            VStack(alignment: .leading, spacing: 8) {
-                categoryHeading(title, shelf)
-                if shelfIsOpen(shelf) {
-                    HStack(spacing: thumbGap) {
-                        ForEach(rowWallpapers(pool)) { wallpaper in
-                            wallpaperSwatch(wallpaper, height: thumbHeight)
-                        }
-                        if pool.count > 3 {
-                            moreSwatch(title) {
-                                gradientPopover = nil
-                                backgroundShelf = shelf
-                            }
+        VStack(alignment: .leading, spacing: 8) {
+            categoryHeading(title, shelf)
+            if shelfIsOpen(shelf) {
+                HStack(spacing: thumbGap) {
+                    ForEach(rowWallpapers(items)) { wallpaper in
+                        wallpaperSwatch(wallpaper, height: thumbHeight)
+                    }
+                    if items.count > 3 {
+                        moreSwatch(title) {
+                            gradientPopover = nil
+                            backgroundShelf = shelf
                         }
                     }
                 }
@@ -1270,38 +1213,22 @@ struct EditorView: View {
 
     @ViewBuilder
     private var gradientShelf: some View {
-        if let pool = gradientPool() {
-            VStack(alignment: .leading, spacing: 8) {
-                categoryHeading("Linear", .linear)
-                if shelfIsOpen(.linear) {
-                    HStack(spacing: thumbGap) {
-                        ForEach(rowGradients(pool), id: \.name) { gradient in
-                            gradientSwatch(gradient, height: thumbHeight, showsColours: true)
-                        }
-                        if pool.count > 3 {
-                            moreSwatch("Linear") {
-                                gradientPopover = nil
-                                backgroundShelf = .linear
-                            }
+        VStack(alignment: .leading, spacing: 8) {
+            categoryHeading("Linear", .linear)
+            if shelfIsOpen(.linear) {
+                HStack(spacing: thumbGap) {
+                    ForEach(rowGradients(Presets.gradients), id: \.name) { gradient in
+                        gradientSwatch(gradient, height: thumbHeight, showsColours: true)
+                    }
+                    if Presets.gradients.count > 3 {
+                        moreSwatch("Linear") {
+                            gradientPopover = nil
+                            backgroundShelf = .linear
                         }
                     }
                 }
             }
         }
-    }
-
-    private func wallpaperPool(_ items: [WallpaperID], title: String) -> [WallpaperID]? {
-        let query = backgroundQueryText
-        if query.isEmpty || title.lowercased().contains(query) { return items }
-        let matches = items.filter { $0.label.lowercased().contains(query) }
-        return matches.isEmpty ? nil : matches
-    }
-
-    private func gradientPool() -> [(name: String, from: String, mid: String, to: String, angle: CGFloat)]? {
-        let query = backgroundQueryText
-        if query.isEmpty || "linear".contains(query) { return Presets.gradients }
-        let matches = Presets.gradients.filter { $0.name.lowercased().contains(query) }
-        return matches.isEmpty ? nil : matches
     }
 
     private func rowWallpapers(_ items: [WallpaperID]) -> [WallpaperID] {
