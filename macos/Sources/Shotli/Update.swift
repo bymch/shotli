@@ -6,6 +6,7 @@ final class AppUpdate {
     private init() {}
 
     func checkOnLaunch() {
+        guard ShotliSettings.shared.checkForUpdates else { return }
         let key = "shotli.lastUpdateCheck"
         let last = UserDefaults.standard.double(forKey: key)
         if last > 0, Date().timeIntervalSince1970 - last < 60 * 60 * 12 { return }

@@ -44,7 +44,8 @@ struct LibraryShot: Identifiable, Equatable {
 
 final class LibraryModel: ObservableObject {
     static let shared = LibraryModel()
-    @Published var source: LibrarySource = .recent
+    @Published var source: LibrarySource
+    @Published var showingSettings = false
     @Published var shots: [LibraryShot] = []
     @Published var counts: [LibrarySource: Int] = [:]
     @Published var thumbs: [String: NSImage] = [:]
@@ -56,17 +57,32 @@ final class LibraryModel: ObservableObject {
     private var notes: [LibrarySource: String] = [:]
     private var selectionAnchor: String?
     private var refreshToken = 0
-    private init() {}
+
+    private init() {
+        source = ShotliSettings.shared.startIn
+    }
 
     func select(_ source: LibrarySource) {
-        guard source != self.source else { return }
+        let leavingSettings = showingSettings
+        showingSettings = false
+        guard source != self.source else {
+            if leavingSettings { clearSelection() }
+            return
+        }
         self.source = source
         clearSelection()
         apply()
         warm(refreshToken)
     }
 
+    func showSettings() {
+        guard !showingSettings else { return }
+        showingSettings = true
+        clearSelection()
+    }
+
     func step(_ offset: Int) {
+        guard !showingSettings else { return }
         let order = LibrarySource.allCases
         guard let index = order.firstIndex(of: source) else { return }
         let next = order[(index + offset + order.count) % order.count]
@@ -164,16 +180,18 @@ final class LibraryModel: ObservableObject {
     func deleteSelected() {
         let chosen = shots.filter { selected.contains($0.id) }
         guard !chosen.isEmpty else { return }
-        let alert = NSAlert()
-        alert.messageText = "Are you sure?"
-        alert.informativeText = chosen.count == 1
-            ? "“\(chosen[0].name)” will be moved to the Trash."
-            : "\(chosen.count) screenshots will be moved to the Trash."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Move to Trash")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if ShotliSettings.shared.confirmDelete {
+            let alert = NSAlert()
+            alert.messageText = "Are you sure?"
+            alert.informativeText = chosen.count == 1
+                ? "“\(chosen[0].name)” will be moved to the Trash."
+                : "\(chosen.count) screenshots will be moved to the Trash."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Move to Trash")
+            alert.addButton(withTitle: "Cancel")
+            NSApp.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
         let paths = Set(chosen.map(\.id))
         for shot in chosen {
             try? FileManager.default.trashItem(at: shot.url, resultingItemURL: nil)
@@ -334,9 +352,9 @@ struct LibraryHome: View {
             LibraryKeys(
                 onUp: { library.step(-1) },
                 onDown: { library.step(1) },
-                onSelectAll: { library.selectAll() },
-                onDelete: { library.deleteSelected() },
-                onClear: { library.clearSelection() }
+                onSelectAll: { if !library.showingSettings { library.selectAll() } },
+                onDelete: { if !library.showingSettings { library.deleteSelected() } },
+                onClear: { if !library.showingSettings { library.clearSelection() } }
             )
             .frame(width: 0, height: 0)
         )
@@ -361,15 +379,47 @@ struct LibraryHome: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(14)
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+            settingsButton
+                .padding(.bottom, 12)
         }
         .frame(width: 220)
         .background(Color.white)
         .animation(.spring(response: 0.38, dampingFraction: 0.84), value: library.source)
+        .animation(.spring(response: 0.38, dampingFraction: 0.84), value: library.showingSettings)
+    }
+
+    private var settingsButton: some View {
+        let selected = library.showingSettings
+        return Button(action: { library.showSettings() }) {
+            HStack(spacing: 8) {
+                Image(systemName: "gearshape")
+                    .frame(width: 16)
+                Text("Settings")
+                    .font(.system(size: 13))
+                Spacer(minLength: 4)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 28)
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .foregroundColor(selected ? .white : ink)
+            .background {
+                if selected {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(accent)
+                        .matchedGeometryEffect(id: "library-source", in: selection)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
     }
 
     private func sourceButton(_ source: LibrarySource) -> some View {
-        let selected = library.source == source
+        let selected = library.source == source && !library.showingSettings
         let count = library.counts[source] ?? 0
         return Button(action: { library.select(source) }) {
             HStack(spacing: 8) {
@@ -402,6 +452,18 @@ struct LibraryHome: View {
     }
 
     private var content: some View {
+        Group {
+            if library.showingSettings {
+                SettingsPane()
+            } else {
+                libraryContent
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.18), value: library.showingSettings)
+    }
+
+    private var libraryContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 2) {

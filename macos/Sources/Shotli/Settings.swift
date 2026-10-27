@@ -1,0 +1,335 @@
+import AppKit
+import ServiceManagement
+import SwiftUI
+
+final class ShotliSettings: ObservableObject {
+    static let shared = ShotliSettings()
+
+    @Published var showMenuBar: Bool
+    @Published var checkForUpdates: Bool
+    @Published var confirmStartOver: Bool
+    @Published var confirmDelete: Bool
+    @Published var startIn: LibrarySource
+
+    @Published var opensAtLogin = false
+    @Published var loginAvailable = false
+    @Published var loginNote: String?
+    @Published var openRequest = 0
+
+    private let defaults = UserDefaults.standard
+
+    private enum Key {
+        static let menuBar = "shotli.showMenuBar"
+        static let updates = "shotli.checkForUpdates"
+        static let startOver = "shotli.confirmStartOver"
+        static let delete = "shotli.confirmDelete"
+        static let startIn = "shotli.startIn"
+    }
+
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.36"
+    }
+
+    private init() {
+        showMenuBar = Self.storedBool(Key.menuBar, default: true)
+        checkForUpdates = Self.storedBool(Key.updates, default: true)
+        confirmStartOver = Self.storedBool(Key.startOver, default: true)
+        confirmDelete = Self.storedBool(Key.delete, default: true)
+        let raw = UserDefaults.standard.string(forKey: Key.startIn) ?? LibrarySource.recent.rawValue
+        startIn = LibrarySource(rawValue: raw) ?? .recent
+        refreshLoginItem()
+    }
+
+    func requestOpen() {
+        openRequest += 1
+    }
+
+    func setShowMenuBar(_ value: Bool) {
+        guard showMenuBar != value else { return }
+        showMenuBar = value
+        defaults.set(value, forKey: Key.menuBar)
+        (NSApp.delegate as? AppDelegate)?.setMenuBarVisible(value)
+    }
+
+    func setCheckForUpdates(_ value: Bool) {
+        guard checkForUpdates != value else { return }
+        checkForUpdates = value
+        defaults.set(value, forKey: Key.updates)
+    }
+
+    func setConfirmStartOver(_ value: Bool) {
+        guard confirmStartOver != value else { return }
+        confirmStartOver = value
+        defaults.set(value, forKey: Key.startOver)
+    }
+
+    func setConfirmDelete(_ value: Bool) {
+        guard confirmDelete != value else { return }
+        confirmDelete = value
+        defaults.set(value, forKey: Key.delete)
+    }
+
+    func setStartIn(_ value: LibrarySource) {
+        guard startIn != value else { return }
+        startIn = value
+        defaults.set(value.rawValue, forKey: Key.startIn)
+    }
+
+    func setOpensAtLogin(_ enabled: Bool) {
+        guard loginAvailable else { return }
+        guard #available(macOS 13.0, *) else { return }
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            opensAtLogin = false
+            loginNote = "Put Shotli in Applications before it can open at login."
+            return
+        }
+        refreshLoginItem()
+    }
+
+    func refreshLoginItem() {
+        guard #available(macOS 13.0, *) else {
+            loginAvailable = false
+            opensAtLogin = false
+            loginNote = "Open at login needs macOS 13 or later."
+            return
+        }
+        loginAvailable = true
+        switch SMAppService.mainApp.status {
+        case .enabled:
+            opensAtLogin = true
+            loginNote = nil
+        case .requiresApproval:
+            opensAtLogin = false
+            loginNote = "Allow Shotli in System Settings, under General, Login Items."
+        case .notFound:
+            opensAtLogin = false
+            loginNote = "Put Shotli in Applications before it can open at login."
+        case .notRegistered:
+            opensAtLogin = false
+            loginNote = nil
+        @unknown default:
+            opensAtLogin = false
+            loginNote = nil
+        }
+    }
+
+    func revealShotliFolder() {
+        let folder = LibraryFolders.shotli
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(folder)
+    }
+
+    private static func storedBool(_ key: String, default defaultValue: Bool) -> Bool {
+        if UserDefaults.standard.object(forKey: key) == nil { return defaultValue }
+        return UserDefaults.standard.bool(forKey: key)
+    }
+}
+
+struct SettingsPane: View {
+    var onDone: (() -> Void)?
+    @ObservedObject private var settings = ShotliSettings.shared
+
+    private let ink = Color(nsColor: NSColor(hex: "#222222")!)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Settings")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("How Shotli behaves on this Mac.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                Spacer(minLength: 12)
+                if let onDone {
+                    plainButton("Done", action: onDone)
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    card("General") {
+                        toggleRow(
+                            "Show Shotli in the menu bar",
+                            "Capture a full screen, a window, or an area without opening the window.",
+                            isOn: Binding(get: { settings.showMenuBar }, set: { settings.setShowMenuBar($0) })
+                        )
+                        divider
+                        toggleRow(
+                            "Open Shotli at login",
+                            settings.loginNote ?? "Shotli is ready in the menu bar after you sign in.",
+                            isOn: Binding(get: { settings.opensAtLogin }, set: { settings.setOpensAtLogin($0) }),
+                            enabled: settings.loginAvailable
+                        )
+                        divider
+                        toggleRow(
+                            "Check for updates automatically",
+                            "Look for a new version when Shotli opens.",
+                            isOn: Binding(get: { settings.checkForUpdates }, set: { settings.setCheckForUpdates($0) })
+                        )
+                    }
+                    card("Library") {
+                        HStack(alignment: .center, spacing: 16) {
+                            copy(
+                                "Start in",
+                                "The folder selected the next time Shotli opens."
+                            )
+                            Picker("Start in", selection: Binding(get: { settings.startIn }, set: { settings.setStartIn($0) })) {
+                                ForEach(LibrarySource.allCases) { source in
+                                    Text(source.title).tag(source)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .frame(width: 148)
+                        }
+                        .padding(.vertical, 8)
+                        divider
+                        HStack(alignment: .center, spacing: 16) {
+                            copy("Shotli folder", shotliPath)
+                            plainButton("Show in Finder", fill: cardButton) { settings.revealShotliFolder() }
+                        }
+                        .padding(.vertical, 8)
+                    }
+                    card("Editing") {
+                        toggleRow(
+                            "Ask before Start Over",
+                            "Confirm before the screenshot you are editing is cleared.",
+                            isOn: Binding(get: { settings.confirmStartOver }, set: { settings.setConfirmStartOver($0) })
+                        )
+                        divider
+                        toggleRow(
+                            "Ask before deleting",
+                            "Confirm before selected screenshots move to the Trash.",
+                            isOn: Binding(get: { settings.confirmDelete }, set: { settings.setConfirmDelete($0) })
+                        )
+                    }
+                    card("Shotli") {
+                        HStack(alignment: .center, spacing: 16) {
+                            copy("Version", "The copy of Shotli running on this Mac.")
+                            Text(ShotliSettings.version)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 8)
+                        divider
+                        HStack(spacing: 8) {
+                            plainButton("Check for Updates", fill: cardButton) { AppUpdate.shared.check(interactive: true) }
+                            plainButton("Changelog", fill: cardButton) { Changelog.show() }
+                            plainButton("Keyboard Shortcuts", fill: cardButton) { showShotliShortcuts() }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 8)
+                    }
+                }
+                .padding(.horizontal, 22)
+                .padding(.bottom, 24)
+                .frame(maxWidth: 680, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1)))
+        .onAppear { settings.refreshLoginItem() }
+    }
+
+    private var shotliPath: String {
+        LibraryFolders.shotli.path.replacingOccurrences(of: LibraryFolders.home.path, with: "~")
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.06))
+            .frame(height: 1)
+    }
+
+    private func card<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 0) {
+                content()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.black.opacity(0.06), lineWidth: 1))
+        }
+    }
+
+    private func toggleRow(_ title: String, _ detail: String, isOn: Binding<Bool>, enabled: Bool = true) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            copy(title, detail)
+            Toggle(title, isOn: isOn)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .disabled(!enabled)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func copy(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(ink)
+            Text(detail)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var cardButton: Color {
+        Color(nsColor: NSColor(srgbRed: 0.945, green: 0.945, blue: 0.945, alpha: 1))
+    }
+
+    private func plainButton(_ title: String, fill: Color = .white, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(fill))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.black.opacity(0.08), lineWidth: 1))
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+func showShotliShortcuts() {
+    let alert = NSAlert()
+    alert.messageText = "Shortcuts"
+    alert.informativeText = """
+    Undo ⌘Z
+    Redo ⌘⇧Z, or ⌘Y
+    Open ⌘O
+    Library ⌘L
+    Settings ⌘,
+    Export ⌘S, or ⌘E
+    Copy ⌘C, or ⌘⇧C
+    Paste an image ⌘V
+    Fit ⌘0
+    Delete Backspace
+
+    V select, R rectangle, F fill, C circle, L line, A arrow, D draw, T text, N number, P pixelate, B blur, K crop
+
+    Hold Shift to keep a line or box square. Scroll to move around the canvas. Pinch, or hold ⌘ and scroll, to zoom. Fit puts the canvas back in the window, and 100% shows it at actual size.
+    """
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
+}

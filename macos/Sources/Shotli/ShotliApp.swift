@@ -50,6 +50,10 @@ struct ShotliCommands: Commands {
             Button("Check for Updates…") { AppUpdate.shared.check(interactive: true) }
             Button("Changelog") { Changelog.show() }
         }
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { ShotliSettings.shared.requestOpen() }
+                .keyboardShortcut(",", modifiers: .command)
+        }
         CommandGroup(replacing: .newItem) {
             Button("Capture Full Screen") { ScreenCapture.shared.capture(.full) }
             Button("Capture Window") { ScreenCapture.shared.capture(.window) }
@@ -83,7 +87,7 @@ struct ShotliCommands: Commands {
                 .disabled(model.picture == nil)
         }
         CommandGroup(replacing: .help) {
-            Button("Keyboard Shortcuts") { showShortcuts() }
+            Button("Keyboard Shortcuts") { showShotliShortcuts() }
         }
     }
 }
@@ -94,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
-        installStatusItem()
+        setMenuBarVisible(ShotliSettings.shared.showMenuBar)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             AppUpdate.shared.checkOnLaunch()
         }
@@ -147,6 +151,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    func setMenuBarVisible(_ visible: Bool) {
+        if visible {
+            if statusItem == nil { installStatusItem() }
+        } else if let statusItem {
+            NSStatusBar.system.removeStatusItem(statusItem)
+            self.statusItem = nil
+        }
+    }
+
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
@@ -166,6 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem("Open Screenshots Folder", #selector(openScreenshotsFolder)))
         menu.addItem(.separator())
         menu.addItem(menuItem("Check for Updates…", #selector(checkForUpdates)))
+        menu.addItem(menuItem("Settings…", #selector(openSettings)))
         menu.addItem(menuItem("Quit Shotli", #selector(quit)))
         item.menu = menu
         statusItem = item
@@ -200,29 +214,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppUpdate.shared.check(interactive: true)
     }
 
+    @objc private func openSettings() {
+        ScreenCapture.shared.revealEditor()
+        ShotliSettings.shared.requestOpen()
+    }
+
     @objc private func quit() {
         NSApp.terminate(nil)
     }
 }
 
-private func showShortcuts() {
-    let alert = NSAlert()
-    alert.messageText = "Shortcuts"
-    alert.informativeText = """
-    Undo ⌘Z
-    Redo ⌘⇧Z, or ⌘Y
-    Open ⌘O
-    Library ⌘L
-    Export ⌘S, or ⌘E
-    Copy ⌘C, or ⌘⇧C
-    Paste an image ⌘V
-    Fit ⌘0
-    Delete Backspace
-
-    V select, R rectangle, F fill, C circle, L line, A arrow, D draw, T text, N number, P pixelate, B blur, K crop
-
-    Hold Shift to keep a line or box square. Scroll to move around the canvas. Pinch, or hold ⌘ and scroll, to zoom. Fit puts the canvas back in the window, and 100% shows it at actual size.
-    """
-    alert.addButton(withTitle: "OK")
-    alert.runModal()
-}
