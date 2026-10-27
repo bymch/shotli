@@ -69,6 +69,8 @@ final class EditorCanvas: NSView {
         case crop(CGPoint)
         case pan(CGPoint, CGPoint)
         case share(CGPoint)
+        case moveLayer(String, CGFloat, CGFloat, CGPoint)
+        case resizeLayer(String, CGFloat, CGFloat, CGPoint)
     }
 
     private var drag: Drag = .none
@@ -153,15 +155,17 @@ final class EditorCanvas: NSView {
     override func draw(_ dirtyRect: NSRect) {
         drawStage()
         guard model.picture != nil else { return }
-        guard let image = renderComposition(
+        guard let image = renderShot(
             picture: model.picture,
             crop: model.crop,
             style: model.style,
             annotations: model.annotations,
+            layers: model.layers,
             draft: draft,
             interactive: true,
             cropDraft: cropDraft,
-            selectedID: model.selectedID
+            selectedID: model.selectedID,
+            selectedLayerID: model.selectedLayerID
         ) else { return }
         let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
         let place = placement(for: layout.size)
@@ -222,10 +226,21 @@ final class EditorCanvas: NSView {
                 drag = .resize(selected, handle, imagePoint)
             } else if let hit = hitAnnotation(model.annotations, imagePoint, slop: slop) {
                 model.selectedID = hit.id
+                model.selectedLayerID = nil
                 model.beginGesture()
                 drag = .move(hit, imagePoint)
+            } else if model.layers.count >= 2, let point = compositionPoint(from: viewPoint), let hit = hitLayer(point) {
+                model.selectedID = nil
+                model.selectLayer(hit.id)
+                model.beginGesture()
+                if hit.handle {
+                    drag = .resizeLayer(hit.id, hit.width, hit.height, point)
+                } else {
+                    drag = .moveLayer(hit.id, hit.x, hit.y, point)
+                }
             } else {
                 model.selectedID = nil
+                if model.layers.count >= 2 { model.selectedLayerID = nil }
                 if pictureFrame()?.contains(viewPoint) == true {
                     drag = .share(viewPoint)
                 }
@@ -278,7 +293,20 @@ final class EditorCanvas: NSView {
                 drag = .none
                 beginShare(event)
             }
-        default:
+        case .moveLayer(let id, let originX, let originY, let start):
+            guard let point = compositionPoint(from: viewPoint) else { return }
+            let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+            let box = layerContentBox(canvas: layout.size, style: model.style, picture: model.picture)
+            model.moveLayer(id: id, x: originX + (point.x - start.x) / box.width, y: originY + (point.y - start.y) / box.height)
+        case .resizeLayer(let id, let originW, let originH, let start):
+            guard let point = compositionPoint(from: viewPoint) else { return }
+            let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+            let box = layerContentBox(canvas: layout.size, style: model.style, picture: model.picture)
+            let pixels = model.pixelSize(for: id)
+            let aspect = pixels.width / max(pixels.height, 1)
+            let pixelW = max(48, originW * box.width + (point.x - start.x))
+            model.resizeLayer(id: id, width: pixelW / box.width, height: (pixelW / aspect) / box.height)
+        case .none:
             break
         }
         needsDisplay = true
@@ -303,7 +331,7 @@ final class EditorCanvas: NSView {
             self.cropDraft = nil
             model.endGesture()
             model.tool = .select
-        case .move, .resize:
+        case .move, .resize, .moveLayer, .resizeLayer:
             model.endGesture()
         case .share, .pan, .none:
             break
@@ -574,6 +602,40 @@ final class EditorCanvas: NSView {
             y: (box.height - size.height * scale) / 2 + held.y
         )
         return (scale, origin)
+    }
+
+    private struct LayerHit {
+        var id: String
+        var handle: Bool
+        var x: CGFloat
+        var y: CGFloat
+        var width: CGFloat
+        var height: CGFloat
+    }
+
+    private func compositionPoint(from viewPoint: CGPoint) -> CGPoint? {
+        guard model.picture != nil else { return nil }
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let place = placement(for: layout.size)
+        guard place.scale > 0 else { return nil }
+        return CGPoint(x: (viewPoint.x - place.origin.x) / place.scale, y: (viewPoint.y - place.origin.y) / place.scale)
+    }
+
+    private func hitLayer(_ point: CGPoint) -> LayerHit? {
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let slots = layerSlots(layers: model.layers, canvas: layout.size, style: model.style, picture: model.picture, crop: model.crop)
+        let place = placement(for: layout.size)
+        let handle = 14 / max(place.scale, 0.05)
+        for layer in model.layers.sorted(by: { $0.order > $1.order }) {
+            guard let slot = slots.first(where: { $0.id == layer.id }) else { continue }
+            let knob = CGRect(x: slot.fitted.maxX - handle, y: slot.fitted.maxY - handle, width: handle * 1.6, height: handle * 1.6)
+            let hit = LayerHit(id: layer.id, handle: false, x: layer.x, y: layer.y, width: layer.width, height: layer.height)
+            if layer.id == model.selectedLayerID, knob.contains(point) {
+                return LayerHit(id: layer.id, handle: true, x: layer.x, y: layer.y, width: layer.width, height: layer.height)
+            }
+            if slot.fitted.contains(point) { return hit }
+        }
+        return nil
     }
 
     private func imagePoint(from viewPoint: CGPoint) -> CGPoint? {

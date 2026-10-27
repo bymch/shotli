@@ -335,10 +335,12 @@ enum Presets {
 
     static let all: [Preset] = [
         Preset(id: "clean", name: "Clean", style: style(56, 14, 28, .none, .color("#FFFFFF"))),
+        Preset(id: "floating", name: "Floating Card", style: style(88, 22, 56, .none, .color("#FFFFFF"))),
         Preset(id: "studio", name: "Studio", style: style(80, 16, 42, .none, .wallpaper(.studio))),
         Preset(id: "soft", name: "Soft", style: style(68, 22, 30, .none, .wallpaper(.porcelain))),
         Preset(id: "browser", name: "Browser", style: style(60, 12, 36, .browser, .wallpaper(.tide))),
         Preset(id: "window", name: "Window", style: style(52, 10, 24, .desktop, .wallpaper(.dots))),
+        Preset(id: "tilted", name: "Tilted", style: tilted()),
         Preset(id: "pastel", name: "Pastel", style: style(84, 24, 34, .none, .wallpaper(.glacier))),
         Preset(id: "signal", name: "Signal", style: style(76, 18, 48, .none, .wallpaper(.bloom))),
         Preset(id: "midnight", name: "Midnight", style: style(68, 14, 50, .browser, .wallpaper(.ink))),
@@ -346,6 +348,13 @@ enum Presets {
 
     static func style(_ padding: CGFloat, _ radius: CGFloat, _ shadow: CGFloat, _ frame: FrameStyle, _ background: Background) -> ShotliStyle {
         ShotliStyle(padding: padding, radius: radius, shadow: shadow, frame: frame, canvas: .auto, canvasWidth: 0, canvasHeight: 0, background: background)
+    }
+
+    static func tilted() -> ShotliStyle {
+        var style = style(72, 16, 40, .none, .wallpaper(.porcelain))
+        style.tiltX = 8
+        style.tiltY = -16
+        return style
     }
 }
 
@@ -430,6 +439,10 @@ struct Snapshot: Equatable {
     var style: ShotliStyle
     var annotations: [Annotation]
     var selectedID: String?
+    var layers: [ShotLayer]
+    var selectedLayerID: String?
+    var activeLayoutID: String?
+    var layerGap: CGFloat
 }
 
 let chromeHeight: CGFloat = 46
@@ -440,6 +453,10 @@ final class EditorModel: ObservableObject {
     static let shared = EditorModel()
 
     @Published var picture: LoadedPicture?
+    @Published var layers: [ShotLayer] = []
+    @Published var selectedLayerID: String?
+    @Published var activeLayoutID: String?
+    @Published var layerGap: CGFloat = 0.04
     @Published var crop: CGRect?
     @Published var style = Presets.all[0].style
     @Published var annotations: [Annotation] = []
@@ -483,6 +500,28 @@ final class EditorModel: ObservableObject {
 
     var selected: Annotation? {
         annotations.first { $0.id == selectedID }
+    }
+
+    var screenshotCount: Int {
+        if layers.count >= 2 { return layers.count }
+        return picture == nil ? 0 : 1
+    }
+
+    var layoutHeadline: String {
+        switch screenshotCount {
+        case 2: return "Two screenshots"
+        case 3...: return "\(screenshotCount) screenshots"
+        default: return "Layout presets"
+        }
+    }
+
+    var layoutNote: String? {
+        switch screenshotCount {
+        case 2: return "These layouts place both screenshots."
+        case 3: return "Three-Panel is for three pictures. A composition holds up to 6."
+        case 4...: return "These layouts place every screenshot. A composition holds up to 6."
+        default: return nil
+        }
     }
 
     func openPanel() {
@@ -544,6 +583,28 @@ final class EditorModel: ObservableObject {
         }
         rememberSource(data, name: url.lastPathComponent, origin: url)
         replacePicture(loaded, adopting: projectFolder != nil)
+    }
+
+    func addScreenshots() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .heic, .tiff, .webP]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.message = "Add screenshots to this composition"
+        guard panel.runModal() == .OK else { return }
+        addImages(from: panel.urls)
+    }
+
+    func addImages(from urls: [URL]) {
+        let files = urls.filter { !$0.hasDirectoryPath }
+        guard !files.isEmpty else { return }
+        if picture == nil {
+            load(url: files[0])
+            let rest = Array(files.dropFirst())
+            if picture != nil, !rest.isEmpty { appendImages(rest) }
+            return
+        }
+        appendImages(files)
     }
 
     func loadImageData(_ data: Data, name: String) {
@@ -611,6 +672,7 @@ final class EditorModel: ObservableObject {
         let returnName = projectName
         quietChanges()
         picture = nil
+        resetLayers()
         crop = nil
         annotations = []
         selectedID = nil
@@ -662,7 +724,7 @@ final class EditorModel: ObservableObject {
             panel.directoryURL = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
         }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard let image = renderComposition(picture: picture, crop: crop, style: style, annotations: annotations, draft: nil, interactive: false) else {
+        guard let image = renderOutput() else {
             notice = "Couldn't create the PNG."
             return
         }
@@ -676,7 +738,7 @@ final class EditorModel: ObservableObject {
 
     func copyPNG() {
         guard picture != nil else { return }
-        guard let image = renderComposition(picture: picture, crop: crop, style: style, annotations: annotations, draft: nil, interactive: false),
+        guard let image = renderOutput(),
               let png = pngData(image) else {
             notice = "Couldn't copy the picture."
             return
@@ -691,7 +753,7 @@ final class EditorModel: ObservableObject {
 
     func shareFile() -> (url: URL, png: Data, preview: NSImage)? {
         guard picture != nil,
-              let image = renderComposition(picture: picture, crop: crop, style: style, annotations: annotations, draft: nil, interactive: false),
+              let image = renderOutput(),
               let png = pngData(image) else { return nil }
         let base = (picture?.name ?? "screenshot")
             .replacingOccurrences(of: "\\.[^.]+$", with: "", options: .regularExpression)
@@ -709,6 +771,119 @@ final class EditorModel: ObservableObject {
         guard preset.style != style else { return }
         pushUndo()
         style = preset.style
+    }
+
+    func applyLayout(_ preset: ShotLayoutPreset) {
+        guard layers.count >= preset.minimum, layers.count <= preset.maximum else {
+            notice = preset.minimum == preset.maximum
+                ? "\(preset.name) needs \(preset.minimum) screenshots."
+                : "\(preset.name) needs at least \(preset.minimum) screenshots."
+            return
+        }
+        pushUndo()
+        activeLayoutID = preset.id.rawValue
+        assign(preset)
+    }
+
+    func setLayerGap(_ value: CGFloat) {
+        beginGesture()
+        layerGap = min(0.10, max(0.02, value))
+        guard let preset = ShotLayouts.preset(id: activeLayoutID, count: layers.count) else { return }
+        assign(preset)
+    }
+
+    func selectLayer(_ id: String) {
+        selectedLayerID = id
+        selectedID = nil
+    }
+
+    func duplicateLayer(_ id: String) {
+        guard let layer = layers.first(where: { $0.id == id }) else { return }
+        guard layers.count < ShotLayouts.maximum else {
+            notice = "This composition holds 6 screenshots."
+            return
+        }
+        pushUndo()
+        var copy = layer
+        copy.id = UUID().uuidString
+        copy.order = (layers.map(\.order).max() ?? 0) + 1
+        copy.x = min(0.7, layer.x + 0.04)
+        copy.y = min(0.7, layer.y + 0.04)
+        layers.append(copy)
+        if ShotLayouts.preset(id: activeLayoutID, count: layers.count) == nil {
+            reflowToFitCount()
+        }
+        selectedLayerID = copy.id
+        selectedID = nil
+    }
+
+    func removeLayer(_ id: String) {
+        guard layers.count >= 2, let index = layers.firstIndex(where: { $0.id == id }) else { return }
+        pushUndo()
+        let removingPrimary = index == 0
+        layers.remove(at: index)
+        if removingPrimary {
+            annotations = []
+            crop = nil
+            selectedID = nil
+            if let next = layers.first { adoptLayerSource(next) }
+        }
+        if layers.count < 2 {
+            if let only = layers.first { adoptLayerSource(only) }
+            layers = []
+            selectedLayerID = nil
+            activeLayoutID = nil
+            return
+        }
+        if ShotLayouts.preset(id: activeLayoutID, count: layers.count) == nil {
+            reflowToFitCount()
+        }
+        if selectedLayerID == id { selectedLayerID = nil }
+    }
+
+    func sendLayer(_ id: String, forward: Bool) {
+        let sorted = layers.sorted { $0.order < $1.order }
+        guard let place = sorted.firstIndex(where: { $0.id == id }) else { return }
+        let neighbor = forward ? place + 1 : place - 1
+        guard sorted.indices.contains(neighbor) else { return }
+        guard let index = layers.firstIndex(where: { $0.id == id }),
+              let other = layers.firstIndex(where: { $0.id == sorted[neighbor].id }) else { return }
+        pushUndo()
+        let order = layers[index].order
+        layers[index].order = layers[other].order
+        layers[other].order = order
+    }
+
+    func moveLayer(id: String, x: CGFloat, y: CGFloat) {
+        guard let index = layers.firstIndex(where: { $0.id == id }) else { return }
+        layers[index].x = min(0.92, max(-0.15, x))
+        layers[index].y = min(0.92, max(-0.15, y))
+    }
+
+    func resizeLayer(id: String, width: CGFloat, height: CGFloat) {
+        guard let index = layers.firstIndex(where: { $0.id == id }) else { return }
+        layers[index].width = min(1.05, max(0.12, width))
+        layers[index].height = min(1.05, max(0.12, height))
+    }
+
+    func pixelSize(for id: String) -> CGSize {
+        guard let layer = layers.first(where: { $0.id == id }) else { return CGSize(width: 1, height: 1) }
+        return layerPixelSize(layer, primaryID: layers.first?.id, picture: picture, crop: crop)
+    }
+
+    func renderOutput(interactive: Bool = false, draft: Annotation? = nil, cropDraft: CGRect? = nil) -> CGImage? {
+        renderShot(
+            picture: picture,
+            crop: crop,
+            style: style,
+            annotations: annotations,
+            layers: layers,
+            draft: draft,
+            interactive: interactive,
+            cropDraft: cropDraft,
+            selectedID: selectedID,
+            selectedLayerID: selectedLayerID
+        )
     }
 
     func applyTemplate(_ template: ShotTemplate) {
@@ -747,12 +922,14 @@ final class EditorModel: ObservableObject {
         var next = style
         next.radius = value
         style = next
+        updateSelectedLayer { $0.radius = value }
     }
 
     func setShadow(_ value: CGFloat) {
         var next = style
         next.shadow = value
         style = next
+        updateSelectedLayer { $0.shadow = value }
     }
 
     func setCard(_ card: CardStyle) {
@@ -952,10 +1129,15 @@ final class EditorModel: ObservableObject {
     }
 
     func deleteSelected() {
-        guard let id = selectedID else { return }
-        pushUndo()
-        annotations.removeAll { $0.id == id }
-        selectedID = nil
+        if let id = selectedID {
+            pushUndo()
+            annotations.removeAll { $0.id == id }
+            selectedID = nil
+            return
+        }
+        if let id = selectedLayerID {
+            removeLayer(id)
+        }
     }
 
     func resetCrop() {
@@ -1040,6 +1222,7 @@ final class EditorModel: ObservableObject {
     private func replacePicture(_ loaded: LoadedPicture, adopting: Bool) {
         quietChanges()
         picture = loaded
+        resetLayers()
         crop = nil
         annotations = []
         selectedID = nil
@@ -1078,6 +1261,7 @@ final class EditorModel: ObservableObject {
             showSaveProjects = false
             guard let latest = file.compositions.max(by: { ProjectStore.date($0.modified) < ProjectStore.date($1.modified) }) else {
                 picture = nil
+                resetLayers()
                 crop = nil
                 annotations = []
                 selectedID = nil
@@ -1205,11 +1389,7 @@ final class EditorModel: ObservableObject {
         do {
             let outcome = try ProjectStore.saveComposition(draft, in: folder)
             self.compositionID = outcome.compositionID
-            sourceRelative = outcome.relative
-            if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
-                sourceOrigin = url
-            }
-            sourceData = nil
+            adoptSavedSources(outcome, folder: folder)
             saveState = .saved
             return nil
         } catch {
@@ -1230,11 +1410,7 @@ final class EditorModel: ObservableObject {
             let outcome = try ProjectStore.saveComposition(draft, in: folder)
             guard ticket == saveTicket else { return }
             self.compositionID = outcome.compositionID
-            sourceRelative = outcome.relative
-            if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
-                sourceOrigin = url
-            }
-            sourceData = nil
+            adoptSavedSources(outcome, folder: folder)
             projectName = outcome.file.name
             projectID = outcome.file.id
             saveState = .saved
@@ -1260,11 +1436,7 @@ final class EditorModel: ObservableObject {
             let outcome = try ProjectStore.saveComposition(draft, in: folder)
             quietChanges()
             compositionID = outcome.compositionID
-            sourceRelative = outcome.relative
-            if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
-                sourceOrigin = url
-            }
-            sourceData = nil
+            adoptSavedSources(outcome, folder: folder)
             projectName = outcome.file.name
             projectID = outcome.file.id
             saveState = .saved
@@ -1298,6 +1470,7 @@ final class EditorModel: ObservableObject {
             picture = nil
             clearSource()
         }
+        restoreLayers(composition.layers, in: folder)
         crop = composition.crop?.rect
         style = composition.style.style
         annotations = composition.annotations.compactMap(\.annotation)
@@ -1382,11 +1555,7 @@ final class EditorModel: ObservableObject {
         projectID = outcome.file.id
         projectName = outcome.file.name
         compositionID = outcome.compositionID
-        sourceRelative = outcome.relative
-        if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
-            sourceOrigin = url
-        }
-        sourceData = nil
+        adoptSavedSources(outcome, folder: folder)
         saveState = .saved
         notice = "Saved to \(outcome.file.name)"
         LibraryModel.shared.refresh()
@@ -1448,14 +1617,7 @@ final class EditorModel: ObservableObject {
 
     private func makeDraft(id: String?, reuse: String?) -> CompositionDraft? {
         guard let picture else { return nil }
-        let thumbnail = renderComposition(
-            picture: picture,
-            crop: crop,
-            style: style,
-            annotations: annotations,
-            draft: nil,
-            interactive: false
-        )
+        let thumbnail = renderOutput()
         return CompositionDraft(
             id: id,
             name: picture.name,
@@ -1466,17 +1628,26 @@ final class EditorModel: ObservableObject {
             crop: crop,
             style: style,
             annotations: annotations,
-            thumbnail: thumbnail
+            thumbnail: thumbnail,
+            layers: layerDrafts(primaryReuse: reuse)
         )
     }
 
     private func ensureSource(_ draft: inout CompositionDraft) {
-        if let reuse = draft.reuseRelative, let folder = projectFolder,
-           let url = try? ProjectStore.resolve(reuse, in: folder),
-           FileManager.default.fileExists(atPath: url.path) {
+        let primaryReady = draft.reuseRelative.flatMap { reuse -> Bool? in
+            guard let folder = projectFolder, let url = try? ProjectStore.resolve(reuse, in: folder) else { return nil }
+            return FileManager.default.fileExists(atPath: url.path)
+        } == true
+        if !primaryReady {
+            draft.reuseRelative = nil
+        }
+        if primaryReady, draft.layers.allSatisfy({ $0.reuseRelative != nil || $0.sourceData != nil }) {
             return
         }
-        draft.reuseRelative = nil
+        if primaryReady {
+            fillLayerSources(&draft)
+            return
+        }
         if draft.sourceData == nil, let origin = sourceOrigin, let data = try? Data(contentsOf: origin) {
             draft.sourceData = data
             draft.sourceFileName = origin.lastPathComponent
@@ -1489,6 +1660,21 @@ final class EditorModel: ObservableObject {
         }
         if draft.sourceSHA256 == nil, let data = draft.sourceData {
             draft.sourceSHA256 = ProjectStore.sha256(data)
+        }
+        fillLayerSources(&draft)
+    }
+
+    private func fillLayerSources(_ draft: inout CompositionDraft) {
+        for index in draft.layers.indices where draft.layers[index].sourceData == nil && draft.layers[index].reuseRelative == nil {
+            if index == 0, let data = draft.sourceData {
+                draft.layers[index].sourceData = data
+                draft.layers[index].sourceSHA256 = draft.sourceSHA256
+                draft.layers[index].sourceFileName = draft.sourceFileName
+                continue
+            }
+            guard let layer = layers.first(where: { $0.id == draft.layers[index].id }), let png = pngData(layer.image) else { continue }
+            draft.layers[index].sourceData = png
+            draft.layers[index].sourceSHA256 = ProjectStore.sha256(png)
         }
     }
 
@@ -1507,8 +1693,233 @@ final class EditorModel: ObservableObject {
         sourceRelative = nil
     }
 
+    private func resetLayers() {
+        layers = []
+        selectedLayerID = nil
+        activeLayoutID = nil
+        layerGap = 0.04
+    }
+
+    private func appendImages(_ urls: [URL]) {
+        var incoming: [(LoadedPicture, Data, String, String)] = []
+        var skipped = 0
+        var failed = 0
+        var seen = Set(layers.compactMap(\.sourceSHA))
+        if let sourceSHA { seen.insert(sourceSHA) }
+        for url in urls {
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else {
+                failed += 1
+                continue
+            }
+            if data.count > maxBytes {
+                failed += 1
+                continue
+            }
+            let sha = ProjectStore.sha256(data)
+            if seen.contains(sha) {
+                skipped += 1
+                continue
+            }
+            guard let loaded = decodeImage(data, name: url.lastPathComponent) else {
+                failed += 1
+                continue
+            }
+            seen.insert(sha)
+            incoming.append((loaded, data, sha, url.lastPathComponent))
+        }
+        let room = ShotLayouts.maximum - screenshotCount
+        if room <= 0 {
+            notice = "This composition holds 6 screenshots."
+            return
+        }
+        let accepted = Array(incoming.prefix(room))
+        let overflow = incoming.count - accepted.count
+        guard !accepted.isEmpty else {
+            notice = skipped > 0
+                ? "Those screenshots are already in this composition."
+                : "Shotli couldn't read that image. Use a PNG, JPEG, HEIC, TIFF, or WebP file."
+            return
+        }
+        pushUndo()
+        seedPrimaryLayer()
+        let start = layers.count
+        for (offset, item) in accepted.enumerated() {
+            layers.append(ShotLayer(
+                id: UUID().uuidString,
+                image: item.0.image,
+                name: item.0.name,
+                x: 0,
+                y: 0,
+                width: 0.4,
+                height: 0.4,
+                radius: style.radius,
+                shadow: style.shadow,
+                order: start + offset,
+                sourceRelative: nil,
+                sourceSHA: item.2,
+                sourceData: item.1,
+                sourceFileName: item.3
+            ))
+        }
+        reflowToFitCount()
+        selectedLayerID = layers.last?.id
+        selectedID = nil
+        var message = accepted.count == 1 ? "Added a screenshot." : "Added \(accepted.count) screenshots."
+        if skipped > 0 { message += " Duplicates were left out." }
+        if failed > 0 { message += " One file couldn't be read." }
+        if overflow > 0 { message += " This composition holds 6 screenshots." }
+        notice = message
+    }
+
+    private func seedPrimaryLayer() {
+        guard layers.isEmpty, let picture else { return }
+        layers = [ShotLayer(
+            id: UUID().uuidString,
+            image: picture.image,
+            name: picture.name,
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            radius: style.radius,
+            shadow: style.shadow,
+            order: 0,
+            sourceRelative: sourceRelative,
+            sourceSHA: sourceSHA,
+            sourceData: sourceData,
+            sourceFileName: sourceFileName
+        )]
+    }
+
+    private func reflowToFitCount() {
+        guard layers.count >= 2 else { return }
+        let preset = ShotLayouts.preset(id: activeLayoutID, count: layers.count) ?? ShotLayouts.choices(for: layers.count).first
+        guard let preset else { return }
+        activeLayoutID = preset.id.rawValue
+        assign(preset)
+    }
+
+    private func assign(_ preset: ShotLayoutPreset) {
+        let frames = ShotLayouts.boxes(preset.id, count: layers.count, gap: layerGap)
+        for index in layers.indices {
+            guard index < frames.count else { break }
+            layers[index].x = frames[index].x
+            layers[index].y = frames[index].y
+            layers[index].width = frames[index].width
+            layers[index].height = frames[index].height
+            layers[index].radius = frames[index].radius
+            layers[index].shadow = frames[index].shadow
+            layers[index].order = index
+        }
+    }
+
+    private func adoptLayerSource(_ layer: ShotLayer) {
+        picture = LoadedPicture(image: layer.image, name: layer.name, scaled: picture?.scaled ?? false)
+        sourceRelative = layer.sourceRelative
+        sourceData = layer.sourceData
+        sourceSHA = layer.sourceSHA
+        sourceFileName = layer.sourceFileName ?? layer.name
+    }
+
+    private func updateSelectedLayer(_ change: (inout ShotLayer) -> Void) {
+        guard layers.count >= 2 else { return }
+        if let id = selectedLayerID, let index = layers.firstIndex(where: { $0.id == id }) {
+            change(&layers[index])
+            return
+        }
+        for index in layers.indices { change(&layers[index]) }
+    }
+
+    private func layerDrafts(primaryReuse: String?) -> [LayerDraft] {
+        guard layers.count >= 2 else { return [] }
+        return layers.enumerated().map { index, layer in
+            LayerDraft(
+                id: layer.id,
+                name: layer.name,
+                sourceData: layer.sourceData ?? (index == 0 ? sourceData : nil),
+                sourceFileName: layer.sourceFileName ?? layer.name,
+                sourceSHA256: layer.sourceSHA ?? (index == 0 ? sourceSHA : nil),
+                reuseRelative: layer.sourceRelative ?? (index == 0 ? primaryReuse : nil),
+                x: Double(layer.x),
+                y: Double(layer.y),
+                width: Double(layer.width),
+                height: Double(layer.height),
+                radius: Double(layer.radius),
+                shadow: Double(layer.shadow),
+                order: layer.order
+            )
+        }
+    }
+
+    private func restoreLayers(_ stored: [LayerFile]?, in folder: URL) {
+        selectedLayerID = nil
+        activeLayoutID = nil
+        guard let stored, stored.count >= 2 else {
+            layers = []
+            return
+        }
+        var loaded: [ShotLayer] = []
+        for file in stored {
+            guard let url = try? ProjectStore.resolve(file.source, in: folder),
+                  let data = try? Data(contentsOf: url),
+                  data.count <= maxBytes,
+                  let image = decodeImage(data, name: url.lastPathComponent) else { continue }
+            loaded.append(ShotLayer(
+                id: file.id,
+                image: image.image,
+                name: file.name,
+                x: CGFloat(file.x),
+                y: CGFloat(file.y),
+                width: CGFloat(file.width),
+                height: CGFloat(file.height),
+                radius: CGFloat(file.radius),
+                shadow: CGFloat(file.shadow),
+                order: file.order,
+                sourceRelative: file.source,
+                sourceSHA: file.sourceSHA256 ?? ProjectStore.sha256(data),
+                sourceData: nil,
+                sourceFileName: url.lastPathComponent
+            ))
+        }
+        guard loaded.count >= 2 else {
+            layers = []
+            return
+        }
+        layers = loaded
+        adoptLayerSource(loaded[0])
+    }
+
+    private func adoptSavedSources(_ outcome: ProjectSaveOutcome, folder: URL) {
+        sourceRelative = outcome.relative
+        if let relative = outcome.relative, let url = try? ProjectStore.resolve(relative, in: folder) {
+            sourceOrigin = url
+        }
+        sourceData = nil
+        guard let saved = outcome.file.compositions.first(where: { $0.id == outcome.compositionID })?.layers else { return }
+        for file in saved {
+            guard let index = layers.firstIndex(where: { $0.id == file.id }) else { continue }
+            layers[index].sourceRelative = file.source
+            layers[index].sourceSHA = file.sourceSHA256
+            layers[index].sourceData = nil
+        }
+        if let first = layers.first, first.sourceRelative == nil {
+            layers[0].sourceRelative = outcome.relative
+        }
+    }
+
     private func snapshot() -> Snapshot {
-        Snapshot(crop: crop, style: style, annotations: annotations, selectedID: selectedID)
+        Snapshot(
+            crop: crop,
+            style: style,
+            annotations: annotations,
+            selectedID: selectedID,
+            layers: layers,
+            selectedLayerID: selectedLayerID,
+            activeLayoutID: activeLayoutID,
+            layerGap: layerGap
+        )
     }
 
     private func restore(_ snap: Snapshot) {
@@ -1516,6 +1927,11 @@ final class EditorModel: ObservableObject {
         style = snap.style
         annotations = snap.annotations
         selectedID = snap.selectedID
+        layers = snap.layers
+        selectedLayerID = snap.selectedLayerID
+        activeLayoutID = snap.activeLayoutID
+        layerGap = snap.layerGap
+        if let first = layers.first { adoptLayerSource(first) }
         textUndoID = nil
         refreshHistory()
     }

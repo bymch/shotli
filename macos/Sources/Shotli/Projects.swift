@@ -293,7 +293,21 @@ struct AnnotationFile: Codable, Equatable {
     }
 }
 
-struct CompositionFile: Codable, Equatable {
+struct LayerFile: Codable, Equatable {
+    var id: String
+    var name: String
+    var source: String
+    var sourceSHA256: String?
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+    var radius: Double
+    var shadow: Double
+    var order: Int
+}
+
+struct CompositionFile: Equatable {
     var id: String
     var name: String
     var created: String
@@ -304,6 +318,43 @@ struct CompositionFile: Codable, Equatable {
     var crop: CropFile?
     var style: StyleFile
     var annotations: [AnnotationFile]
+    var layers: [LayerFile]? = nil
+}
+
+extension CompositionFile: Codable {
+    enum CodingKeys: String, CodingKey {
+        case id, name, created, modified, source, sourceSHA256, thumbnail, crop, style, annotations, layers
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        created = try container.decode(String.self, forKey: .created)
+        modified = try container.decode(String.self, forKey: .modified)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        sourceSHA256 = try container.decodeIfPresent(String.self, forKey: .sourceSHA256)
+        thumbnail = try container.decodeIfPresent(String.self, forKey: .thumbnail)
+        crop = try container.decodeIfPresent(CropFile.self, forKey: .crop)
+        style = try container.decode(StyleFile.self, forKey: .style)
+        annotations = try container.decodeIfPresent([AnnotationFile].self, forKey: .annotations) ?? []
+        layers = try container.decodeIfPresent([LayerFile].self, forKey: .layers)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(created, forKey: .created)
+        try container.encode(modified, forKey: .modified)
+        try container.encodeIfPresent(source, forKey: .source)
+        try container.encodeIfPresent(sourceSHA256, forKey: .sourceSHA256)
+        try container.encodeIfPresent(thumbnail, forKey: .thumbnail)
+        try container.encodeIfPresent(crop, forKey: .crop)
+        try container.encode(style, forKey: .style)
+        try container.encode(annotations, forKey: .annotations)
+        try container.encodeIfPresent(layers, forKey: .layers)
+    }
 }
 
 struct ProjectFile: Codable, Equatable {
@@ -314,6 +365,22 @@ struct ProjectFile: Codable, Equatable {
     var modified: String
     var compositions: [CompositionFile]
     var assets: [ProjectAsset]
+}
+
+struct LayerDraft {
+    var id: String
+    var name: String
+    var sourceData: Data?
+    var sourceFileName: String
+    var sourceSHA256: String?
+    var reuseRelative: String?
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+    var radius: Double
+    var shadow: Double
+    var order: Int
 }
 
 struct CompositionDraft {
@@ -327,6 +394,7 @@ struct CompositionDraft {
     var style: ShotliStyle
     var annotations: [Annotation]
     var thumbnail: CGImage?
+    var layers: [LayerDraft] = []
 }
 
 struct ProjectSaveOutcome {
@@ -559,6 +627,41 @@ enum ProjectStore {
             style: StyleFile(draft.style),
             annotations: draft.annotations.map(AnnotationFile.init)
         )
+        if !draft.layers.isEmpty {
+            var stored: [LayerFile] = []
+            for item in draft.layers {
+                var itemRelative = item.reuseRelative
+                if let reuse = itemRelative {
+                    let existing = try resolve(reuse, in: folder)
+                    if !FileManager.default.fileExists(atPath: existing.path) { itemRelative = nil }
+                }
+                if itemRelative == nil {
+                    guard let data = item.sourceData else { throw ProjectError.missingSource }
+                    let itemSHA = item.sourceSHA256 ?? sha256(data)
+                    itemRelative = try importData(data, fileName: item.sourceFileName, sha256: itemSHA, into: folder, file: &file)
+                }
+                guard let itemRelative else { throw ProjectError.missingSource }
+                stored.append(LayerFile(
+                    id: item.id,
+                    name: item.name,
+                    source: itemRelative,
+                    sourceSHA256: item.sourceSHA256,
+                    x: item.x,
+                    y: item.y,
+                    width: item.width,
+                    height: item.height,
+                    radius: item.radius,
+                    shadow: item.shadow,
+                    order: item.order
+                ))
+            }
+            composition.layers = stored
+            if let primary = stored.first {
+                composition.source = primary.source
+                composition.sourceSHA256 = primary.sourceSHA256 ?? composition.sourceSHA256
+                relative = primary.source
+            }
+        }
         if let index = file.compositions.firstIndex(where: { $0.id == id }) {
             composition.created = file.compositions[index].created
             if composition.thumbnail == nil { composition.thumbnail = file.compositions[index].thumbnail }
@@ -697,6 +800,60 @@ enum ProjectStore {
         }
     }
 
+    private static func renderStoredComposition(_ composition: CompositionFile, in folder: URL) -> CGImage? {
+        let marks = composition.annotations.compactMap(\.annotation)
+        if let files = composition.layers, files.count >= 2 {
+            var layers: [ShotLayer] = []
+            for file in files {
+                guard let url = try? resolve(file.source, in: folder),
+                      let data = try? Data(contentsOf: url),
+                      let image = imageForThumbnail(data) else { continue }
+                layers.append(ShotLayer(
+                    id: file.id,
+                    image: image,
+                    name: file.name,
+                    x: CGFloat(file.x),
+                    y: CGFloat(file.y),
+                    width: CGFloat(file.width),
+                    height: CGFloat(file.height),
+                    radius: CGFloat(file.radius),
+                    shadow: CGFloat(file.shadow),
+                    order: file.order,
+                    sourceRelative: file.source,
+                    sourceSHA: file.sourceSHA256,
+                    sourceData: nil,
+                    sourceFileName: nil
+                ))
+            }
+            if layers.count >= 2 {
+                let picture = LoadedPicture(image: layers[0].image, name: layers[0].name, scaled: false)
+                return renderShot(
+                    picture: picture,
+                    crop: composition.crop?.rect,
+                    style: composition.style.style,
+                    annotations: marks,
+                    layers: layers,
+                    draft: nil,
+                    interactive: false
+                )
+            }
+        }
+        guard let source = composition.source,
+              let sourceURL = try? resolve(source, in: folder),
+              let data = try? Data(contentsOf: sourceURL),
+              let image = imageForThumbnail(data) else { return nil }
+        let picture = LoadedPicture(image: image, name: sourceURL.lastPathComponent, scaled: false)
+        return renderShot(
+            picture: picture,
+            crop: composition.crop?.rect,
+            style: composition.style.style,
+            annotations: marks,
+            layers: [],
+            draft: nil,
+            interactive: false
+        )
+    }
+
     static func renderMissingThumbnails(in folder: URL) throws {
         var file = try read(folder)
         var changed = false
@@ -717,20 +874,7 @@ enum ProjectStore {
                 }
                 continue
             }
-            guard let source = composition.source,
-                  let sourceURL = try? resolve(source, in: folder),
-                  let data = try? Data(contentsOf: sourceURL),
-                  let image = imageForThumbnail(data) else { continue }
-            let picture = LoadedPicture(image: image, name: sourceURL.lastPathComponent, scaled: false)
-            let marks = composition.annotations.compactMap(\.annotation)
-            guard let rendered = renderComposition(
-                picture: picture,
-                crop: composition.crop?.rect,
-                style: composition.style.style,
-                annotations: marks,
-                draft: nil,
-                interactive: false
-            ) else { continue }
+            guard let rendered = renderStoredComposition(composition, in: folder) else { continue }
             try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
             try writePNG(rendered, to: dest)
             file.compositions[index].thumbnail = relative
@@ -782,7 +926,7 @@ enum ProjectStore {
         return nil
     }
 
-    private static func imageForThumbnail(_ data: Data) -> CGImage? {
+    static func imageForThumbnail(_ data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -1055,6 +1199,7 @@ enum ProjectVerify {
         try checkPopoverSave()
         try checkLibraryKeys()
         try checkLibraryGrid()
+        try checkMultiScreenshot(in: root)
         if let issue = ShotliAppearance.check() { throw Failure(issue) }
     }
 
@@ -1110,6 +1255,92 @@ enum ProjectVerify {
         if LibraryKeyGate.shouldPassThrough(modalPresented: false, namingSheet: false, savePopover: false, hostHasSheet: false, eventOnHost: true, hostIsKey: true, editingText: false) {
             throw Failure("library delete was not handled")
         }
+    }
+
+    private static func checkMultiScreenshot(in root: URL) throws {
+        if let issue = ShotLayouts.check() { throw Failure(issue) }
+        let folder = try ProjectStore.create(name: "Layers", root: root)
+        let red = try coloredPNG(red: 0.82, green: 0.18, blue: 0.18)
+        let blue = try coloredPNG(red: 0.16, green: 0.34, blue: 0.82)
+        let draft = CompositionDraft(
+            id: nil,
+            name: "Pair.png",
+            sourceData: red,
+            sourceFileName: "red.png",
+            sourceSHA256: ProjectStore.sha256(red),
+            reuseRelative: nil,
+            crop: nil,
+            style: Presets.all[0].style,
+            annotations: [],
+            thumbnail: nil,
+            layers: [
+                LayerDraft(id: "a", name: "red.png", sourceData: red, sourceFileName: "red.png", sourceSHA256: ProjectStore.sha256(red), reuseRelative: nil, x: 0.04, y: 0.12, width: 0.44, height: 0.76, radius: 18, shadow: 28, order: 0),
+                LayerDraft(id: "b", name: "blue.png", sourceData: blue, sourceFileName: "blue.png", sourceSHA256: ProjectStore.sha256(blue), reuseRelative: nil, x: 0.52, y: 0.12, width: 0.44, height: 0.76, radius: 18, shadow: 28, order: 1),
+            ]
+        )
+        let outcome = try ProjectStore.saveComposition(draft, in: folder)
+        let saved = try ProjectStore.read(folder)
+        guard let composition = saved.compositions.first(where: { $0.id == outcome.compositionID }) else {
+            throw Failure("layer composition missing")
+        }
+        guard composition.layers?.count == 2 else { throw Failure("layer count") }
+        guard composition.source != nil else { throw Failure("primary source") }
+        guard composition.layers?[0].id == "a", composition.layers?[1].id == "b" else { throw Failure("layer ids") }
+        guard composition.layers?[0].source != composition.layers?[1].source else { throw Failure("layers shared one file") }
+        guard abs((composition.layers?[1].x ?? 0) - 0.52) < 0.001 else { throw Failure("layer frame") }
+        let legacy = try JSONEncoder().encode(CompositionFile(
+            id: composition.id,
+            name: composition.name,
+            created: composition.created,
+            modified: composition.modified,
+            source: composition.source,
+            sourceSHA256: composition.sourceSHA256,
+            thumbnail: nil,
+            crop: nil,
+            style: composition.style,
+            annotations: []
+        ))
+        if String(data: legacy, encoding: .utf8)?.contains("\"layers\"") == true {
+            throw Failure("a single screenshot wrote layers")
+        }
+        let decoded = try JSONDecoder().decode(CompositionFile.self, from: legacy)
+        if decoded.layers != nil || decoded.source == nil { throw Failure("legacy composition") }
+        guard let imageA = ProjectStore.imageForThumbnail(red), let imageB = ProjectStore.imageForThumbnail(blue) else {
+            throw Failure("layer images")
+        }
+        let layers = [
+            ShotLayer(id: "a", image: imageA, name: "red", x: 0.04, y: 0.12, width: 0.44, height: 0.76, radius: 18, shadow: 20, order: 0, sourceRelative: nil, sourceSHA: nil, sourceData: nil, sourceFileName: nil),
+            ShotLayer(id: "b", image: imageB, name: "blue", x: 0.52, y: 0.12, width: 0.44, height: 0.76, radius: 18, shadow: 20, order: 1, sourceRelative: nil, sourceSHA: nil, sourceData: nil, sourceFileName: nil),
+        ]
+        let picture = LoadedPicture(image: imageA, name: "red", scaled: false)
+        guard renderShot(picture: picture, crop: nil, style: Presets.all[0].style, annotations: [], layers: layers, draft: nil, interactive: false) != nil else {
+            throw Failure("layered render")
+        }
+        guard renderShot(picture: picture, crop: nil, style: Presets.all[0].style, annotations: [], layers: [], draft: nil, interactive: false) != nil else {
+            throw Failure("single render")
+        }
+    }
+
+    private static func coloredPNG(red: CGFloat, green: CGFloat, blue: CGFloat) throws -> Data {
+        guard let context = CGContext(
+            data: nil,
+            width: 24,
+            height: 16,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { throw Failure("layer swatch") }
+        context.setFillColor(NSColor(srgbRed: red, green: green, blue: blue, alpha: 1).cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: 24, height: 16))
+        guard let painted = context.makeImage() else { throw Failure("layer swatch") }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
+            throw Failure("layer png")
+        }
+        CGImageDestinationAddImage(destination, painted, nil)
+        if !CGImageDestinationFinalize(destination) { throw Failure("layer png finalize") }
+        return data as Data
     }
 
     private static func checkLibraryGrid() throws {
