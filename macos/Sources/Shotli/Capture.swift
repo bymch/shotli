@@ -58,10 +58,18 @@ final class ScreenCapture {
         }
     }
 
-    func adopt(_ url: URL) {
+    static func addsToOpenComposition(areaCapture: Bool, hasPicture: Bool) -> Bool {
+        areaCapture && hasPicture
+    }
+
+    func adopt(_ url: URL, fromArea: Bool = false) {
         revealEditor()
         let saved = LibraryFolders.archive(url)
-        EditorModel.shared.load(url: saved)
+        if Self.addsToOpenComposition(areaCapture: fromArea, hasPicture: EditorModel.shared.picture != nil) {
+            EditorModel.shared.addImages(from: [saved])
+        } else {
+            EditorModel.shared.load(url: saved)
+        }
         if saved != url { try? FileManager.default.removeItem(at: url) }
         LibraryModel.shared.refresh()
     }

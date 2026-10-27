@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.58", notes: [
+            "A second area capture joins the composition. Return on another grab adds that picture beside the first.",
+        ]),
         ChangelogEntry(version: "0.2.57", notes: [
             "The editor title stays on one line, and truncates only when the window is too narrow.",
             "Add screenshot puts more pictures in the same composition. Layout presets follow how many you have.",

@@ -166,7 +166,7 @@ final class AreaSelector {
                         ScreenCapture.shared.revealEditor()
                         return
                     }
-                    ScreenCapture.shared.adopt(url)
+                    ScreenCapture.shared.adopt(url, fromArea: true)
                 }
             }
         }
