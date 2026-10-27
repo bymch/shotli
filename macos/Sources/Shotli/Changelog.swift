@@ -9,6 +9,13 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.37", notes: [
+            "Settings is at the bottom of the library. Allow Screen Recording, Desktop, Documents, and Downloads from there.",
+            "Screenshots are sorted into Code, Websites, Documents, Conversations, and Other. Apple Intelligence does this when it is on. Otherwise Shotli reads the text on this Mac.",
+            "Search finds words inside a screenshot, not only its name.",
+            "Right-click a thumbnail and choose File as to put it in a category yourself.",
+            "A click anywhere on a library row opens that folder.",
+        ]),
         ChangelogEntry(version: "0.2.36", notes: [
             "Each release in the changelog sits on its own card, so the notes are easier to read.",
         ]),

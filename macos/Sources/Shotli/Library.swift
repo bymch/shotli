@@ -48,6 +48,7 @@ final class LibraryModel: ObservableObject {
     @Published var showingSettings = false
     @Published var kindFilter: ShotKind?
     @Published var kinds: [String: ShotKind] = [:]
+    var texts: [String: String] = [:]
     @Published var kindCounts: [ShotKind: Int] = [:]
     @Published var sorting = false
     @Published var shots: [LibraryShot] = []
@@ -99,12 +100,23 @@ final class LibraryModel: ObservableObject {
         apply()
     }
 
-    func setKind(id: String, kind: ShotKind) {
-        guard kinds[id] != kind else {
-            recomputeKindCounts()
-            return
-        }
+    func noteReading(id: String, kind: ShotKind, text: String?) {
+        var changed = kinds[id] != kind
         kinds[id] = kind
+        if let text, texts[id] != text {
+            texts[id] = text
+            changed = true
+        }
+        if changed { apply() }
+    }
+
+    func fileSelected(as kind: ShotKind) {
+        let chosen = allShots().filter { selected.contains($0.id) }
+        guard !chosen.isEmpty else { return }
+        for shot in chosen {
+            kinds[shot.id] = kind
+            ShotSorter.shared.file(shot, as: kind)
+        }
         apply()
     }
 
@@ -147,7 +159,12 @@ final class LibraryModel: ObservableObject {
                 let keep = Set(catalog.shots.values.flatMap { $0.map(\.id) })
                 self.thumbs = self.thumbs.filter { keep.contains($0.key) }
                 let everything = self.allShots()
-                self.kinds = ShotSorter.shared.knownKinds(in: everything)
+                let readings = ShotSorter.shared.knownReadings(in: everything)
+                self.kinds = Dictionary(uniqueKeysWithValues: readings.map { ($0.key, $0.value.kind) })
+                self.texts = Dictionary(uniqueKeysWithValues: readings.compactMap { item -> (String, String)? in
+                    guard let text = item.value.text else { return nil }
+                    return (item.key, text)
+                })
                 self.apply()
                 self.warm(token)
                 ShotSorter.shared.schedule(everything)
@@ -164,7 +181,9 @@ final class LibraryModel: ObservableObject {
             base = cache[source] ?? []
         }
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let searched = needle.isEmpty ? base : base.filter { $0.name.lowercased().contains(needle) }
+        let searched = needle.isEmpty ? base : base.filter {
+            $0.name.lowercased().contains(needle) || (texts[$0.id]?.lowercased().contains(needle) ?? false)
+        }
         shots = searched
         if !needle.isEmpty {
             message = searched.isEmpty ? "Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”." : nil
@@ -582,7 +601,11 @@ struct LibraryHome: View {
                                         if !library.selected.contains(shot.id) { library.selectOnly(shot.id) }
                                         library.deleteSelected()
                                     },
-                                    onSelectAll: { library.selectAll() }
+                                    onSelectAll: { library.selectAll() },
+                                    onFile: { kind in
+                                        if !library.selected.contains(shot.id) { library.selectOnly(shot.id) }
+                                        library.fileSelected(as: kind)
+                                    }
                                 )
                             }
                         }
@@ -630,7 +653,7 @@ struct LibraryHome: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.secondary)
-            TextField("Search", text: Binding(get: { library.query }, set: { library.updateQuery($0) }))
+            TextField("Search text", text: Binding(get: { library.query }, set: { library.updateQuery($0) }))
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
             if !library.query.isEmpty {
@@ -674,6 +697,7 @@ private struct ShotCard: View {
     var onOpen: () -> Void
     var onDelete: () -> Void
     var onSelectAll: () -> Void
+    var onFile: (ShotKind) -> Void
     @State private var hovered = false
 
     private let accent = Color(nsColor: NSColor(hex: "#3478F6")!)
@@ -745,6 +769,20 @@ private struct ShotCard: View {
             Button("Open", action: onOpen)
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([shot.url])
+            }
+            Divider()
+            Menu("File as") {
+                ForEach(ShotKind.allCases) { kind in
+                    Button {
+                        onFile(kind)
+                    } label: {
+                        if kind.title == kindTitle {
+                            Label(kind.title, systemImage: "checkmark")
+                        } else {
+                            Text(kind.title)
+                        }
+                    }
+                }
             }
             Divider()
             Button("Select All", action: onSelectAll)

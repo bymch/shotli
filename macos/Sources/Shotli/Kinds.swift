@@ -166,6 +166,37 @@ final class ShotSorter {
         var kind: String
         var classifier: String
         var modelTried: Bool
+        var text: String?
+
+        init(modified: TimeInterval, kind: String, classifier: String, modelTried: Bool, text: String?) {
+            self.modified = modified
+            self.kind = kind
+            self.classifier = classifier
+            self.modelTried = modelTried
+            self.text = text
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            modified = try container.decode(TimeInterval.self, forKey: .modified)
+            kind = try container.decode(String.self, forKey: .kind)
+            classifier = try container.decode(String.self, forKey: .classifier)
+            modelTried = try container.decode(Bool.self, forKey: .modelTried)
+            text = try container.decodeIfPresent(String.self, forKey: .text)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(modified, forKey: .modified)
+            try container.encode(kind, forKey: .kind)
+            try container.encode(classifier, forKey: .classifier)
+            try container.encode(modelTried, forKey: .modelTried)
+            try container.encodeIfPresent(text, forKey: .text)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case modified, kind, classifier, modelTried, text
+        }
     }
 
     private struct File: Codable {
@@ -182,17 +213,41 @@ final class ShotSorter {
 
     private init() {}
 
-    func knownKinds(in shots: [LibraryShot]) -> [String: ShotKind] {
+    struct Reading {
+        var kind: ShotKind
+        var text: String?
+    }
+
+    func knownReadings(in shots: [LibraryShot]) -> [String: Reading] {
         queue.sync {
             loadIfNeeded()
-            var found: [String: ShotKind] = [:]
+            var found: [String: Reading] = [:]
             for shot in shots {
                 guard let record = items[shot.id],
                       abs(record.modified - shot.modified.timeIntervalSince1970) < 1,
                       let kind = ShotKind(rawValue: record.kind) else { continue }
-                found[shot.id] = kind
+                found[shot.id] = Reading(kind: kind, text: record.text)
             }
             return found
+        }
+    }
+
+    func file(_ shot: LibraryShot, as kind: ShotKind) {
+        queue.async {
+            self.loadIfNeeded()
+            let previous = self.items[shot.id]
+            let text = previous?.text
+            self.items[shot.id] = Record(
+                modified: shot.modified.timeIntervalSince1970,
+                kind: kind.rawValue,
+                classifier: "manual",
+                modelTried: true,
+                text: text
+            )
+            self.save()
+            DispatchQueue.main.async {
+                LibraryModel.shared.noteReading(id: shot.id, kind: kind, text: text)
+            }
         }
     }
 
@@ -233,15 +288,16 @@ final class ShotSorter {
             let image = Self.thumbnail(shot.url)
             let text = image.flatMap(Self.recognize) ?? ""
             let rules = ShotKindRules.classify(text)
+            let read = text
             self.queue.async {
-                self.store(shot, Outcome(kind: rules, classifier: "rules", modelTried: false))
+                self.store(shot, Outcome(kind: rules, classifier: "rules", modelTried: false, text: read))
             }
             let model = await AppleShotKind.classify(text: text, image: image)
             self.queue.async {
                 if let model {
-                    self.store(shot, Outcome(kind: model, classifier: "model", modelTried: true))
+                    self.store(shot, Outcome(kind: model, classifier: "model", modelTried: true, text: read))
                 } else {
-                    self.store(shot, Outcome(kind: rules, classifier: "rules", modelTried: AppleIntelligenceGate.isAvailable))
+                    self.store(shot, Outcome(kind: rules, classifier: "rules", modelTried: AppleIntelligenceGate.isAvailable, text: read))
                 }
                 self.working = false
                 self.pump()
@@ -251,22 +307,30 @@ final class ShotSorter {
 
     private func needsWork(_ shot: LibraryShot) -> Bool {
         guard let record = items[shot.id], abs(record.modified - shot.modified.timeIntervalSince1970) < 1 else { return true }
-        if record.classifier == "model" || record.modelTried { return false }
+        if record.text == nil { return true }
+        if record.classifier == "manual" || record.classifier == "model" || record.modelTried { return false }
         return AppleIntelligenceGate.isAvailable
     }
 
     private func store(_ shot: LibraryShot, _ outcome: Outcome) {
         let previous = items[shot.id]
         let modified = shot.modified.timeIntervalSince1970
-        let unchanged = previous?.kind == outcome.kind.rawValue
-            && previous?.classifier == outcome.classifier
-            && previous?.modelTried == outcome.modelTried
+        let manual = previous?.classifier == "manual"
+        let kind = manual ? (previous?.kind ?? outcome.kind.rawValue) : outcome.kind.rawValue
+        let classifier = manual ? "manual" : outcome.classifier
+        let modelTried = manual ? true : outcome.modelTried
+        let text = outcome.text ?? previous?.text
+        let unchanged = previous?.kind == kind
+            && previous?.classifier == classifier
+            && previous?.modelTried == modelTried
+            && previous?.text == text
             && abs((previous?.modified ?? -1) - modified) < 1
-        items[shot.id] = Record(modified: modified, kind: outcome.kind.rawValue, classifier: outcome.classifier, modelTried: outcome.modelTried)
+        items[shot.id] = Record(modified: modified, kind: kind, classifier: classifier, modelTried: modelTried, text: text)
         if !unchanged {
             save()
+            let resolved = ShotKind(rawValue: kind) ?? outcome.kind
             DispatchQueue.main.async {
-                LibraryModel.shared.setKind(id: shot.id, kind: outcome.kind)
+                LibraryModel.shared.noteReading(id: shot.id, kind: resolved, text: text)
             }
         }
     }
@@ -275,6 +339,7 @@ final class ShotSorter {
         var kind: ShotKind
         var classifier: String
         var modelTried: Bool
+        var text: String?
     }
 
     private static func thumbnail(_ url: URL) -> CGImage? {
