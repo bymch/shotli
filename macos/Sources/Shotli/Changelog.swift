@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.52", notes: [
+            "The accent is sky blue. Selected rows and New project use it.",
+        ]),
         ChangelogEntry(version: "0.2.51", notes: [
             "A project is a folder. New project asks for a name, then creates it in Application Support.",
             "Save to Project, in the editor next to Export and Copy, keeps the composition and a copy of the screenshot.",
