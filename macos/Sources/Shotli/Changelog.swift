@@ -9,6 +9,10 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.48", notes: [
+            "Motion Studio adds Orbit and Reveal, a timeline, and speed, zoom, perspective, shadow, and background controls.",
+            "Optional music plays in the preview and is mixed into the 1080p MP4. PNG export is unchanged.",
+        ]),
         ChangelogEntry(version: "0.2.47", notes: [
             "Motion Studio loops the screenshot: Float, Perspective, Focus, and Drift. Export video writes a 1080p MP4. PNG export is unchanged.",
         ]),

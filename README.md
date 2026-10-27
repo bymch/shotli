@@ -51,7 +51,7 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - Pixelate and blur paint into the exported image. They are not a separate overlay.
 - Crop from the toolbar, then drag on the screenshot. Reset crop is in Layout.
 - **Export PNG** asks where to save. The file is the composition only: background, frame, shadow, annotations and redactions. The glass toolbar and panels are not included.
-- **Motion**, under the picture, opens Motion Studio. Float, Perspective, Focus, and Drift move that screenshot on its background. Export video writes a 1080p H.264 MP4. The still PNG export stays where it was.
+- **Motion**, under the picture, opens Motion Studio. Float, Perspective, Focus, Drift, Orbit, and Reveal move that screenshot on its background. Duration, speed, and loop sit in the inspector. Adjust holds movement, rotation, zoom, perspective, shadow, and background travel. Export video writes a 1080p H.264 MP4, and an optional music file is trimmed into it. The still PNG export stays where it was.
 
 Images larger than 25 MB are refused. Images longer than 4096px on the long edge are scaled down before editing, and export uses that scaled size.
 
