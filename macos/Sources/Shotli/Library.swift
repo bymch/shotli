@@ -357,6 +357,8 @@ struct LibraryHome: View {
             Button(action: onOpen) {
                 Label("Open a screenshot…", systemImage: "folder")
                     .font(.system(size: 12))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .padding(14)
@@ -383,7 +385,9 @@ struct LibraryHome: View {
                 }
             }
             .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 28)
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .foregroundColor(selected ? .white : ink)
             .background {
                 if selected {
