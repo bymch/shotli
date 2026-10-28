@@ -56,6 +56,7 @@ struct DeviceSpec: Identifiable, Equatable {
     var shell: DeviceShell
     var finishes: [DeviceFinish]
     var licence: String
+    var isNew: Bool = false
 
     func finish(_ id: String?) -> DeviceFinish {
         if let id, let match = finishes.first(where: { $0.id == id }) { return match }
@@ -75,8 +76,32 @@ enum DeviceLibrary {
 
     static let all: [DeviceSpec] = phones + tablets + laptops + desktops + watches
 
+    /// Previous Shotli names. Saved projects keep their mockup and resolve to the current model.
+    static let legacyIDs: [String: String] = [
+        "pocket": "iphone-17",
+        "pocket-air": "iphone-air",
+        "pocket-pro": "iphone-18-pro",
+        "pocket-pro-max": "iphone-18-pro-max",
+        "compact": "iphone-17e",
+        "slate": "ipad-air-11",
+        "slate-air": "ipad-air-11",
+        "slate-pro-11": "ipad-pro-11",
+        "slate-pro-13": "ipad-pro-13",
+        "folio-13": "macbook-air-13",
+        "folio-14": "macbook-pro-14",
+        "studio-14": "macbook-pro-14",
+        "studio-16": "macbook-pro-16",
+        "halo-24": "imac-24",
+        "panel-27": "imac-24",
+        "panel-32": "imac-24",
+        "pulse-41": "watch-series-12-42",
+        "pulse-45": "watch-series-12-46",
+        "pulse-ultra": "watch-ultra-4",
+    ]
+
     static func device(_ id: String?) -> DeviceSpec? {
-        guard let id else { return nil }
+        guard var id else { return nil }
+        if let mapped = legacyIDs[id] { id = mapped }
         return all.first { $0.id == id }
     }
 
@@ -178,13 +203,20 @@ enum DeviceLibrary {
         for category in DeviceCategory.allCases {
             if all.filter({ $0.category == category }).isEmpty { return "\(category.label) has no devices" }
         }
-        if matching("folio", category: nil).contains(where: { $0.category != .laptop }) { return "folio search left laptops" }
-        if !matching("folio", category: .phone).isEmpty { return "phone filter kept a laptop" }
+        if matching("macbook", category: nil).contains(where: { $0.category != .laptop }) { return "macbook search left laptops" }
+        if !matching("macbook", category: .phone).isEmpty { return "phone filter kept a laptop" }
         if !matching("zzzz-no-device", category: nil).isEmpty { return "empty search returned devices" }
         if matching("", category: .watch).count != all.filter({ $0.category == .watch }).count { return "watch filter" }
-        guard let pocket = device("pocket") else { return "missing pocket" }
-        if pocket.finishes.count < 4 { return "pocket finishes" }
-        if pocket.finish("missing").id != pocket.finishes[0].id { return "unknown finish" }
+        if all.contains(where: { $0.name.localizedCaseInsensitiveContains("17 air") || $0.name.hasPrefix("Pocket") }) {
+            return "unofficial product name"
+        }
+        guard let air = device("iphone-air"), air.name == "iPhone Air", air.isNew else { return "air name" }
+        guard let pro = device("iphone-18-pro"), pro.isNew, pro.cutout == .island else { return "pro badge" }
+        guard let phone = device("iphone-17"), !phone.isNew, phone.finishes.count >= 4 else { return "iphone 17" }
+        if device("iphone-17e")?.cutout != .none { return "17e invented an island" }
+        if air.screen.height <= pro.screen.height { return "air bezel" }
+        guard let saved = device("pocket"), saved.id == "iphone-17" else { return "old project device" }
+        if phone.finish("missing").id != phone.finishes[0].id { return "unknown finish" }
         for device in all {
             if device.finishes.count < 2 { return "\(device.name) needs finishes" }
             if device.screen.minX < 0 || device.screen.minY < 0 || device.screen.maxX > 1.001 || device.screen.maxY > 1.001 {
@@ -207,7 +239,7 @@ enum DeviceLibrary {
     }
 
     private static func samplePocket() -> String? {
-        guard let graphite = paintPocket("graphite"), let silver = paintPocket("silver") else { return "device sample" }
+        guard let graphite = paintPocket("black"), let silver = paintPocket("white") else { return "device sample" }
         if graphite.red < 400 { return "screenshot missed the screen" }
         if graphite.dark < 80 { return "screenshot covered the bezel" }
         if graphite.clear < 20 { return "device filled the canvas" }
@@ -259,7 +291,7 @@ enum DeviceLibrary {
               let shot = solidImage(width: 90, height: 180, red: 0.85, green: 0.12, blue: 0.1) else { return "device shot" }
         var style = Presets.style(40, 8, 0, .none, .color("#FFFFFF"))
         style.deviceID = pocket.id
-        style.deviceFinish = "graphite"
+        style.deviceFinish = "black"
         style.deviceFit = .fit
         style.deviceScale = 1
         style.shadow = 0
@@ -285,24 +317,24 @@ enum DeviceLibrary {
         if renderShot(picture: picture, crop: nil, style: style, annotations: [], layers: layers, draft: nil, interactive: false) == nil {
             return "two devices"
         }
-        if matching("pulse", category: nil).count != 3 { return "pulse search" }
+        if matching("series 12", category: nil).count != 2 { return "series search" }
         return nil
     }
 
     private static func styleRoundTrip() -> String? {
         var style = Presets.style(48, 12, 20, .none, .color("#123456"))
-        style.deviceID = "folio-14"
-        style.deviceFinish = "space"
+        style.deviceID = "macbook-pro-14"
+        style.deviceFinish = "space-black"
         style.deviceFit = .fill
         style.deviceScale = 0.82
         let kept = style.background
         style.deviceFinish = "silver"
-        if style.background != kept || style.deviceID != "folio-14" { return "finish reset the composition" }
-        style.deviceFinish = "space"
+        if style.background != kept || style.deviceID != "macbook-pro-14" { return "finish reset the composition" }
+        style.deviceFinish = "space-black"
         do {
             let encoded = try JSONEncoder().encode(StyleFile(style))
             let decoded = try JSONDecoder().decode(StyleFile.self, from: encoded).style
-            if decoded.deviceID != "folio-14" || decoded.deviceFinish != "space" || decoded.deviceFit != .fill || abs(decoded.deviceScale - 0.82) > 0.001 {
+            if decoded.deviceID != "macbook-pro-14" || decoded.deviceFinish != "space-black" || decoded.deviceFit != .fill || abs(decoded.deviceScale - 0.82) > 0.001 {
                 return "device style round trip"
             }
             var plain = Presets.style(48, 12, 20, .none, .color("#123456"))
@@ -355,14 +387,15 @@ func drawDevice(
     switch device.shell {
     case .handset:
         drawPhoneButtons(body: body, metal: bodyColor, context: context, height: canvasHeight)
-        drawHandsetChassis(body: body, metal: bodyColor, context: context, height: canvasHeight)
+        let rim: CGFloat = device.id == "iphone-air" ? 0.008 : (device.id == "iphone-17e" ? 0.018 : 0.014)
+        let corner: CGFloat = device.id == "iphone-air" ? 0.20 : (device.id == "iphone-17e" ? 0.13 : 0.16)
+        drawHandsetChassis(body: body, metal: bodyColor, context: context, height: canvasHeight, rim: rim, corner: corner)
     case .slate:
         fillRound(body, radius: body.width * 0.08, color: bodyColor, context: context, height: canvasHeight)
     case .laptop:
-        let deck = CGRect(x: body.minX, y: body.maxY - body.height * 0.34, width: body.width, height: body.height * 0.34)
-        let lid = CGRect(x: body.minX + body.width * 0.04, y: body.minY, width: body.width * 0.92, height: body.height * 0.70)
-        fillRound(deck, radius: 10, color: bodyColor, context: context, height: canvasHeight)
-        fillRound(lid, radius: 14, color: bezel, context: context, height: canvasHeight)
+        let parts = laptopMetrics(device, body: body)
+        fillRound(parts.deck, radius: 10, color: bodyColor, context: context, height: canvasHeight)
+        fillRound(parts.lid, radius: 14, color: bezel, context: context, height: canvasHeight)
     case .allInOne:
         let panel = CGRect(x: body.minX, y: body.minY, width: body.width, height: body.height * 0.82)
         fillRound(panel, radius: 16, color: bezel, context: context, height: canvasHeight)
@@ -376,10 +409,11 @@ func drawDevice(
         let foot = CGRect(x: body.midX - body.width * 0.16, y: body.maxY - body.height * 0.05, width: body.width * 0.32, height: body.height * 0.045)
         fillRound(foot, radius: 4, color: accent, context: context, height: canvasHeight)
     case .watch:
+        let ultra = device.id == "watch-ultra-4"
         let strap = CGRect(x: body.midX - body.width * 0.22, y: body.minY + body.height * 0.04, width: body.width * 0.44, height: body.height * 0.92)
         fillRound(strap, radius: 16, color: accent, context: context, height: canvasHeight)
-        let caseRect = screen.insetBy(dx: -screen.width * 0.1, dy: -screen.height * 0.1)
-        fillRound(caseRect, radius: caseRect.width * 0.24, color: bodyColor, context: context, height: canvasHeight)
+        let caseRect = screen.insetBy(dx: -screen.width * (ultra ? 0.08 : 0.1), dy: -screen.height * (ultra ? 0.08 : 0.1))
+        fillRound(caseRect, radius: caseRect.width * (ultra ? 0.16 : 0.28), color: bodyColor, context: context, height: canvasHeight)
     }
     context.restoreGState()
 
@@ -441,7 +475,7 @@ private func drawCutout(_ device: DeviceSpec, screen: CGRect, color: NSColor, ac
         let slot = CGRect(x: bite.midX - bite.width * 0.12, y: bite.midY - bite.height * 0.08, width: bite.width * 0.24, height: max(2, bite.height * 0.14))
         fillRound(slot, radius: slot.height / 2, color: NSColor(white: 0.25, alpha: 1), context: context, height: height)
     case .hole:
-        let dot = CGRect(x: screen.midX - screen.width * 0.015, y: screen.minY + screen.height * 0.03, width: screen.width * 0.03, height: screen.width * 0.03)
+        let dot = holeRect(device, screen: screen)
         context.setFillColor(color.cgColor)
         context.fillEllipse(in: flip(dot, height: height))
     }
@@ -456,7 +490,7 @@ private func drawHardware(_ device: DeviceSpec, body: CGRect, color: NSColor, co
         let button = CGRect(x: body.maxX - 2, y: body.minY + body.height * 0.2, width: 3, height: body.height * 0.06)
         fillRound(button, radius: 1.5, color: color, context: context, height: height)
     case .laptop:
-        let deck = CGRect(x: body.minX, y: body.maxY - body.height * 0.34, width: body.width, height: body.height * 0.34)
+        let deck = laptopMetrics(device, body: body).deck
         let keys = CGRect(x: deck.minX + deck.width * 0.12, y: deck.minY + deck.height * 0.22, width: deck.width * 0.76, height: deck.height * 0.38)
         context.setStrokeColor(color.withAlphaComponent(0.45).cgColor)
         context.setLineWidth(1)
@@ -466,6 +500,10 @@ private func drawHardware(_ device: DeviceSpec, body: CGRect, color: NSColor, co
     case .watch:
         let crown = CGRect(x: body.maxX - body.width * 0.16, y: body.midY - 5, width: body.width * 0.06, height: 10)
         fillRound(crown, radius: 2, color: color, context: context, height: height)
+        if device.id == "watch-ultra-4" {
+            let action = CGRect(x: body.minX + body.width * 0.1, y: body.midY - 8, width: body.width * 0.055, height: 16)
+            fillRound(action, radius: 3, color: color, context: context, height: height)
+        }
     case .allInOne, .monitor:
         break
     }
@@ -484,8 +522,7 @@ private func screenClip(_ device: DeviceSpec, screen: CGRect, height: CGFloat) -
         let bite = notchRect(screen)
         path.addPath(roundPath(bite, radius: bite.height * 0.45, height: height))
     case .hole:
-        let dot = CGRect(x: screen.midX - screen.width * 0.015, y: screen.minY + screen.height * 0.03, width: screen.width * 0.03, height: screen.width * 0.03)
-        path.addEllipse(in: flip(dot, height: height))
+        path.addEllipse(in: flip(holeRect(device, screen: screen), height: height))
     }
     return path
 }
@@ -494,8 +531,22 @@ private func screenRadius(_ device: DeviceSpec, screen: CGRect) -> CGFloat {
     device.screenRadius * min(screen.width, screen.height)
 }
 
-private func drawHandsetChassis(body: CGRect, metal: NSColor, context: CGContext, height: CGFloat) {
-    let radius = body.width * 0.16
+private func laptopMetrics(_ device: DeviceSpec, body: CGRect) -> (deck: CGRect, lid: CGRect) {
+    let lidFrac = min(0.94, device.screen.maxY + 0.055)
+    let deckFrac = min(0.20, max(0.08, 1 - lidFrac + 0.015))
+    let deck = CGRect(x: body.minX, y: body.maxY - body.height * deckFrac, width: body.width, height: body.height * deckFrac)
+    let lid = CGRect(x: body.minX + body.width * 0.025, y: body.minY, width: body.width * 0.95, height: body.height * lidFrac)
+    return (deck, lid)
+}
+
+private func holeRect(_ device: DeviceSpec, screen: CGRect) -> CGRect {
+    let size = max(4, screen.width * (device.shell == .laptop || device.shell == .allInOne ? 0.018 : 0.028))
+    let x = device.id.hasPrefix("ipad-pro") ? screen.maxX - screen.width * 0.08 : screen.midX - size / 2
+    return CGRect(x: x, y: screen.minY + screen.height * 0.028, width: size, height: size)
+}
+
+private func drawHandsetChassis(body: CGRect, metal: NSColor, context: CGContext, height: CGFloat, rim: CGFloat, corner: CGFloat) {
+    let radius = body.width * corner
     let light = shade(metal, 0.07)
     let dark = shade(metal, -0.05)
     fillRoundGradient(body, radius: radius, colors: [light, metal, dark], context: context, height: height)
@@ -509,7 +560,7 @@ private func drawHandsetChassis(body: CGRect, metal: NSColor, context: CGContext
     context.addPath(roundPath(body.insetBy(dx: 0.8, dy: 0.8), radius: radius, height: height))
     context.strokePath()
     context.restoreGState()
-    let lipInset = body.width * 0.014
+    let lipInset = body.width * rim
     let lip = body.insetBy(dx: lipInset, dy: lipInset)
     fillRound(lip, radius: max(4, radius - lipInset), color: NSColor(srgbRed: 0.015, green: 0.015, blue: 0.02, alpha: 1), context: context, height: height)
 }
@@ -624,113 +675,310 @@ private func aspectFit(_ aspect: CGSize, in rect: CGRect) -> CGRect {
 }
 
 private extension DeviceLibrary {
+    // Names, diagonals, pixel resolutions, case sizes, and finishes are Apple's,
+    // checked 28 October 2026. Pixel counts are physical pixels, not points.
+    // Frames are original vectors. Finish colours approximate the published names.
+    // iPhone Duo is omitted: a single rectangle would misrepresent the folding display.
+
     static var phones: [DeviceSpec] {
         [
-            handset("pocket", "Pocket", "1170 × 2532", 0.462, CGRect(x: 0.032, y: 0.016, width: 0.936, height: 0.968), 0.135, .island, 4),
-            handset("pocket-air", "Pocket Air", "1206 × 2622", 0.448, CGRect(x: 0.026, y: 0.013, width: 0.948, height: 0.974), 0.145, .island, 4),
-            handset("pocket-pro", "Pocket Pro", "1206 × 2622", 0.46, CGRect(x: 0.03, y: 0.015, width: 0.94, height: 0.97), 0.13, .island, 4),
-            handset("pocket-pro-max", "Pocket Pro Max", "1320 × 2868", 0.45, CGRect(x: 0.028, y: 0.014, width: 0.944, height: 0.972), 0.125, .island, 4),
-            handset("compact", "Compact", "750 × 1334", 0.56, CGRect(x: 0.062, y: 0.09, width: 0.876, height: 0.82), 0.07, .notch, 3),
+            handset(
+                "iphone-18-pro", "iPhone 18 Pro", "6.3-inch, 2622 × 1206 px",
+                width: 71.9, height: 150.0, pixels: (2622, 1206), bezel: 0.034,
+                radius: 0.12, cutout: .island, finishes: proFinishes, fresh: true,
+                page: "https://www.apple.com/iphone-18-pro/specs/"
+            ),
+            handset(
+                "iphone-18-pro-max", "iPhone 18 Pro Max", "6.9-inch, 2868 × 1320 px",
+                width: 78.0, height: 163.4, pixels: (2868, 1320), bezel: 0.032,
+                radius: 0.12, cutout: .island, finishes: proFinishes, fresh: true,
+                page: "https://www.apple.com/iphone-18-pro/specs/"
+            ),
+            handset(
+                "iphone-air", "iPhone Air", "6.5-inch, 2736 × 1260 px",
+                width: 74.7, height: 156.2, pixels: (2736, 1260), bezel: 0.018,
+                radius: 0.14, cutout: .island, finishes: airFinishes, fresh: true,
+                page: "https://www.apple.com/iphone-air/specs/"
+            ),
+            handset(
+                "iphone-17", "iPhone 17", "6.3-inch, 2622 × 1206 px",
+                width: 71.5, height: 149.6, pixels: (2622, 1206), bezel: 0.036,
+                radius: 0.12, cutout: .island, finishes: phone17Finishes, fresh: false,
+                page: "https://www.apple.com/iphone-17/specs/"
+            ),
+            handset(
+                "iphone-17e", "iPhone 17e", "6.1-inch, 2532 × 1170 px",
+                width: 71.5, height: 146.7, pixels: (2532, 1170), bezel: 0.042,
+                radius: 0.10, cutout: .none, finishes: phone17eFinishes, fresh: false,
+                page: "https://www.apple.com/iphone-17e/specs/"
+            ),
         ]
     }
 
     static var tablets: [DeviceSpec] {
         [
-            slate("slate", "Slate", "1620 × 2160", 0.75, 3),
-            slate("slate-air", "Slate Air", "1640 × 2360", 0.69, 4),
-            slate("slate-pro-11", "Slate Pro 11", "1668 × 2420", 0.69, 3),
-            slate("slate-pro-13", "Slate Pro 13", "2064 × 2752", 0.75, 4),
+            slate(
+                "ipad-pro-11", "iPad Pro 11-inch", "2420 × 1668 px",
+                width: 177.5, height: 249.7, pixels: (2420, 1668), bezel: 0.028,
+                finishes: proTabletFinishes, fresh: false,
+                page: "https://www.apple.com/ipad-pro/specs/"
+            ),
+            slate(
+                "ipad-pro-13", "iPad Pro 13-inch", "2752 × 2064 px",
+                width: 215.5, height: 281.6, pixels: (2752, 2064), bezel: 0.024,
+                finishes: proTabletFinishes, fresh: false,
+                page: "https://www.apple.com/ipad-pro/specs/"
+            ),
+            slate(
+                "ipad-air-11", "iPad Air 11-inch", "2360 × 1640 px",
+                width: 178.5, height: 247.6, pixels: (2360, 1640), bezel: 0.030,
+                finishes: airTabletFinishes, fresh: false,
+                page: "https://www.apple.com/ipad-air/specs/"
+            ),
+            slate(
+                "ipad-air-13", "iPad Air 13-inch", "2732 × 2048 px",
+                width: 214.9, height: 280.6, pixels: (2732, 2048), bezel: 0.026,
+                finishes: airTabletFinishes, fresh: false,
+                page: "https://www.apple.com/ipad-air/specs/"
+            ),
+            slate(
+                "ipad-mini", "iPad mini", "8.5-inch, 2316 × 1512 px",
+                width: 132.6, height: 195.3, pixels: (2316, 1512), bezel: 0.026,
+                finishes: miniFinishes, fresh: true,
+                page: "https://www.apple.com/ipad-mini/specs/"
+            ),
         ]
     }
 
     static var laptops: [DeviceSpec] {
         [
-            laptop("folio-13", "Folio 13", "2560 × 1664", 1.42),
-            laptop("folio-14", "Folio 14", "3024 × 1964", 1.46),
-            laptop("studio-14", "Studio 14", "3024 × 1964", 1.5),
-            laptop("studio-16", "Studio 16", "3456 × 2234", 1.55),
+            laptop(
+                "macbook-air-13", "MacBook Air (13-inch)", "13.6-inch, 2560 × 1664 px",
+                width: 30.41, depth: 21.5, deck: 0.06, pixels: (2560, 1664), glass: 0.88,
+                finishes: airLaptopFinishes, page: "https://www.apple.com/macbook-air/specs/"
+            ),
+            laptop(
+                "macbook-air-15", "MacBook Air (15-inch)", "15.3-inch, 2880 × 1864 px",
+                width: 34.04, depth: 23.76, deck: 0.055, pixels: (2880, 1864), glass: 0.88,
+                finishes: airLaptopFinishes, page: "https://www.apple.com/macbook-air/specs/"
+            ),
+            laptop(
+                "macbook-pro-14", "MacBook Pro (14-inch)", "14.2-inch, 3024 × 1964 px",
+                width: 31.26, depth: 22.12, deck: 0.09, pixels: (3024, 1964), glass: 0.84,
+                finishes: proLaptopFinishes, page: "https://www.apple.com/macbook-pro/specs/"
+            ),
+            laptop(
+                "macbook-pro-16", "MacBook Pro (16-inch)", "16.2-inch, 3456 × 2234 px",
+                width: 35.57, depth: 24.81, deck: 0.09, pixels: (3456, 2234), glass: 0.84,
+                finishes: proLaptopFinishes, page: "https://www.apple.com/macbook-pro/specs/"
+            ),
         ]
     }
 
     static var desktops: [DeviceSpec] {
         [
-            desktop("halo-24", "Halo 24", "4480 × 2520", 1.15, .allInOne),
-            desktop("panel-27", "Panel 27", "5120 × 2880", 1.55, .monitor),
-            desktop("panel-32", "Panel 32", "6016 × 3384", 1.62, .monitor),
+            desktop(
+                "imac-24", "iMac (24-inch)", "4480 × 2520 px",
+                width: 21.5, height: 18.1, pixels: (4480, 2520),
+                page: "https://www.apple.com/imac/specs/"
+            ),
         ]
     }
 
     static var watches: [DeviceSpec] {
         [
-            watch("pulse-41", "Pulse 41", "352 × 430"),
-            watch("pulse-45", "Pulse 45", "396 × 484"),
-            watch("pulse-ultra", "Pulse Ultra", "410 × 502"),
+            watch(
+                "watch-series-12-42", "Apple Watch Series 12 (42mm)", "374 × 446 px",
+                caseW: 37, caseH: 42, band: 0.85, pixels: (374, 446), radius: 0.22,
+                finishes: seriesFinishes, page: "https://www.apple.com/apple-watch-series-12/specs/"
+            ),
+            watch(
+                "watch-series-12-46", "Apple Watch Series 12 (46mm)", "416 × 496 px",
+                caseW: 40, caseH: 46, band: 0.85, pixels: (416, 496), radius: 0.22,
+                finishes: seriesFinishes, page: "https://www.apple.com/apple-watch-series-12/specs/"
+            ),
+            watch(
+                "watch-ultra-4", "Apple Watch Ultra 4", "422 × 514 px",
+                caseW: 44, caseH: 49, band: 0.70, pixels: (422, 514), radius: 0.14,
+                finishes: ultraFinishes, page: "https://www.apple.com/apple-watch-ultra-4/specs/"
+            ),
         ]
     }
 
-    static func handset(_ id: String, _ name: String, _ resolution: String, _ aspect: CGFloat, _ screen: CGRect, _ radius: CGFloat, _ cutout: DeviceCutout, _ finishCount: Int) -> DeviceSpec {
-        DeviceSpec(id: id, name: name, maker: "Shotli", category: .phone, resolution: resolution, bodyAspect: aspect, screen: screen, screenRadius: radius, cutout: cutout, shell: .handset, finishes: phoneFinishes(finishCount), licence: licence)
-    }
-
-    static func slate(_ id: String, _ name: String, _ resolution: String, _ aspect: CGFloat, _ finishCount: Int) -> DeviceSpec {
-        DeviceSpec(
-            id: id, name: name, maker: "Shotli", category: .tablet, resolution: resolution, bodyAspect: aspect,
-            screen: CGRect(x: 0.035, y: 0.028, width: 0.93, height: 0.944), screenRadius: 0.06, cutout: .hole, shell: .slate,
-            finishes: metalFinishes(finishCount), licence: licence
-        )
-    }
-
-    static func laptop(_ id: String, _ name: String, _ resolution: String, _ aspect: CGFloat) -> DeviceSpec {
-        DeviceSpec(
-            id: id, name: name, maker: "Shotli", category: .laptop, resolution: resolution, bodyAspect: aspect,
-            screen: CGRect(x: 0.09, y: 0.035, width: 0.82, height: 0.6), screenRadius: 0.03, cutout: .none, shell: .laptop,
-            finishes: metalFinishes(3), licence: licence
-        )
-    }
-
-    static func desktop(_ id: String, _ name: String, _ resolution: String, _ aspect: CGFloat, _ shell: DeviceShell) -> DeviceSpec {
-        let screen = shell == .allInOne
-            ? CGRect(x: 0.045, y: 0.04, width: 0.91, height: 0.72)
-            : CGRect(x: 0.025, y: 0.03, width: 0.95, height: 0.82)
+    static func handset(
+        _ id: String, _ name: String, _ resolution: String,
+        width: CGFloat, height: CGFloat, pixels: (CGFloat, CGFloat), bezel: CGFloat,
+        radius: CGFloat, cutout: DeviceCutout, finishes: [DeviceFinish], fresh: Bool, page: String
+    ) -> DeviceSpec {
+        let aspect = width / height
+        let pixelAspect = pixels.1 / pixels.0
         return DeviceSpec(
-            id: id, name: name, maker: "Shotli", category: .desktop, resolution: resolution, bodyAspect: aspect,
-            screen: screen, screenRadius: 0.02, cutout: .none, shell: shell, finishes: metalFinishes(3), licence: licence
+            id: id, name: name, maker: "Apple", category: .phone, resolution: resolution,
+            bodyAspect: aspect, screen: screenRect(bodyAspect: aspect, pixelAspect: pixelAspect, bezel: bezel),
+            screenRadius: radius, cutout: cutout, shell: .handset, finishes: finishes,
+            licence: cite(page), isNew: fresh
         )
     }
 
-    static func watch(_ id: String, _ name: String, _ resolution: String) -> DeviceSpec {
-        DeviceSpec(
-            id: id, name: name, maker: "Shotli", category: .watch, resolution: resolution, bodyAspect: 0.58,
-            screen: CGRect(x: 0.2, y: 0.34, width: 0.6, height: 0.32), screenRadius: 0.24, cutout: .none, shell: .watch,
-            finishes: [
-                DeviceFinish(id: "silver", name: "Silver", body: "#D5D8DE", bezel: "#8E949E", accent: "#6E7580"),
-                DeviceFinish(id: "ink", name: "Ink", body: "#2A2E36", bezel: "#101216", accent: "#4A4038"),
-                DeviceFinish(id: "sand", name: "Sand", body: "#E4D2BC", bezel: "#B89A78", accent: "#8C6239"),
-            ],
-            licence: licence
+    static func slate(
+        _ id: String, _ name: String, _ resolution: String,
+        width: CGFloat, height: CGFloat, pixels: (CGFloat, CGFloat), bezel: CGFloat,
+        finishes: [DeviceFinish], fresh: Bool, page: String
+    ) -> DeviceSpec {
+        let aspect = width / height
+        let pixelAspect = pixels.1 / pixels.0
+        return DeviceSpec(
+            id: id, name: name, maker: "Apple", category: .tablet, resolution: resolution,
+            bodyAspect: aspect, screen: screenRect(bodyAspect: aspect, pixelAspect: pixelAspect, bezel: bezel),
+            screenRadius: 0.045, cutout: .hole, shell: .slate, finishes: finishes,
+            licence: cite(page), isNew: fresh
         )
     }
 
-    static func phoneFinishes(_ count: Int) -> [DeviceFinish] {
-        Array(phonePalette.prefix(count))
+    static func laptop(
+        _ id: String, _ name: String, _ resolution: String,
+        width: CGFloat, depth: CGFloat, deck: CGFloat, pixels: (CGFloat, CGFloat), glass: CGFloat,
+        finishes: [DeviceFinish], page: String
+    ) -> DeviceSpec {
+        let total = depth + width * deck
+        let aspect = width / total
+        let pixelAspect = pixels.0 / pixels.1
+        let screenH = glass * aspect / pixelAspect
+        let lid = depth / total
+        let screen = CGRect(x: (1 - glass) / 2, y: max(0.02, (lid - screenH) / 2), width: glass, height: screenH)
+        return DeviceSpec(
+            id: id, name: name, maker: "Apple", category: .laptop, resolution: resolution,
+            bodyAspect: aspect, screen: screen, screenRadius: 0.028, cutout: .hole, shell: .laptop,
+            finishes: finishes, licence: cite(page) + " Open lid is an original drawing sized from the published width and depth."
+        )
     }
 
-    static func metalFinishes(_ count: Int) -> [DeviceFinish] {
-        Array(metalPalette.prefix(count))
+    static func desktop(
+        _ id: String, _ name: String, _ resolution: String,
+        width: CGFloat, height: CGFloat, pixels: (CGFloat, CGFloat), page: String
+    ) -> DeviceSpec {
+        let aspect = width / height
+        let pixelAspect = pixels.0 / pixels.1
+        let glass: CGFloat = 0.90
+        let screenH = glass * aspect / pixelAspect
+        let screen = CGRect(x: (1 - glass) / 2, y: 0.05, width: glass, height: screenH)
+        return DeviceSpec(
+            id: id, name: name, maker: "Apple", category: .desktop, resolution: resolution,
+            bodyAspect: aspect, screen: screen, screenRadius: 0.02, cutout: .hole, shell: .allInOne,
+            finishes: imacFinishes, licence: cite(page) + " Actual diagonal on the specs page is 23.5 inches."
+        )
     }
 
-    static let phonePalette: [DeviceFinish] = [
-        DeviceFinish(id: "silver", name: "Silver", body: "#F3F4F7", bezel: "#D5D8DE", accent: "#A8AEB8"),
-        DeviceFinish(id: "graphite", name: "Graphite", body: "#2C3038", bezel: "#101216", accent: "#5C636E"),
-        DeviceFinish(id: "blue", name: "Blue", body: "#D5E1EE", bezel: "#A9BDD2", accent: "#6E8AA6"),
-        DeviceFinish(id: "sand", name: "Sand", body: "#F0E2D0", bezel: "#D2BBA3", accent: "#B08A62"),
-        DeviceFinish(id: "green", name: "Green", body: "#D5E2D4", bezel: "#9BB39A", accent: "#6E8B6C"),
+    static func watch(
+        _ id: String, _ name: String, _ resolution: String,
+        caseW: CGFloat, caseH: CGFloat, band: CGFloat, pixels: (CGFloat, CGFloat), radius: CGFloat,
+        finishes: [DeviceFinish], page: String
+    ) -> DeviceSpec {
+        let total = caseH * (1 + band * 2)
+        let aspect = caseW / total
+        let screenH = (caseH / total) * 0.86
+        let pixelAspect = pixels.0 / pixels.1
+        let screenW = screenH * pixelAspect / aspect
+        let screen = CGRect(x: (1 - screenW) / 2, y: (1 - screenH) / 2, width: screenW, height: screenH)
+        return DeviceSpec(
+            id: id, name: name, maker: "Apple", category: .watch, resolution: resolution,
+            bodyAspect: aspect, screen: screen, screenRadius: radius, cutout: .none, shell: .watch,
+            finishes: finishes, licence: cite(page) + " Band length is an original drawing around the published case."
+        )
+    }
+
+    static func screenRect(bodyAspect: CGFloat, pixelAspect: CGFloat, bezel: CGFloat) -> CGRect {
+        var height = min(0.96, 1 - bezel * 2)
+        var width = height * pixelAspect / max(bodyAspect, 0.01)
+        if width > 0.96 {
+            width = 0.96
+            height = width * bodyAspect / max(pixelAspect, 0.01)
+        }
+        return CGRect(x: (1 - width) / 2, y: (1 - height) / 2, width: width, height: height)
+    }
+
+    static func cite(_ page: String) -> String {
+        "\(licence) Specs checked 28 October 2026 at \(page). Finish colours approximate the published finish names."
+    }
+
+    static func swatch(_ id: String, _ name: String, _ body: String, _ bezel: String, _ accent: String) -> DeviceFinish {
+        DeviceFinish(id: id, name: name, body: body, bezel: bezel, accent: accent)
+    }
+
+    static let proFinishes: [DeviceFinish] = [
+        swatch("black", "Black", "#1C1E22", "#0E1014", "#3A3E46"),
+        swatch("silver", "Silver", "#F3F4F7", "#D5D8DE", "#A8AEB8"),
+        swatch("glacier", "Glacier", "#C5D4DC", "#8FA6B2", "#5E7A88"),
+        swatch("burgundy", "Burgundy", "#6E2E38", "#3E161C", "#A85A66"),
     ]
 
-    static let metalPalette: [DeviceFinish] = [
-        DeviceFinish(id: "silver", name: "Silver", body: "#E4E7EE", bezel: "#B7BDC8", accent: "#8E96A3"),
-        DeviceFinish(id: "space", name: "Space", body: "#4A4E57", bezel: "#22252B", accent: "#6D7380"),
-        DeviceFinish(id: "starlight", name: "Starlight", body: "#F3EDE4", bezel: "#D9D0C4", accent: "#B7AA9A"),
-        DeviceFinish(id: "blue", name: "Blue", body: "#D5E0EA", bezel: "#A9BCCE", accent: "#7E97B0"),
+    static let airFinishes: [DeviceFinish] = [
+        swatch("space-black", "Space Black", "#1A1B1E", "#0C0D10", "#3A3C42"),
+        swatch("cloud-white", "Cloud White", "#F7F5F2", "#E4E0DA", "#C8C2B8"),
+        swatch("light-gold", "Light Gold", "#E6D3B0", "#CDB892", "#A89068"),
+        swatch("sky-blue", "Sky Blue", "#B9D4E6", "#8FB4CC", "#6A94B0"),
+    ]
+
+    static let phone17Finishes: [DeviceFinish] = [
+        swatch("black", "Black", "#1C1E22", "#0E1014", "#3A3E46"),
+        swatch("white", "White", "#F7F7F5", "#E6E6E2", "#C8C8C2"),
+        swatch("mist-blue", "Mist Blue", "#C9D6E2", "#A9BCCE", "#7E97B0"),
+        swatch("sage", "Sage", "#C5D1C4", "#9AAD98", "#6E866C"),
+        swatch("lavender", "Lavender", "#D5D0E2", "#B7B0C8", "#8E86A4"),
+    ]
+
+    static let phone17eFinishes: [DeviceFinish] = [
+        swatch("black", "Black", "#1C1E22", "#0E1014", "#3A3E46"),
+        swatch("white", "White", "#F7F7F5", "#E6E6E2", "#C8C8C2"),
+        swatch("soft-pink", "Soft Pink", "#F0D5D2", "#E0B8B4", "#C48E8A"),
+    ]
+
+    static let proTabletFinishes: [DeviceFinish] = [
+        swatch("silver", "Silver", "#E6E8EE", "#C5C9D2", "#9AA0AA"),
+        swatch("space-black", "Space Black", "#2A2C31", "#121316", "#4A4E56"),
+    ]
+
+    static let airTabletFinishes: [DeviceFinish] = [
+        swatch("starlight", "Starlight", "#F3EDE4", "#D9D0C4", "#B7AA9A"),
+        swatch("space-gray", "Space Gray", "#8E9198", "#5C6068", "#3E424A"),
+    ]
+
+    static let miniFinishes: [DeviceFinish] = [
+        swatch("midnight", "Midnight", "#2C3140", "#161820", "#4A5164"),
+        swatch("starlight", "Starlight", "#F3EDE4", "#D9D0C4", "#B7AA9A"),
+    ]
+
+    static let airLaptopFinishes: [DeviceFinish] = [
+        swatch("sky-blue", "Sky Blue", "#B9D4E6", "#8FB4CC", "#6A94B0"),
+        swatch("silver", "Silver", "#E6E8EE", "#C5C9D2", "#9AA0AA"),
+        swatch("starlight", "Starlight", "#F3EDE4", "#D9D0C4", "#B7AA9A"),
+        swatch("midnight", "Midnight", "#2C3140", "#161820", "#4A5164"),
+    ]
+
+    static let proLaptopFinishes: [DeviceFinish] = [
+        swatch("space-black", "Space Black", "#2A2C31", "#121316", "#4A4E56"),
+        swatch("silver", "Silver", "#E6E8EE", "#C5C9D2", "#9AA0AA"),
+    ]
+
+    static let imacFinishes: [DeviceFinish] = [
+        swatch("blue", "Blue", "#6E9EC4", "#3E6E96", "#2A5070"),
+        swatch("purple", "Purple", "#8E7EB8", "#5E4E86", "#3E345C"),
+        swatch("pink", "Pink", "#E7B4C4", "#C8889C", "#A86880"),
+        swatch("orange", "Orange", "#E8A05A", "#C47830", "#9A5A20"),
+        swatch("yellow", "Yellow", "#F0D56A", "#D4B040", "#A88820"),
+        swatch("green", "Green", "#7EAE78", "#4E7E48", "#345E30"),
+        swatch("silver", "Silver", "#E6E8EE", "#C5C9D2", "#9AA0AA"),
+    ]
+
+    static let seriesFinishes: [DeviceFinish] = [
+        swatch("dark-bronze", "Dark Bronze", "#6E5848", "#3E3028", "#8A7260"),
+        swatch("light-gold", "Light Gold", "#E6D3B0", "#CDB892", "#A89068"),
+        swatch("black", "Black", "#1C1E22", "#0E1014", "#3A3E46"),
+        swatch("space-gray", "Space Gray", "#8E9198", "#5C6068", "#3E424A"),
+    ]
+
+    static let ultraFinishes: [DeviceFinish] = [
+        swatch("natural", "Natural", "#C8C2B4", "#8E8878", "#6A6458"),
+        swatch("black", "Black", "#1C1E22", "#0E1014", "#3A3E46"),
     ]
 }
