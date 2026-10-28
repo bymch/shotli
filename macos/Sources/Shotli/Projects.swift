@@ -108,7 +108,7 @@ struct BackgroundFile: Codable, Equatable {
     }
 }
 
-struct StyleFile: Codable, Equatable {
+struct StyleFile: Equatable {
     var padding: Double
     var radius: Double
     var shadow: Double
@@ -126,6 +126,10 @@ struct StyleFile: Codable, Equatable {
     var tiltY: Double
     var shiftX: Double
     var shiftY: Double
+    var device: String?
+    var deviceFinish: String?
+    var deviceFit: String?
+    var deviceScale: Double?
 
     init(_ style: ShotliStyle) {
         padding = Double(style.padding)
@@ -145,6 +149,10 @@ struct StyleFile: Codable, Equatable {
         tiltY = Double(style.tiltY)
         shiftX = Double(style.shiftX)
         shiftY = Double(style.shiftY)
+        device = style.deviceID
+        deviceFinish = style.deviceID == nil ? nil : style.deviceFinish
+        deviceFit = style.deviceID == nil ? nil : style.deviceFit.rawValue
+        deviceScale = style.deviceID == nil ? nil : Double(style.deviceScale)
     }
 
     var style: ShotliStyle {
@@ -167,7 +175,69 @@ struct StyleFile: Codable, Equatable {
         next.tiltY = CGFloat(tiltY)
         next.shiftX = CGFloat(shiftX)
         next.shiftY = CGFloat(shiftY)
+        next.deviceID = device
+        next.deviceFinish = deviceFinish
+        next.deviceFit = DeviceFit(rawValue: deviceFit ?? "") ?? .fit
+        next.deviceScale = CGFloat(deviceScale ?? 1)
         return next
+    }
+}
+
+extension StyleFile: Codable {
+    enum CodingKeys: String, CodingKey {
+        case padding, radius, shadow, frame, canvas, canvasWidth, canvasHeight, background, card
+        case shadowKind, shadowOpacity, light, hideMockup, tiltX, tiltY, shiftX, shiftY
+        case device, deviceFinish, deviceFit, deviceScale
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        padding = try container.decode(Double.self, forKey: .padding)
+        radius = try container.decode(Double.self, forKey: .radius)
+        shadow = try container.decode(Double.self, forKey: .shadow)
+        frame = try container.decode(String.self, forKey: .frame)
+        canvas = try container.decode(String.self, forKey: .canvas)
+        canvasWidth = try container.decode(Double.self, forKey: .canvasWidth)
+        canvasHeight = try container.decode(Double.self, forKey: .canvasHeight)
+        background = try container.decode(BackgroundFile.self, forKey: .background)
+        card = try container.decode(String.self, forKey: .card)
+        shadowKind = try container.decode(String.self, forKey: .shadowKind)
+        shadowOpacity = try container.decode(Double.self, forKey: .shadowOpacity)
+        light = try container.decode(Double.self, forKey: .light)
+        hideMockup = try container.decode(Bool.self, forKey: .hideMockup)
+        tiltX = try container.decode(Double.self, forKey: .tiltX)
+        tiltY = try container.decode(Double.self, forKey: .tiltY)
+        shiftX = try container.decode(Double.self, forKey: .shiftX)
+        shiftY = try container.decode(Double.self, forKey: .shiftY)
+        device = try container.decodeIfPresent(String.self, forKey: .device)
+        deviceFinish = try container.decodeIfPresent(String.self, forKey: .deviceFinish)
+        deviceFit = try container.decodeIfPresent(String.self, forKey: .deviceFit)
+        deviceScale = try container.decodeIfPresent(Double.self, forKey: .deviceScale)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(padding, forKey: .padding)
+        try container.encode(radius, forKey: .radius)
+        try container.encode(shadow, forKey: .shadow)
+        try container.encode(frame, forKey: .frame)
+        try container.encode(canvas, forKey: .canvas)
+        try container.encode(canvasWidth, forKey: .canvasWidth)
+        try container.encode(canvasHeight, forKey: .canvasHeight)
+        try container.encode(background, forKey: .background)
+        try container.encode(card, forKey: .card)
+        try container.encode(shadowKind, forKey: .shadowKind)
+        try container.encode(shadowOpacity, forKey: .shadowOpacity)
+        try container.encode(light, forKey: .light)
+        try container.encode(hideMockup, forKey: .hideMockup)
+        try container.encode(tiltX, forKey: .tiltX)
+        try container.encode(tiltY, forKey: .tiltY)
+        try container.encode(shiftX, forKey: .shiftX)
+        try container.encode(shiftY, forKey: .shiftY)
+        try container.encodeIfPresent(device, forKey: .device)
+        try container.encodeIfPresent(deviceFinish, forKey: .deviceFinish)
+        try container.encodeIfPresent(deviceFit, forKey: .deviceFit)
+        try container.encodeIfPresent(deviceScale, forKey: .deviceScale)
     }
 }
 
@@ -1210,6 +1280,7 @@ enum ProjectVerify {
             throw Failure("full screen capture joined the open screenshot")
         }
         if let issue = ShotliAppearance.check() { throw Failure(issue) }
+        if let issue = DeviceLibrary.check() { throw Failure(issue) }
     }
 
     private static func checkPopoverSave() throws {
