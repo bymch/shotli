@@ -213,7 +213,7 @@ enum DeviceLibrary {
         guard let air = device("iphone-air"), air.name == "iPhone Air", air.isNew else { return "air name" }
         guard let pro = device("iphone-18-pro"), pro.isNew, pro.cutout == .island else { return "pro badge" }
         guard let phone = device("iphone-17"), !phone.isNew, phone.finishes.count >= 4 else { return "iphone 17" }
-        if device("iphone-17e")?.cutout != .none { return "17e invented an island" }
+        if device("iphone-17e")?.cutout != DeviceCutout.none { return "17e invented an island" }
         if air.screen.height <= pro.screen.height { return "air bezel" }
         guard let saved = device("pocket"), saved.id == "iphone-17" else { return "old project device" }
         if phone.finish("missing").id != phone.finishes[0].id { return "unknown finish" }
