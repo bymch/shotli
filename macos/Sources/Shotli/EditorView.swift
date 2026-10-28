@@ -68,6 +68,7 @@ struct EditorView: View {
     @State private var adjustingLight = false
     @State private var showTemplates = false
     @State private var showDevices = false
+    @State private var editorSize = CGSize(width: 1100, height: 720)
     @State private var backgroundShelf: BackgroundShelf?
     @State private var gradientPopover: String?
     @State private var expandedShelves: Set<String> = []
@@ -149,13 +150,18 @@ struct EditorView: View {
             }
         }
         .background(ShotliWorkspaceWash().ignoresSafeArea())
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { editorSize = geo.size }
+                    .onChange(of: geo.size.width) { _ in editorSize = geo.size }
+                    .onChange(of: geo.size.height) { _ in editorSize = geo.size }
+            }
+        )
         .shotliAppearance()
         .overlay {
             if showTemplates {
                 TemplatesPanel(model: model, shot: shotImage) { showTemplates = false }
-            }
-            if showDevices {
-                DeviceBrowser(model: model, shot: model.picture?.image) { showDevices = false }
             }
             if let backgroundShelf {
                 backgroundBrowser(backgroundShelf)
@@ -1311,6 +1317,12 @@ struct EditorView: View {
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
     }
 
+    private var devicePanelSize: CGSize {
+        let width = min(640, max(500, editorSize.width - 360))
+        let height = min(640, max(420, editorSize.height - 180))
+        return CGSize(width: width, height: height)
+    }
+
     private var deviceSection: some View {
         let device = DeviceLibrary.device(model.style.deviceID)
         return VStack(alignment: .leading, spacing: 8) {
@@ -1332,7 +1344,7 @@ struct EditorView: View {
                             .lineLimit(1)
                     }
                     Spacer(minLength: 4)
-                    Image(systemName: "chevron.right")
+                    Image(systemName: showDevices ? "chevron.up" : "chevron.down")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)
                 }
@@ -1342,6 +1354,10 @@ struct EditorView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Open the device library")
+            .popover(isPresented: $showDevices, arrowEdge: .trailing) {
+                DeviceBrowser(model: model, shot: model.picture?.image) { showDevices = false }
+                    .frame(width: devicePanelSize.width, height: devicePanelSize.height)
+            }
             if device != nil {
                 Button(action: { model.clearDevice() }) {
                     Text("Remove device")
