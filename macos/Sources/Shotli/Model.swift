@@ -210,6 +210,10 @@ struct ShotliStyle: Equatable {
     var tiltY: CGFloat = 0
     var shiftX: CGFloat = 0
     var shiftY: CGFloat = 0
+    var deviceID: String? = nil
+    var deviceFinish: String? = nil
+    var deviceFit: DeviceFit = .fit
+    var deviceScale: CGFloat = 1
 }
 
 struct Brush: Equatable {
@@ -768,9 +772,14 @@ final class EditorModel: ObservableObject {
     }
 
     func applyPreset(_ preset: Preset) {
-        guard preset.style != style else { return }
+        var next = preset.style
+        next.deviceID = style.deviceID
+        next.deviceFinish = style.deviceFinish
+        next.deviceFit = style.deviceFit
+        next.deviceScale = style.deviceScale
+        guard next != style else { return }
         pushUndo()
-        style = preset.style
+        style = next
     }
 
     func applyLayout(_ preset: ShotLayoutPreset) {
@@ -887,9 +896,14 @@ final class EditorModel: ObservableObject {
     }
 
     func applyTemplate(_ template: ShotTemplate) {
-        guard template.style != style else { return }
+        var next = template.style
+        next.deviceID = style.deviceID
+        next.deviceFinish = style.deviceFinish
+        next.deviceFit = style.deviceFit
+        next.deviceScale = style.deviceScale
+        guard next != style else { return }
         pushUndo()
-        style = template.style
+        style = next
     }
 
     func setTilt(x: CGFloat, y: CGFloat) {
@@ -1014,6 +1028,72 @@ final class EditorModel: ObservableObject {
         edit {
             var next = style
             next.frame = frame
+            style = next
+        }
+    }
+
+    func setDevice(_ id: String, finish: String?) {
+        guard let device = DeviceLibrary.device(id) else { return }
+        let chosen = device.finishes.contains(where: { $0.id == finish }) ? finish : device.finishes.first?.id
+        edit {
+            var next = style
+            next.deviceID = id
+            next.deviceFinish = chosen
+            next.frame = .none
+            next.hideMockup = false
+            style = next
+        }
+    }
+
+    func clearDevice() {
+        guard style.deviceID != nil else { return }
+        edit {
+            var next = style
+            next.deviceID = nil
+            next.deviceFinish = nil
+            style = next
+        }
+    }
+
+    func setDeviceFit(_ fit: DeviceFit) {
+        guard style.deviceFit != fit else { return }
+        edit {
+            var next = style
+            next.deviceFit = fit
+            style = next
+        }
+    }
+
+    func setDeviceScale(_ value: CGFloat) {
+        beginGesture()
+        var next = style
+        next.deviceScale = min(1, max(0.45, value))
+        style = next
+    }
+
+    func applyDeviceArrangement(_ id: String) {
+        edit {
+            var next = style
+            switch id {
+            case "floating":
+                next.padding = 120
+                next.deviceScale = 0.84
+                next.tiltX = 0
+                next.tiltY = 0
+                next.shadow = 58
+            case "tilted":
+                next.padding = 100
+                next.deviceScale = 0.9
+                next.tiltX = 10
+                next.tiltY = -14
+                next.shadow = 42
+            default:
+                next.padding = 72
+                next.deviceScale = 1
+                next.tiltX = 0
+                next.tiltY = 0
+                next.shadow = 36
+            }
             style = next
         }
     }

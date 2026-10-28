@@ -6,8 +6,18 @@ struct Composition {
     var size: CGSize
 }
 
-func composition(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle) -> Composition {
+func composition(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle, layerCount: Int = 1) -> Composition {
     let cropRect = activeCrop(picture: picture, crop: crop)
+    if layerCount < 2, let device = DeviceLibrary.active(style), let cropRect {
+        let frame = DeviceLibrary.frameLayout(
+            device: device,
+            shot: CGSize(width: cropRect.width, height: cropRect.height),
+            padding: stagePad(style, span: max(cropRect.width, cropRect.height)),
+            scale: style.deviceScale,
+            fit: style.deviceFit
+        )
+        return Composition(image: frame.image, window: frame.body, size: frame.canvas)
+    }
     let width = cropRect?.width ?? 0
     let height = cropRect?.height ?? 0
     let pad = stagePad(style, span: max(width, height))

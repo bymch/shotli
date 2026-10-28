@@ -127,7 +127,7 @@ final class EditorCanvas: NSView {
 
     private func pictureFrame() -> CGRect? {
         guard model?.picture != nil else { return nil }
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
         let place = placement(for: layout.size)
         return CGRect(x: place.origin.x, y: place.origin.y, width: layout.size.width * place.scale, height: layout.size.height * place.scale)
     }
@@ -167,7 +167,7 @@ final class EditorCanvas: NSView {
             selectedID: model.selectedID,
             selectedLayerID: model.selectedLayerID
         ) else { return }
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
         let place = placement(for: layout.size)
         let pixel = CGSize(width: CGFloat(image.width), height: CGFloat(image.height))
         let aspect = pixel.width / max(pixel.height, 1)
@@ -218,7 +218,7 @@ final class EditorCanvas: NSView {
             return
         }
         let shift = event.modifierFlags.contains(.shift)
-        let slop = 8 / max(placement(for: composition(picture: model.picture, crop: model.crop, style: model.style).size).scale, 0.05)
+        let slop = 8 / max(placement(for: composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count).size).scale, 0.05)
         switch model.tool {
         case .select:
             if let selected = model.selected, let handle = hitHandle(selected, imagePoint, slop: slop) {
@@ -295,12 +295,12 @@ final class EditorCanvas: NSView {
             }
         case .moveLayer(let id, let originX, let originY, let start):
             guard let point = compositionPoint(from: viewPoint) else { return }
-            let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+            let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
             let box = layerContentBox(canvas: layout.size, style: model.style, picture: model.picture)
             model.moveLayer(id: id, x: originX + (point.x - start.x) / box.width, y: originY + (point.y - start.y) / box.height)
         case .resizeLayer(let id, let originW, let originH, let start):
             guard let point = compositionPoint(from: viewPoint) else { return }
-            let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+            let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
             let box = layerContentBox(canvas: layout.size, style: model.style, picture: model.picture)
             let pixels = model.pixelSize(for: id)
             let aspect = pixels.width / max(pixels.height, 1)
@@ -422,7 +422,7 @@ final class EditorCanvas: NSView {
 
     func actualSize() {
         guard model.picture != nil else { return }
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
         let fit = fitScale(layout.size)
         zoom = clampZoom(fit > 0 ? 1 / fit : 1)
         pan = .zero
@@ -538,7 +538,7 @@ final class EditorCanvas: NSView {
 
     private func currentScale() -> CGFloat {
         guard model?.picture != nil else { return 1 }
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
         return fitScale(layout.size) * zoom
     }
 
@@ -548,7 +548,7 @@ final class EditorCanvas: NSView {
 
     private func settle() {
         guard model?.picture != nil else { return }
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
         guard layout.size.width > 1, layout.size.height > 1 else { return }
         let box = stageBox()
         let scale = fitScale(layout.size) * zoom
@@ -560,7 +560,7 @@ final class EditorCanvas: NSView {
 
     private func zoomAt(_ factor: CGFloat, anchor: CGPoint) {
         guard model?.picture != nil, factor > 0, factor.isFinite else { return }
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
         let old = max(currentScale(), 0.05)
         let fit = max(fitScale(layout.size), 0.02)
         let nextZoom = clampZoom(zoom * factor)
@@ -615,37 +615,48 @@ final class EditorCanvas: NSView {
 
     private func compositionPoint(from viewPoint: CGPoint) -> CGPoint? {
         guard model.picture != nil else { return nil }
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
         let place = placement(for: layout.size)
         guard place.scale > 0 else { return nil }
         return CGPoint(x: (viewPoint.x - place.origin.x) / place.scale, y: (viewPoint.y - place.origin.y) / place.scale)
     }
 
     private func hitLayer(_ point: CGPoint) -> LayerHit? {
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
         let slots = layerSlots(layers: model.layers, canvas: layout.size, style: model.style, picture: model.picture, crop: model.crop)
         let place = placement(for: layout.size)
         let handle = 14 / max(place.scale, 0.05)
         for layer in model.layers.sorted(by: { $0.order > $1.order }) {
             guard let slot = slots.first(where: { $0.id == layer.id }) else { continue }
-            let knob = CGRect(x: slot.fitted.maxX - handle, y: slot.fitted.maxY - handle, width: handle * 1.6, height: handle * 1.6)
+            let visual = layerVisual(slot)
+            let knob = CGRect(x: visual.maxX - handle, y: visual.maxY - handle, width: handle * 1.6, height: handle * 1.6)
             let hit = LayerHit(id: layer.id, handle: false, x: layer.x, y: layer.y, width: layer.width, height: layer.height)
             if layer.id == model.selectedLayerID, knob.contains(point) {
                 return LayerHit(id: layer.id, handle: true, x: layer.x, y: layer.y, width: layer.width, height: layer.height)
             }
-            if slot.fitted.contains(point) { return hit }
+            if visual.contains(point) { return hit }
         }
         return nil
     }
 
     private func imagePoint(from viewPoint: CGPoint) -> CGPoint? {
         guard model.picture != nil else { return nil }
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
         let place = placement(for: layout.size)
         guard place.scale > 0 else { return nil }
         let comp = CGPoint(x: (viewPoint.x - place.origin.x) / place.scale, y: (viewPoint.y - place.origin.y) / place.scale)
         let crop = activeCrop(picture: model.picture, crop: model.crop) ?? .zero
-        return CGPoint(x: comp.x - layout.image.minX + crop.minX, y: comp.y - layout.image.minY + crop.minY)
+        let image = layout.image
+        guard image.width > 0, image.height > 0 else { return nil }
+        return CGPoint(
+            x: (comp.x - image.minX) / image.width * crop.width + crop.minX,
+            y: (comp.y - image.minY) / image.height * crop.height + crop.minY
+        )
+    }
+
+    private func layerVisual(_ slot: LayerSlot) -> CGRect {
+        guard let device = DeviceLibrary.active(model.style) else { return slot.fitted }
+        return DeviceLibrary.body(in: slot.slot, device: device)
     }
 }
 

@@ -67,6 +67,7 @@ struct EditorView: View {
     @State private var showMotion = false
     @State private var adjustingLight = false
     @State private var showTemplates = false
+    @State private var showDevices = false
     @State private var backgroundShelf: BackgroundShelf?
     @State private var gradientPopover: String?
     @State private var expandedShelves: Set<String> = []
@@ -153,6 +154,9 @@ struct EditorView: View {
             if showTemplates {
                 TemplatesPanel(model: model, shot: shotImage) { showTemplates = false }
             }
+            if showDevices {
+                DeviceBrowser(model: model, shot: model.picture?.image) { showDevices = false }
+            }
             if let backgroundShelf {
                 backgroundBrowser(backgroundShelf)
             }
@@ -166,6 +170,7 @@ struct EditorView: View {
             refreshMagic()
             if model.picture == nil {
                 showTemplates = false
+                showDevices = false
                 showMotion = false
                 backgroundShelf = nil
                 gradientPopover = nil
@@ -431,6 +436,9 @@ struct EditorView: View {
             }
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 16) {
+                    if model.style.frame == .none {
+                        deviceSection
+                    }
                     screenshotRow
                     if model.picture != nil {
                         addScreenshotButton
@@ -510,6 +518,19 @@ struct EditorView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, railInset)
                     .padding(.top, 4)
+            }
+            if DeviceLibrary.active(model.style) != nil, model.screenshotCount >= 2 {
+                Text("Each picture sits in the selected device.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, railInset)
+                    .padding(.top, 4)
+            }
+            if let device = DeviceLibrary.active(model.style) {
+                deviceInspector(device)
+                    .padding(.horizontal, railInset)
+                    .padding(.top, 12)
             }
             if model.screenshotCount >= 2 {
                 layerStrip
@@ -1288,6 +1309,122 @@ struct EditorView: View {
         .padding(.trailing, 8)
         .padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+    }
+
+    private var deviceSection: some View {
+        let device = DeviceLibrary.device(model.style.deviceID)
+        return VStack(alignment: .leading, spacing: 8) {
+            caption("Device")
+            Button(action: { showDevices = true }) {
+                HStack(spacing: 8) {
+                    Image(systemName: device?.category.symbol ?? "square.grid.2x2")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(ink)
+                        .frame(width: 22)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(device?.name ?? "Choose a device")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(ink)
+                            .lineLimit(1)
+                        Text(device?.resolution ?? "Phone, tablet, laptop, desktop, watch")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open the device library")
+            if device != nil {
+                Button(action: { model.clearDevice() }) {
+                    Text("Remove device")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove the device")
+            }
+        }
+    }
+
+    private func deviceInspector(_ device: DeviceSpec) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("This device")
+            Text(device.name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(ink)
+                .lineLimit(1)
+            Picker("Fit", selection: Binding(get: { model.style.deviceFit }, set: { model.setDeviceFit($0) })) {
+                Text("Fit").tag(DeviceFit.fit)
+                Text("Fill").tag(DeviceFit.fill)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel("Screenshot fit")
+            HStack {
+                Text("Scale")
+                    .font(.system(size: 12))
+                    .foregroundColor(ink)
+                Spacer()
+                Text("\(Int((model.style.deviceScale * 100).rounded()))%")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
+            }
+            Slider(
+                value: Binding(get: { model.style.deviceScale }, set: { model.setDeviceScale($0) }),
+                in: CGFloat(0.45)...CGFloat(1),
+                onEditingChanged: { editing in
+                    if !editing { model.endGesture() }
+                }
+            )
+            .accessibilityLabel("Device scale")
+            if model.screenshotCount < 2 {
+                HStack(spacing: 6) {
+                    deviceLayoutButton("Centred", id: "centred")
+                    deviceLayoutButton("Floating", id: "floating")
+                    deviceLayoutButton("Tilted", id: "tilted")
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(device.finishes) { finish in
+                        let selected = model.style.deviceFinish == finish.id
+                        Button(action: { model.setDevice(device.id, finish: finish.id) }) {
+                            Circle()
+                                .fill(Color(nsColor: NSColor(hex: finish.body) ?? .gray))
+                                .frame(width: 14, height: 14)
+                                .padding(3)
+                                .overlay(Circle().stroke(selected ? accent : Color.primary.opacity(0.18), lineWidth: selected ? 2 : 1))
+                        }
+                        .buttonStyle(.plain)
+                        .help(finish.name)
+                        .accessibilityLabel("\(finish.name) finish")
+                    }
+                }
+            }
+        }
+    }
+
+    private func deviceLayoutButton(_ title: String, id: String) -> some View {
+        Button(action: { model.applyDeviceArrangement(id) }) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(ink)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .frame(height: 26)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     private func caption(_ title: String) -> some View {

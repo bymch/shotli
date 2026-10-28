@@ -15,6 +15,12 @@ func renderComposition(
     omitBackground: Bool = false
 ) -> CGImage? {
     guard let picture else { return nil }
+    if DeviceLibrary.active(style) != nil {
+        return renderDeviceScene(
+            picture: picture, crop: crop, style: style, annotations: annotations, draft: draft,
+            interactive: interactive, cropDraft: cropDraft, selectedID: selectedID, omitBackground: omitBackground
+        )
+    }
     let layout = composition(picture: picture, crop: crop, style: style)
     let tilted = !style.hideMockup && (abs(style.tiltX) > 0.4 || abs(style.tiltY) > 0.4)
     if tilted, let context = bitmapContext(layout.size) {
@@ -72,6 +78,21 @@ func renderShot(
             omitBackground: omitBackground
         )
     }
+    if DeviceLibrary.active(style) != nil {
+        return renderLayeredDevices(
+            picture: picture,
+            layers: layers,
+            crop: crop,
+            style: style,
+            annotations: annotations,
+            draft: draft,
+            interactive: interactive,
+            cropDraft: cropDraft,
+            selectedID: selectedID,
+            selectedLayerID: selectedLayerID,
+            omitBackground: omitBackground
+        )
+    }
     return renderLayered(
         picture: picture,
         layers: layers,
@@ -85,6 +106,109 @@ func renderShot(
         selectedLayerID: selectedLayerID,
         omitBackground: omitBackground
     )
+}
+
+private func renderDeviceScene(
+    picture: LoadedPicture,
+    crop: CGRect?,
+    style: ShotliStyle,
+    annotations: [Annotation],
+    draft: Annotation?,
+    interactive: Bool,
+    cropDraft: CGRect?,
+    selectedID: String?,
+    omitBackground: Bool
+) -> CGImage? {
+    guard let device = DeviceLibrary.active(style) else { return nil }
+    let layout = composition(picture: picture, crop: crop, style: style)
+    guard let context = bitmapContext(layout.size) else { return nil }
+    let painter = Painter(context: context, height: layout.size.height)
+    if !omitBackground {
+        painter.drawBackground(style.background, layout.size)
+    }
+    var bare = style
+    bare.deviceID = nil
+    bare.hideMockup = true
+    bare.tiltX = 0
+    bare.tiltY = 0
+    bare.padding = 0
+    bare.shadow = 0
+    bare.canvas = .auto
+    bare.canvasWidth = 0
+    bare.canvasHeight = 0
+    let shot = renderComposition(
+        picture: picture, crop: crop, style: bare, annotations: annotations, draft: draft,
+        interactive: interactive, cropDraft: cropDraft, selectedID: selectedID, omitBackground: true
+    )
+    let cropRect = activeCrop(picture: picture, crop: crop) ?? .zero
+    let tilted = abs(style.tiltX) > 0.4 || abs(style.tiltY) > 0.4
+    if tilted {
+        let margin = max(48, style.shadow)
+        let cardSize = CGSize(width: layout.window.width + margin * 2, height: layout.window.height + margin * 2)
+        if let card = bitmapContext(cardSize) {
+            let localBody = CGRect(x: margin, y: margin, width: layout.window.width, height: layout.window.height)
+            let local = DeviceLibrary.screenPlacement(device: device, body: localBody, shot: CGSize(width: cropRect.width, height: cropRect.height), fit: style.deviceFit)
+            drawDevice(device, finish: device.finish(style.deviceFinish), body: localBody, screen: local.screen, image: local.image, shot: shot, shadow: style.shadow, in: card, canvasHeight: cardSize.height)
+            if let image = card.makeImage() {
+                let warped = warpCard(image, tiltX: style.tiltX, tiltY: style.tiltY)
+                let dest = CGRect(x: layout.window.minX - margin, y: layout.window.minY - margin, width: CGFloat(warped.width), height: CGFloat(warped.height))
+                context.draw(warped, in: painter.cg(dest))
+            }
+        }
+    } else {
+        let placed = DeviceLibrary.screenPlacement(device: device, body: layout.window, shot: CGSize(width: cropRect.width, height: cropRect.height), fit: style.deviceFit)
+        drawDevice(device, finish: device.finish(style.deviceFinish), body: layout.window, screen: placed.screen, image: placed.image, shot: shot, shadow: style.shadow, in: context, canvasHeight: layout.size.height)
+    }
+    return context.makeImage()
+}
+
+private func renderLayeredDevices(
+    picture: LoadedPicture?,
+    layers: [ShotLayer],
+    crop: CGRect?,
+    style: ShotliStyle,
+    annotations: [Annotation],
+    draft: Annotation?,
+    interactive: Bool,
+    cropDraft: CGRect?,
+    selectedID: String?,
+    selectedLayerID: String?,
+    omitBackground: Bool
+) -> CGImage? {
+    guard let device = DeviceLibrary.active(style), let primary = layers.first else { return nil }
+    let base = picture ?? LoadedPicture(image: primary.image, name: primary.name, scaled: false)
+    let layout = composition(picture: base, crop: crop, style: style, layerCount: layers.count)
+    guard let context = bitmapContext(layout.size) else { return nil }
+    let painter = Painter(context: context, height: layout.size.height)
+    if !omitBackground {
+        painter.drawBackground(style.background, layout.size)
+    }
+    let ordered = layers.sorted { $0.order < $1.order }
+    let slots = layerSlots(layers: layers, canvas: layout.size, style: style, picture: base, crop: crop)
+    let marks = draft == nil ? annotations : annotations + [draft!]
+    for layer in ordered {
+        guard let slot = slots.first(where: { $0.id == layer.id }) else { continue }
+        let isPrimary = layer.id == primary.id
+        let cropRect = isPrimary
+            ? (activeCrop(picture: base, crop: crop) ?? CGRect(x: 0, y: 0, width: base.width, height: base.height))
+            : CGRect(x: 0, y: 0, width: CGFloat(layer.image.width), height: CGFloat(layer.image.height))
+        let bake = isPrimary && (!marks.isEmpty || abs(style.light) > 0.01 || (interactive && (cropDraft != nil || selectedID != nil)))
+        let source = bake
+            ? (annotatedLayer(layer.image, crop: cropRect, marks: marks, light: style.light, interactive: interactive, cropDraft: cropDraft, selectedID: selectedID, draftID: draft?.id) ?? croppedImage(layer.image, crop: cropRect))
+            : layer.image
+        let framed = bake ? source : croppedImage(source, crop: cropRect)
+        let shotSize = CGSize(width: CGFloat(framed.width), height: CGFloat(framed.height))
+        let body = DeviceLibrary.body(in: slot.slot, device: device)
+        let placed = DeviceLibrary.screenPlacement(device: device, body: body, shot: shotSize, fit: style.deviceFit)
+        drawDevice(device, finish: device.finish(style.deviceFinish), body: body, screen: placed.screen, image: placed.image, shot: framed, shadow: max(style.shadow, layer.shadow), in: context, canvasHeight: layout.size.height)
+    }
+    if interactive, let selectedLayerID, let slot = slots.first(where: { $0.id == selectedLayerID }) {
+        let body = DeviceLibrary.body(in: slot.slot, device: device)
+        context.setStrokeColor(NSColor(srgbRed: 18.0 / 255.0, green: 120.0 / 255.0, blue: 180.0 / 255.0, alpha: 1).cgColor)
+        context.setLineWidth(2)
+        painter.strokeRound(body.insetBy(dx: 1, dy: 1), radius: 16)
+    }
+    return context.makeImage()
 }
 
 private func renderLayered(
@@ -102,7 +226,7 @@ private func renderLayered(
 ) -> CGImage? {
     guard let primary = layers.first else { return nil }
     let base = picture ?? LoadedPicture(image: primary.image, name: primary.name, scaled: false)
-    let layout = composition(picture: base, crop: crop, style: style)
+    let layout = composition(picture: base, crop: crop, style: style, layerCount: layers.count)
     guard let context = bitmapContext(layout.size) else { return nil }
     let painter = Painter(context: context, height: layout.size.height)
     if !omitBackground {
@@ -144,6 +268,16 @@ private func renderLayered(
         painter.strokeRound(handle, radius: 3)
     }
     return context.makeImage()
+}
+
+private func croppedImage(_ image: CGImage, crop: CGRect) -> CGImage {
+    let bounds = CGRect(x: 0, y: 0, width: CGFloat(image.width), height: CGFloat(image.height))
+    let rect = crop.intersection(bounds)
+    if rect.width < 1 || rect.height < 1 { return image }
+    if abs(rect.minX) < 0.5, abs(rect.minY) < 0.5, abs(rect.width - bounds.width) < 0.5, abs(rect.height - bounds.height) < 0.5 {
+        return image
+    }
+    return image.cropping(to: rect) ?? image
 }
 
 private func annotatedLayer(
