@@ -96,7 +96,7 @@ final class ShotliSettings: ObservableObject {
     }
 
     static var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.59"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.60"
     }
 
     private init() {

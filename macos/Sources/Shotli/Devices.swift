@@ -353,8 +353,11 @@ func drawDevice(
         context.setShadow(offset: CGSize(width: 0, height: -max(8, shadow * 0.28)), blur: max(12, shadow * 0.55), color: NSColor.black.withAlphaComponent(0.28).cgColor)
     }
     switch device.shell {
-    case .handset, .slate:
-        fillRound(body, radius: body.width * (device.shell == .slate ? 0.08 : 0.14), color: bodyColor, context: context, height: canvasHeight)
+    case .handset:
+        drawPhoneButtons(body: body, metal: bodyColor, context: context, height: canvasHeight)
+        drawHandsetChassis(body: body, metal: bodyColor, context: context, height: canvasHeight)
+    case .slate:
+        fillRound(body, radius: body.width * 0.08, color: bodyColor, context: context, height: canvasHeight)
     case .laptop:
         let deck = CGRect(x: body.minX, y: body.maxY - body.height * 0.34, width: body.width, height: body.height * 0.34)
         let lid = CGRect(x: body.minX + body.width * 0.04, y: body.minY, width: body.width * 0.92, height: body.height * 0.70)
@@ -392,16 +395,24 @@ func drawDevice(
     }
     context.restoreGState()
 
-    context.saveGState()
-    context.setStrokeColor(bezel.withAlphaComponent(0.9).cgColor)
-    context.setLineWidth(max(2, screen.width * 0.012))
-    let lip = screen.insetBy(dx: 1, dy: 1)
-    context.addPath(roundPath(lip, radius: screenRadius(device, screen: lip), height: canvasHeight))
-    context.strokePath()
-    context.restoreGState()
+    if device.shell == .handset {
+        drawScreenGlass(screen, context: context, height: canvasHeight)
+    } else {
+        context.saveGState()
+        context.setStrokeColor(bezel.withAlphaComponent(0.9).cgColor)
+        context.setLineWidth(max(2, screen.width * 0.012))
+        let lip = screen.insetBy(dx: 1, dy: 1)
+        context.addPath(roundPath(lip, radius: screenRadius(device, screen: lip), height: canvasHeight))
+        context.strokePath()
+        context.restoreGState()
+    }
 
     drawCutout(device, screen: screen, color: bezel, accent: accent, context: context, height: canvasHeight)
-    drawHardware(device, body: body, color: accent, context: context, height: canvasHeight)
+    if device.shell == .handset {
+        drawAntennaGaps(body: body, metal: bodyColor, context: context, height: canvasHeight)
+    } else {
+        drawHardware(device, body: body, color: accent, context: context, height: canvasHeight)
+    }
 }
 
 private func drawCutout(_ device: DeviceSpec, screen: CGRect, color: NSColor, accent: NSColor, context: CGContext, height: CGFloat) {
@@ -409,14 +420,26 @@ private func drawCutout(_ device: DeviceSpec, screen: CGRect, color: NSColor, ac
     case .none:
         return
     case .island:
-        let pill = CGRect(x: screen.midX - screen.width * 0.16, y: screen.minY + screen.height * 0.028, width: screen.width * 0.32, height: screen.height * 0.045)
-        fillRound(pill, radius: pill.height / 2, color: color, context: context, height: height)
-        let lens = CGRect(x: pill.maxX - pill.height * 0.85, y: pill.midY - pill.height * 0.28, width: pill.height * 0.5, height: pill.height * 0.5)
-        context.setFillColor(accent.cgColor)
-        context.fillEllipse(in: flip(lens, height: height))
+        let pill = islandRect(screen)
+        fillRound(pill, radius: pill.height / 2, color: NSColor(srgbRed: 0.02, green: 0.02, blue: 0.025, alpha: 1), context: context, height: height)
+        let lens = pill.height * 0.62
+        let glass = CGRect(x: pill.maxX - pill.height * 0.82, y: pill.midY - lens / 2, width: lens, height: lens)
+        context.setFillColor(NSColor(srgbRed: 0.05, green: 0.1, blue: 0.16, alpha: 1).cgColor)
+        context.fillEllipse(in: flip(glass, height: height))
+        context.setStrokeColor(accent.withAlphaComponent(0.85).cgColor)
+        context.setLineWidth(max(0.6, glass.width * 0.08))
+        context.strokeEllipse(in: flip(glass.insetBy(dx: 0.3, dy: 0.3), height: height))
+        let spec = CGRect(x: glass.minX + glass.width * 0.18, y: glass.minY + glass.height * 0.16, width: glass.width * 0.34, height: glass.height * 0.34)
+        context.setFillColor(NSColor.white.withAlphaComponent(0.72).cgColor)
+        context.fillEllipse(in: flip(spec, height: height))
+        let sensor = CGRect(x: glass.minX - pill.height * 0.42, y: pill.midY - pill.height * 0.12, width: pill.height * 0.22, height: pill.height * 0.22)
+        context.setFillColor(NSColor(srgbRed: 0.1, green: 0.1, blue: 0.12, alpha: 1).cgColor)
+        context.fillEllipse(in: flip(sensor, height: height))
     case .notch:
-        let bite = CGRect(x: screen.midX - screen.width * 0.22, y: screen.minY - 2, width: screen.width * 0.44, height: screen.height * 0.07)
-        fillRound(bite, radius: 10, color: color, context: context, height: height)
+        let bite = notchRect(screen)
+        fillRound(bite, radius: bite.height * 0.45, color: NSColor(srgbRed: 0.02, green: 0.02, blue: 0.025, alpha: 1), context: context, height: height)
+        let slot = CGRect(x: bite.midX - bite.width * 0.12, y: bite.midY - bite.height * 0.08, width: bite.width * 0.24, height: max(2, bite.height * 0.14))
+        fillRound(slot, radius: slot.height / 2, color: NSColor(white: 0.25, alpha: 1), context: context, height: height)
     case .hole:
         let dot = CGRect(x: screen.midX - screen.width * 0.015, y: screen.minY + screen.height * 0.03, width: screen.width * 0.03, height: screen.width * 0.03)
         context.setFillColor(color.cgColor)
@@ -428,8 +451,7 @@ private func drawHardware(_ device: DeviceSpec, body: CGRect, color: NSColor, co
     context.setFillColor(color.cgColor)
     switch device.shell {
     case .handset:
-        let button = CGRect(x: body.maxX - 2, y: body.minY + body.height * 0.28, width: 3, height: body.height * 0.1)
-        fillRound(button, radius: 1.5, color: color, context: context, height: height)
+        break
     case .slate:
         let button = CGRect(x: body.maxX - 2, y: body.minY + body.height * 0.2, width: 3, height: body.height * 0.06)
         fillRound(button, radius: 1.5, color: color, context: context, height: height)
@@ -456,11 +478,11 @@ private func screenClip(_ device: DeviceSpec, screen: CGRect, height: CGFloat) -
     case .none:
         break
     case .island:
-        let pill = CGRect(x: screen.midX - screen.width * 0.16, y: screen.minY + screen.height * 0.028, width: screen.width * 0.32, height: max(4, screen.height * 0.045))
+        let pill = islandRect(screen)
         path.addPath(roundPath(pill, radius: pill.height / 2, height: height))
     case .notch:
-        let bite = CGRect(x: screen.midX - screen.width * 0.22, y: screen.minY - 2, width: screen.width * 0.44, height: screen.height * 0.07)
-        path.addPath(roundPath(bite, radius: 10, height: height))
+        let bite = notchRect(screen)
+        path.addPath(roundPath(bite, radius: bite.height * 0.45, height: height))
     case .hole:
         let dot = CGRect(x: screen.midX - screen.width * 0.015, y: screen.minY + screen.height * 0.03, width: screen.width * 0.03, height: screen.width * 0.03)
         path.addEllipse(in: flip(dot, height: height))
@@ -470,6 +492,99 @@ private func screenClip(_ device: DeviceSpec, screen: CGRect, height: CGFloat) -
 
 private func screenRadius(_ device: DeviceSpec, screen: CGRect) -> CGFloat {
     device.screenRadius * min(screen.width, screen.height)
+}
+
+private func drawHandsetChassis(body: CGRect, metal: NSColor, context: CGContext, height: CGFloat) {
+    let radius = body.width * 0.16
+    let light = shade(metal, 0.07)
+    let dark = shade(metal, -0.05)
+    fillRoundGradient(body, radius: radius, colors: [light, metal, dark], context: context, height: height)
+    context.saveGState()
+    context.setStrokeColor(shade(metal, 0.22).withAlphaComponent(0.9).cgColor)
+    context.setLineWidth(max(1, body.width * 0.01))
+    context.addPath(roundPath(body.insetBy(dx: body.width * 0.008, dy: body.width * 0.008), radius: radius * 0.94, height: height))
+    context.strokePath()
+    context.setStrokeColor(NSColor.black.withAlphaComponent(0.28).cgColor)
+    context.setLineWidth(max(1, body.width * 0.008))
+    context.addPath(roundPath(body.insetBy(dx: 0.8, dy: 0.8), radius: radius, height: height))
+    context.strokePath()
+    context.restoreGState()
+    let lipInset = body.width * 0.014
+    let lip = body.insetBy(dx: lipInset, dy: lipInset)
+    fillRound(lip, radius: max(4, radius - lipInset), color: NSColor(srgbRed: 0.015, green: 0.015, blue: 0.02, alpha: 1), context: context, height: height)
+}
+
+private func drawPhoneButtons(body: CGRect, metal: NSColor, context: CGContext, height: CGFloat) {
+    let reach = max(2, body.width * 0.018)
+    let left = body.minX - reach * 0.72
+    let right = body.maxX - reach * 0.28
+    let buttons = [
+        CGRect(x: left, y: body.minY + body.height * 0.15, width: reach, height: body.height * 0.045),
+        CGRect(x: left, y: body.minY + body.height * 0.22, width: reach, height: body.height * 0.07),
+        CGRect(x: left, y: body.minY + body.height * 0.305, width: reach, height: body.height * 0.07),
+        CGRect(x: right, y: body.minY + body.height * 0.24, width: reach, height: body.height * 0.11),
+    ]
+    for button in buttons {
+        fillRoundGradient(button, radius: button.width / 2, colors: [shade(metal, 0.12), metal, shade(metal, -0.12)], context: context, height: height)
+    }
+}
+
+private func drawAntennaGaps(body: CGRect, metal: NSColor, context: CGContext, height: CGFloat) {
+    let ink = shade(metal, -0.28)
+    let thickness = max(1.5, body.height * 0.008)
+    let depth = body.width * 0.016
+    let marks: [(CGFloat, Bool)] = [(0.1, true), (0.74, true), (0.18, false), (0.68, false)]
+    for mark in marks {
+        let x = mark.1 ? body.minX : body.maxX - depth
+        let rect = CGRect(x: x, y: body.minY + body.height * mark.0, width: depth, height: thickness)
+        fillRound(rect, radius: thickness / 2, color: ink, context: context, height: height)
+    }
+}
+
+private func drawScreenGlass(_ screen: CGRect, context: CGContext, height: CGFloat) {
+    context.saveGState()
+    context.addPath(roundPath(screen, radius: screen.width * 0.12, height: height))
+    context.clip()
+    let band = CGRect(x: screen.minX, y: screen.minY, width: screen.width, height: screen.height * 0.22)
+    let flipped = flip(band, height: height)
+    let colors = [NSColor.white.withAlphaComponent(0.16).cgColor, NSColor.white.withAlphaComponent(0).cgColor] as CFArray
+    if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: nil) {
+        context.drawLinearGradient(gradient, start: CGPoint(x: flipped.midX, y: flipped.maxY), end: CGPoint(x: flipped.midX, y: flipped.minY), options: [])
+    }
+    context.restoreGState()
+}
+
+private func islandRect(_ screen: CGRect) -> CGRect {
+    let width = screen.width * 0.28
+    let pill = max(6, screen.width * 0.074)
+    return CGRect(x: screen.midX - width / 2, y: screen.minY + screen.height * 0.016, width: width, height: pill)
+}
+
+private func notchRect(_ screen: CGRect) -> CGRect {
+    CGRect(x: screen.midX - screen.width * 0.18, y: screen.minY - screen.height * 0.01, width: screen.width * 0.36, height: max(8, screen.height * 0.052))
+}
+
+private func shade(_ color: NSColor, _ amount: CGFloat) -> NSColor {
+    guard let rgb = color.usingColorSpace(.sRGB) else { return color }
+    func channel(_ value: CGFloat) -> CGFloat { min(1, max(0, value + amount)) }
+    return NSColor(srgbRed: channel(rgb.redComponent), green: channel(rgb.greenComponent), blue: channel(rgb.blueComponent), alpha: rgb.alphaComponent)
+}
+
+private func fillRoundGradient(_ rect: CGRect, radius: CGFloat, colors: [NSColor], context: CGContext, height: CGFloat) {
+    context.saveGState()
+    context.addPath(roundPath(rect, radius: radius, height: height))
+    context.clip()
+    let flipped = flip(rect, height: height)
+    let cgColors = colors.map { $0.cgColor } as CFArray
+    if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: cgColors, locations: nil) {
+        context.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: flipped.minX, y: flipped.maxY),
+            end: CGPoint(x: flipped.maxX, y: flipped.minY),
+            options: []
+        )
+    }
+    context.restoreGState()
 }
 
 private func fillRound(_ rect: CGRect, radius: CGFloat, color: NSColor, context: CGContext, height: CGFloat) {
@@ -511,11 +626,11 @@ private func aspectFit(_ aspect: CGSize, in rect: CGRect) -> CGRect {
 private extension DeviceLibrary {
     static var phones: [DeviceSpec] {
         [
-            handset("pocket", "Pocket", "1170 × 2532", 0.462, CGRect(x: 0.055, y: 0.03, width: 0.89, height: 0.94), 0.16, .island, 4),
-            handset("pocket-air", "Pocket Air", "1206 × 2622", 0.448, CGRect(x: 0.032, y: 0.016, width: 0.936, height: 0.968), 0.18, .island, 4),
-            handset("pocket-pro", "Pocket Pro", "1206 × 2622", 0.46, CGRect(x: 0.04, y: 0.02, width: 0.92, height: 0.96), 0.15, .island, 4),
-            handset("pocket-pro-max", "Pocket Pro Max", "1320 × 2868", 0.45, CGRect(x: 0.036, y: 0.018, width: 0.928, height: 0.964), 0.14, .island, 4),
-            handset("compact", "Compact", "750 × 1334", 0.56, CGRect(x: 0.07, y: 0.1, width: 0.86, height: 0.8), 0.08, .notch, 3),
+            handset("pocket", "Pocket", "1170 × 2532", 0.462, CGRect(x: 0.032, y: 0.016, width: 0.936, height: 0.968), 0.135, .island, 4),
+            handset("pocket-air", "Pocket Air", "1206 × 2622", 0.448, CGRect(x: 0.026, y: 0.013, width: 0.948, height: 0.974), 0.145, .island, 4),
+            handset("pocket-pro", "Pocket Pro", "1206 × 2622", 0.46, CGRect(x: 0.03, y: 0.015, width: 0.94, height: 0.97), 0.13, .island, 4),
+            handset("pocket-pro-max", "Pocket Pro Max", "1320 × 2868", 0.45, CGRect(x: 0.028, y: 0.014, width: 0.944, height: 0.972), 0.125, .island, 4),
+            handset("compact", "Compact", "750 × 1334", 0.56, CGRect(x: 0.062, y: 0.09, width: 0.876, height: 0.82), 0.07, .notch, 3),
         ]
     }
 
@@ -605,10 +720,10 @@ private extension DeviceLibrary {
     }
 
     static let phonePalette: [DeviceFinish] = [
-        DeviceFinish(id: "silver", name: "Silver", body: "#E6E8EE", bezel: "#C5C9D1", accent: "#9AA1AB"),
-        DeviceFinish(id: "graphite", name: "Graphite", body: "#3A3E46", bezel: "#1A1C20", accent: "#6A707A"),
-        DeviceFinish(id: "blue", name: "Blue", body: "#C5D4E4", bezel: "#8FA4BA", accent: "#5E7894"),
-        DeviceFinish(id: "sand", name: "Sand", body: "#E7D7C4", bezel: "#C4B09A", accent: "#A68662"),
+        DeviceFinish(id: "silver", name: "Silver", body: "#F3F4F7", bezel: "#D5D8DE", accent: "#A8AEB8"),
+        DeviceFinish(id: "graphite", name: "Graphite", body: "#2C3038", bezel: "#101216", accent: "#5C636E"),
+        DeviceFinish(id: "blue", name: "Blue", body: "#D5E1EE", bezel: "#A9BDD2", accent: "#6E8AA6"),
+        DeviceFinish(id: "sand", name: "Sand", body: "#F0E2D0", bezel: "#D2BBA3", accent: "#B08A62"),
         DeviceFinish(id: "green", name: "Green", body: "#D5E2D4", bezel: "#9BB39A", accent: "#6E8B6C"),
     ]
 
