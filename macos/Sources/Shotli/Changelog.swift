@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.62", notes: [
+            "Phone, tablet, laptop, and watch frames are turned off. The screenshot stays on the card.",
+        ]),
         ChangelogEntry(version: "0.2.61", notes: [
             "The device picker floats beside the Mockup selector. Names and pixel sizes follow Apple's specs, checked 28 October 2026.",
         ]),
