@@ -105,8 +105,11 @@ enum DeviceLibrary {
         return all.first { $0.id == id }
     }
 
+    /// Device frames are off until the artwork is good enough to ship.
+    static let enabled = false
+
     static func active(_ style: ShotliStyle) -> DeviceSpec? {
-        guard style.frame == .none, !style.hideMockup else { return nil }
+        guard enabled, style.frame == .none, !style.hideMockup else { return nil }
         return device(style.deviceID)
     }
 
@@ -300,8 +303,12 @@ enum DeviceLibrary {
             picture: picture, crop: nil, style: style, annotations: [], draft: nil, interactive: false
         ) else { return "device export" }
         let layout = frameLayout(device: pocket, shot: CGSize(width: 90, height: 180), padding: 40, scale: 1, fit: .fit)
-        if rendered.width != Int(ceil(layout.canvas.width)) || rendered.height != Int(ceil(layout.canvas.height)) {
-            return "device canvas"
+        if enabled {
+            if rendered.width != Int(ceil(layout.canvas.width)) || rendered.height != Int(ceil(layout.canvas.height)) {
+                return "device canvas"
+            }
+        } else if active(style) != nil {
+            return "device frames are still on"
         }
         var browser = style
         browser.frame = .browser
