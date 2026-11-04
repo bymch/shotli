@@ -9,6 +9,13 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.63", notes: [
+            "Hide Sensitive Info finds emails, phone numbers, card numbers, and keys in the picture. Choose which ones to pixelate.",
+            "Copy Text puts the words in the picture on the clipboard, without anything cropped out or redacted.",
+            "My styles saves a look. Right-click one to open every new screenshot with it.",
+            "Apply Style and Export All work on every composition in a project.",
+            "Export has JPEG, WebP, and sizes for social posts and the App Store. Motion Studio exports a GIF.",
+        ]),
         ChangelogEntry(version: "0.2.62", notes: [
             "Phone, tablet, laptop, and watch frames are turned off. The screenshot stays on the card.",
         ]),

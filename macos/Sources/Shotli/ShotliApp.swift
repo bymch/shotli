@@ -61,7 +61,7 @@ struct ShotliCommands: Commands {
             Divider()
             Button("Open…") { model.openPanel() }
                 .keyboardShortcut("o", modifiers: .command)
-            Button("Export PNG") { model.exportPNG() }
+            Button("Export…") { model.exportImage() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(model.picture == nil)
             Button("Save to Project…") {
@@ -72,6 +72,12 @@ struct ShotliCommands: Commands {
                 .disabled(model.picture == nil)
             Button("Copy PNG") { model.copyPNG() }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(model.picture == nil)
+            Button("Copy Text") { model.copyText() }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .disabled(model.picture == nil)
+            Button("Hide Sensitive Info…") { model.showHideSensitive = true }
+                .keyboardShortcut("h", modifiers: [.command, .shift])
                 .disabled(model.picture == nil)
             Divider()
             Button("Use Sample Screenshot") { model.useSample() }
@@ -107,6 +113,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         super.init()
         if CommandLine.arguments.contains("--verify-projects") {
             let code = ProjectVerify.run()
+            fflush(stdout)
+            fflush(stderr)
+            exit(Int32(code))
+        }
+        if CommandLine.arguments.contains("--verify-tools") {
+            let code = ToolsVerify.run()
             fflush(stdout)
             fflush(stderr)
             exit(Int32(code))
@@ -150,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if NSApp.keyWindow?.firstResponder is NSTextView { return event }
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "e":
-                EditorModel.shared.exportPNG()
+                EditorModel.shared.exportImage()
                 return nil
             case "c":
                 if NSApp.keyWindow?.firstResponder is NSTextField { return event }

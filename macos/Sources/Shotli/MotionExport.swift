@@ -2,6 +2,8 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 enum MotionExportError: LocalizedError {
     case unreadable
@@ -17,7 +19,7 @@ enum MotionExportError: LocalizedError {
     }
 }
 
-/// Writes one video from `MotionCompose` frames. A later GIF export can call the same frame function.
+/// Writes one video or GIF from `MotionCompose` frames.
 enum MotionExport {
     static func write(
         picture: LoadedPicture,
@@ -55,6 +57,53 @@ enum MotionExport {
             try FileManager.default.removeItem(at: destination)
         }
         try FileManager.default.copyItem(at: finished, to: destination)
+    }
+
+    static func writeGIF(
+        picture: LoadedPicture,
+        crop: CGRect?,
+        style: ShotliStyle,
+        annotations: [Annotation],
+        settings: MotionSettings,
+        to destination: URL,
+        output: CGSize = CGSize(width: 800, height: 450),
+        progress: @escaping (Double) -> Void
+    ) throws {
+        // GIF stores delays in hundredths of a second, so 20 fps keeps the loop's length exact.
+        let fps = 20
+        let size = MotionCompose.evenSize(output)
+        guard let plate = MotionCompose.plate(picture: picture, crop: crop, style: style, annotations: annotations) else {
+            throw MotionExportError.unreadable
+        }
+        let frames = max(2, Int((settings.outputDuration * Double(fps)).rounded()))
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("shotli-motion-\(UUID().uuidString).gif")
+        defer { try? FileManager.default.removeItem(at: temp) }
+        guard let gif = CGImageDestinationCreateWithURL(temp as CFURL, UTType.gif.identifier as CFString, frames, nil) else {
+            throw MotionExportError.writer("Couldn't write the GIF.")
+        }
+        CGImageDestinationSetProperties(gif, [
+            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: settings.loops ? 0 : 1],
+        ] as CFDictionary)
+        let frameProperties = [
+            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFUnclampedDelayTime: 1.0 / Double(fps)],
+        ] as CFDictionary
+        var backdrop: CGImage?
+        for index in 0..<frames {
+            let pose = MotionTimeline.pose(settings: settings, time: Double(index) / Double(fps))
+            guard let rendered = MotionCompose.frame(plate: plate, background: style.background, pose: pose, output: size, backdrop: backdrop) else {
+                throw MotionExportError.unreadable
+            }
+            backdrop = rendered.backdrop
+            CGImageDestinationAddImage(gif, rendered.image, frameProperties)
+            progress(Double(index + 1) / Double(frames))
+        }
+        guard CGImageDestinationFinalize(gif) else {
+            throw MotionExportError.writer("Couldn't finish the GIF.")
+        }
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.copyItem(at: temp, to: destination)
     }
 
     private static func mix(video: URL, music: URL, to destination: URL) throws {

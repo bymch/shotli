@@ -15,6 +15,8 @@ final class AppUpdate {
     }
 
     func check(interactive: Bool) {
+        // From the menu bar the window may be closed, and the answer appears in it.
+        if interactive { ScreenCapture.shared.revealEditor() }
         guard !busy else { return }
         busy = true
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/bymch/shotli/releases/latest")!)
