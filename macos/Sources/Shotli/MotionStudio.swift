@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 final class MotionSession: ObservableObject {
     @Published var settings = MotionSettings()
@@ -138,6 +139,51 @@ final class MotionSession: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try MotionExport.write(
+                    picture: picture,
+                    crop: crop,
+                    style: style,
+                    annotations: annotations,
+                    settings: settings,
+                    to: url,
+                    progress: { value in
+                        DispatchQueue.main.async { self.progress = value }
+                    }
+                )
+                DispatchQueue.main.async {
+                    self.exporting = false
+                    self.progress = 1
+                    self.status = "Saved \(url.lastPathComponent)"
+                    model.notice = "Saved \(url.lastPathComponent)"
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.exporting = false
+                    self.status = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    func exportGIF(_ model: EditorModel) {
+        guard !exporting, let picture = model.picture else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.gif]
+        panel.nameFieldStringValue = "shotli-motion.gif"
+        panel.title = "Export GIF"
+        panel.directoryURL = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let crop = model.crop
+        let style = model.style
+        let annotations = model.annotations
+        let settings = self.settings
+        playing = false
+        player?.pause()
+        exporting = true
+        progress = 0
+        status = "Exporting…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try MotionExport.writeGIF(
                     picture: picture,
                     crop: crop,
                     style: style,
@@ -338,6 +384,18 @@ struct MotionStudio: View {
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
+            Button(action: { session.exportGIF(model) }) {
+                Text("GIF")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(ink)
+                    .padding(.horizontal, 12)
+                    .frame(height: ShotliGlass.controlHeight)
+                    .shotliCapsuleChip()
+            }
+            .buttonStyle(PressFadeButtonStyle())
+            .disabled(session.exporting || model.picture == nil)
+            .help("Export an 800px looping GIF, without music")
+            .accessibilityLabel("Export GIF")
             Button(action: { session.export(model) }) {
                 HStack(spacing: 6) {
                     Image(systemName: "film")

@@ -81,6 +81,9 @@ struct EditorView: View {
     private var ink: Color { ShotliGlass.ink(colorScheme) }
     private var line: Color { ShotliGlass.line(colorScheme) }
     @ObservedObject private var projectPrompt = ProjectPrompt.shared
+    @ObservedObject private var savedStyles = StyleStore.shared
+    @ObservedObject private var exportSettings = ExportSettings.shared
+    @State private var showExportOptions = false
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
@@ -119,22 +122,14 @@ struct EditorView: View {
                                 .allowsHitTesting(false)
                         )
                         if model.picture != nil {
-                        Button(action: { showMotion = true }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "move.3d")
-                                    .font(.system(size: 11, weight: .semibold))
-                                Text("Motion")
-                                    .font(.system(size: 13, weight: .medium))
-                            }
-                            .foregroundColor(ink)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .shotliGlass(.compact, radius: 18)
+                        HStack(spacing: 8) {
+                            stageChip("move.3d", "Motion", help: "Open Motion Studio") { showMotion = true }
+                            stageChip("text.viewfinder", "Copy Text", help: "Copy the words in this picture (⌘⇧T)") { model.copyText() }
+                            stageChip("eye.slash", "Hide Sensitive Info", help: "Find emails, numbers, and keys to hide (⌘⇧H)") { model.showHideSensitive = true }
+                                .popover(isPresented: $model.showHideSensitive, arrowEdge: .top) {
+                                    SensitivePopover(model: model)
+                                }
                         }
-                        .buttonStyle(PressFadeButtonStyle())
-                        .fixedSize(horizontal: true, vertical: true)
-                        .help("Open Motion Studio")
-                        .accessibilityLabel("Motion")
                         }
                     }
                     .frame(minWidth: 360, idealWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
@@ -241,7 +236,7 @@ struct EditorView: View {
                             .disabled(!model.canRedo)
                             .opacity(model.canRedo ? 1 : 0.35)
                     }
-                    barCapsule("Start Over", help: "Clear this screenshot", action: { model.startOver() })
+                    iconButton("xmark.circle", help: "Start Over") { model.startOver() }
                     toolDock
                 }
             }
@@ -325,6 +320,26 @@ struct EditorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func stageChip(_ symbol: String, _ title: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundColor(ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .shotliGlass(.compact, radius: 18)
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .fixedSize(horizontal: true, vertical: true)
+        .help(help)
+        .accessibilityLabel(title)
+    }
+
     private var saveProjectButton: some View {
         Button(action: {
             model.prepareSavePopover()
@@ -352,13 +367,13 @@ struct EditorView: View {
 
     private var exportButton: some View {
         HStack(spacing: 0) {
-            Button(action: { model.exportPNG() }) {
+            Button(action: { model.exportImage() }) {
                 HStack(spacing: 8) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 12, weight: .semibold))
                     Text("Export")
                         .font(.system(size: 13, weight: .semibold))
-                    Text("1× PNG")
+                    Text(exportSettings.summary)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                 }
@@ -370,8 +385,21 @@ struct EditorView: View {
             }
             .buttonStyle(PressFadeButtonStyle())
             .disabled(model.picture == nil)
-            .help("Export PNG (⌘S)")
-            .accessibilityLabel("Export PNG")
+            .help("Export \(exportSettings.summary) (⌘S)")
+            .accessibilityLabel("Export \(exportSettings.summary)")
+            Button(action: { showExportOptions = true }) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 20, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PressFadeButtonStyle())
+            .help("Export format and size")
+            .accessibilityLabel("Export format and size")
+            .popover(isPresented: $showExportOptions, arrowEdge: .bottom) {
+                ExportOptionsForm()
+            }
             Rectangle()
                 .fill(line)
                 .frame(width: 1, height: 14)
@@ -388,21 +416,6 @@ struct EditorView: View {
             .accessibilityLabel("Copy PNG")
         }
         .shotliCapsuleChip()
-    }
-
-    private func barCapsule(_ title: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(ink)
-                .padding(.horizontal, 12)
-                .frame(height: 32)
-                .shotliCapsuleChip()
-                .contentShape(Capsule())
-        }
-        .buttonStyle(PressFadeButtonStyle())
-        .help(help)
-        .accessibilityLabel(help)
     }
 
     private var leftRail: some View {
@@ -500,25 +513,22 @@ struct EditorView: View {
             .padding(.horizontal, railInset)
             .padding(.top, 14)
 
-            caption(model.layoutHeadline)
-                .padding(.horizontal, railInset)
-                .padding(.top, 18)
-            if let note = model.layoutNote {
-                Text(note)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, railInset)
-                    .padding(.top, 4)
-            }
-            if model.screenshotCount >= 2 {
-                layerStrip
-                    .padding(.horizontal, railInset)
-                    .padding(.top, 10)
-            }
-
             ScrollView(.vertical) {
                 VStack(spacing: 12) {
+                    myStyles
+                    VStack(alignment: .leading, spacing: 4) {
+                        caption(model.layoutHeadline)
+                        if let note = model.layoutNote {
+                            Text(note)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if model.screenshotCount >= 2 {
+                        layerStrip
+                    }
                     if model.screenshotCount <= 1 {
                         ForEach(Presets.all) { preset in
                             presetCard(preset)
@@ -530,11 +540,42 @@ struct EditorView: View {
                     }
                 }
                 .padding(.horizontal, railInset)
-                .padding(.top, 8)
+                .padding(.top, 18)
                 .padding(.bottom, 14)
             }
         }
         .shotliGlass(.panel, radius: ShotliGlass.radiusPanel)
+    }
+
+    private var myStyles: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                caption("My styles")
+                Spacer()
+                iconButton("plus", help: "Save this look as a style") { model.saveCurrentStyle() }
+                    .frame(height: 20)
+            }
+            ForEach(savedStyles.styles) { saved in
+                presetCard(saved.preset)
+                    .overlay(alignment: .topTrailing) {
+                        if savedStyles.defaultID == saved.id {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(accent)
+                                .padding(8)
+                                .help("New screenshots open with this style")
+                        }
+                    }
+                    .contextMenu {
+                        Button(savedStyles.defaultID == saved.id ? "Stop Using for New Screenshots" : "Use for New Screenshots") {
+                            savedStyles.setDefault(savedStyles.defaultID == saved.id ? nil : saved.id)
+                        }
+                        Button("Rename…") { model.renameStyle(saved) }
+                        Divider()
+                        Button("Delete") { savedStyles.delete(saved.id) }
+                    }
+            }
+        }
     }
 
     private var zoomRow: some View {
@@ -738,7 +779,7 @@ struct EditorView: View {
     private func layoutCard(_ style: ShotliStyle) -> some View {
         let inset = 8 + min(style.padding, 140) / 18
         return ZStack {
-            presetPreview(style.background)
+            Color.clear.overlay(presetPreview(style.background))
             Group {
                 if let shotImage {
                     Image(nsImage: shotImage)

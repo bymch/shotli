@@ -482,6 +482,7 @@ final class EditorModel: ObservableObject {
     @Published var projectName: String?
     @Published var saveState: ProjectSaveState = .idle
     @Published var showSaveProjects = false
+    @Published var showHideSensitive = false
     @Published var popoverSave = PopoverSaveSession()
     var projectID: String?
     var compositionID: String?
@@ -711,15 +712,19 @@ final class EditorModel: ObservableObject {
         }
     }
 
-    func exportPNG() {
+    func exportImage() {
         guard picture != nil else { return }
+        let settings = ExportSettings.shared
+        let format = settings.format
+        let size = settings.size
         let base = (picture?.name ?? "screenshot")
             .replacingOccurrences(of: "\\.[^.]+$", with: "", options: .regularExpression)
         let safe = base.replacingOccurrences(of: "[^A-Za-z0-9._-]+", with: "-", options: .regularExpression)
+        let suffix = size.isOriginal ? "" : "-\(size.id)"
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = "shotli-\(safe.isEmpty ? "screenshot" : safe).png"
-        panel.title = "Export PNG"
+        panel.allowedContentTypes = [format.contentType]
+        panel.nameFieldStringValue = "shotli-\(safe.isEmpty ? "screenshot" : safe)\(suffix).\(format.fileExtension)"
+        panel.title = "Export \(format.title)"
         if let folder = projectFolder {
             let exports = folder.appendingPathComponent("Exports", isDirectory: true)
             try? FileManager.default.createDirectory(at: exports, withIntermediateDirectories: true)
@@ -728,15 +733,16 @@ final class EditorModel: ObservableObject {
             panel.directoryURL = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
         }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard let image = renderOutput() else {
-            notice = "Couldn't create the PNG."
+        guard let image = ExportRender.render(picture: picture, crop: crop, style: style, annotations: annotations, layers: layers, size: size, format: format),
+              let data = ExportRender.encode(image, format: format) else {
+            notice = "Couldn't create the \(format.title)."
             return
         }
         do {
-            try writePNG(image, to: url)
+            try data.write(to: url, options: .atomic)
             notice = "Saved \(url.lastPathComponent)"
         } catch {
-            notice = "Couldn't save the PNG."
+            notice = "Couldn't save the \(format.title)."
         }
     }
 
@@ -1302,6 +1308,9 @@ final class EditorModel: ObservableObject {
     private func replacePicture(_ loaded: LoadedPicture, adopting: Bool) {
         quietChanges()
         picture = loaded
+        if let saved = StyleStore.shared.defaultStyle {
+            style = saved.keepingDevice(of: style)
+        }
         resetLayers()
         crop = nil
         annotations = []
@@ -2029,7 +2038,7 @@ final class EditorModel: ObservableObject {
     }
 }
 
-private func decodeImage(_ data: Data, name: String) -> LoadedPicture? {
+func decodeImage(_ data: Data, name: String) -> LoadedPicture? {
     guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
     var originalEdge: CGFloat = 0
     if let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
@@ -2052,14 +2061,6 @@ private func pngData(_ image: CGImage) -> Data? {
     CGImageDestinationAddImage(destination, image, nil)
     guard CGImageDestinationFinalize(destination) else { return nil }
     return data as Data
-}
-
-private func writePNG(_ image: CGImage, to url: URL) throws {
-    guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
-        throw CocoaError(.fileWriteUnknown)
-    }
-    CGImageDestinationAddImage(destination, image, nil)
-    if !CGImageDestinationFinalize(destination) { throw CocoaError(.fileWriteUnknown) }
 }
 
 func sampleScreenshot() -> CGImage {

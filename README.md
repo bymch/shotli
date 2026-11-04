@@ -57,6 +57,13 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - **Export PNG** asks where to save and does not replace a file unless you confirm it in the save panel. The file is the composition only: background, frame, shadow, annotations and redactions. The glass toolbar and panels are not included. A project remembers the same edits in `project.json`, so reopening it restores the composition rather than only a flattened PNG.
 - **Motion**, under the picture, opens Motion Studio. Float, Perspective, Focus, Drift, Orbit, and Reveal move that screenshot on its background. Duration, speed, and loop sit in the inspector. Adjust holds movement, rotation, zoom, perspective, shadow, and background travel. Export video writes a 1080p H.264 MP4, and an optional music file is trimmed into it. The still PNG export stays where it was.
 
+- **Hide Sensitive Info**, the eye button (⌘⇧H), reads the picture on your Mac and lists emails, phone numbers, card numbers, and keys. Untick anything you want to keep, and the rest is pixelated with blocks as tall as the text. Shotli can miss things, so look before you share. In a composition, only the first screenshot is checked.
+- **Copy Text**, the viewfinder button (⌘⇧T), copies the words in the picture. Anything cropped out or redacted is left out.
+- **My styles**, at the top of the presets, saves the current look. Right-click one and choose Use for New Screenshots, and every picture you open or capture starts with it.
+- In an open project, **Apply Style** restyles every composition and keeps crops and marks. It asks first and can't be undone. **Export All** writes every composition to a folder and never replaces a file.
+- The arrow beside Export picks PNG, JPEG, or WebP, and a size for X, LinkedIn, Open Graph, Instagram, or the App Store. The background fills the new shape, so the picture doesn't stretch. JPEG and App Store sizes have no transparency. Copy is always the original size as a PNG.
+- **GIF**, in Motion Studio, writes an 800px loop without the music.
+
 Images larger than 25 MB are refused. Images longer than 4096px on the long edge are scaled down before editing, and export uses that scaled size.
 
 ### Shortcuts
@@ -66,6 +73,8 @@ Images larger than 25 MB are refused. Images longer than 4096px on the long edge
 | Undo | ⌘ Z |
 | Redo | ⌘ Shift Z, or ⌘ Y |
 | Export | ⌘ E or ⌘ S |
+| Copy text | ⌘ Shift T |
+| Hide sensitive info | ⌘ Shift H |
 | Import | ⌘ O |
 | Library | ⌘ L |
 | Paste image | ⌘ V |
