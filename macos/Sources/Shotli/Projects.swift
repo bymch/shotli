@@ -870,17 +870,30 @@ enum ProjectStore {
         }
     }
 
-    private static func renderStoredComposition(_ composition: CompositionFile, in folder: URL) -> CGImage? {
+    struct StoredScene {
+        var picture: LoadedPicture
+        var crop: CGRect?
+        var style: ShotliStyle
+        var annotations: [Annotation]
+        var layers: [ShotLayer]
+    }
+
+    /// Decodes sources the way the editor does, so crops and marks land on the same pixels.
+    /// Strict gives nil when a screenshot is missing, rather than a picture without it.
+    private static func scene(for composition: CompositionFile, in folder: URL, strict: Bool = false) -> StoredScene? {
         let marks = composition.annotations.compactMap(\.annotation)
         if let files = composition.layers, files.count >= 2 {
             var layers: [ShotLayer] = []
             for file in files {
                 guard let url = try? resolve(file.source, in: folder),
                       let data = try? Data(contentsOf: url),
-                      let image = imageForThumbnail(data) else { continue }
+                      let decoded = decodeImage(data, name: file.name) else {
+                    if strict { return nil }
+                    continue
+                }
                 layers.append(ShotLayer(
                     id: file.id,
-                    image: image,
+                    image: decoded.image,
                     name: file.name,
                     x: CGFloat(file.x),
                     y: CGFloat(file.y),
@@ -897,31 +910,110 @@ enum ProjectStore {
             }
             if layers.count >= 2 {
                 let picture = LoadedPicture(image: layers[0].image, name: layers[0].name, scaled: false)
-                return renderShot(
-                    picture: picture,
-                    crop: composition.crop?.rect,
-                    style: composition.style.style,
-                    annotations: marks,
-                    layers: layers,
-                    draft: nil,
-                    interactive: false
-                )
+                return StoredScene(picture: picture, crop: composition.crop?.rect, style: composition.style.style, annotations: marks, layers: layers)
             }
         }
         guard let source = composition.source,
               let sourceURL = try? resolve(source, in: folder),
               let data = try? Data(contentsOf: sourceURL),
-              let image = imageForThumbnail(data) else { return nil }
-        let picture = LoadedPicture(image: image, name: sourceURL.lastPathComponent, scaled: false)
+              let picture = decodeImage(data, name: sourceURL.lastPathComponent) else { return nil }
+        return StoredScene(picture: picture, crop: composition.crop?.rect, style: composition.style.style, annotations: marks, layers: [])
+    }
+
+    private static func renderStoredComposition(_ composition: CompositionFile, in folder: URL) -> CGImage? {
+        guard let scene = scene(for: composition, in: folder) else { return nil }
         return renderShot(
-            picture: picture,
-            crop: composition.crop?.rect,
-            style: composition.style.style,
-            annotations: marks,
-            layers: [],
+            picture: scene.picture,
+            crop: scene.crop,
+            style: scene.style,
+            annotations: scene.annotations,
+            layers: scene.layers,
             draft: nil,
             interactive: false
         )
+    }
+
+    /// Restyles every composition and redraws its thumbnail. Crops, marks, and layers stay.
+    @discardableResult
+    static func applyStyle(_ style: ShotliStyle, to folder: URL, progress: (Int, Int) -> Void = { _, _ in }) throws -> Int {
+        var file = try read(folder)
+        let now = stamp(Date())
+        for index in file.compositions.indices {
+            progress(index + 1, file.compositions.count)
+            let next = style.keepingDevice(of: file.compositions[index].style.style)
+            file.compositions[index].style = StyleFile(next)
+            guard let relative = thumbnailRelative(file.compositions[index].id) else { continue }
+            let dest = try resolve(relative, in: folder)
+            if let rendered = renderStoredComposition(file.compositions[index], in: folder) {
+                try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try writePNG(rendered, to: dest)
+                file.compositions[index].thumbnail = relative
+            } else {
+                // The old look would be wrong now. The library falls back to the screenshot.
+                try? FileManager.default.removeItem(at: dest)
+                file.compositions[index].thumbnail = nil
+            }
+        }
+        if let newest = file.compositions.max(by: { date($0.modified) < date($1.modified) }),
+           let relative = newest.thumbnail,
+           let cover = try? resolve(relative, in: folder),
+           FileManager.default.fileExists(atPath: cover.path) {
+            let thumb = folder.appendingPathComponent("thumb.png")
+            try? FileManager.default.removeItem(at: thumb)
+            try? FileManager.default.copyItem(at: cover, to: thumb)
+        }
+        file.modified = now
+        try write(file, to: folder)
+        return file.compositions.count
+    }
+
+    /// Writes one file per composition into `destination` and never replaces an existing file.
+    static func exportAll(
+        in folder: URL,
+        to destination: URL,
+        format: ExportFormat,
+        size: ExportSize,
+        progress: (Int, Int) -> Void = { _, _ in }
+    ) throws -> (saved: Int, failed: Int) {
+        let file = try read(folder)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        var saved = 0
+        var failed = 0
+        for (index, composition) in file.compositions.enumerated() {
+            progress(index + 1, file.compositions.count)
+            let written = autoreleasepool { () -> Bool in
+                guard let scene = scene(for: composition, in: folder, strict: true),
+                      let image = ExportRender.render(
+                        picture: scene.picture,
+                        crop: scene.crop,
+                        style: scene.style,
+                        annotations: scene.annotations,
+                        layers: scene.layers,
+                        size: size,
+                        format: format
+                      ),
+                      let data = ExportRender.encode(image, format: format) else { return false }
+                let url = freeExportURL(for: composition.name, format: format, in: destination)
+                return (try? data.write(to: url, options: .withoutOverwriting)) != nil
+            }
+            if written { saved += 1 } else { failed += 1 }
+        }
+        return (saved, failed)
+    }
+
+    private static func freeExportURL(for name: String, format: ExportFormat, in folder: URL) -> URL {
+        let bare = (name as NSString).deletingPathExtension
+        let cleaned = bare
+            .replacingOccurrences(of: "[/:\\\\]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". ").union(.whitespacesAndNewlines))
+        let base = cleaned.isEmpty ? "Screenshot" : cleaned
+        var url = folder.appendingPathComponent("\(base).\(format.fileExtension)")
+        var extra = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = folder.appendingPathComponent("\(base)-\(extra).\(format.fileExtension)")
+            extra += 1
+        }
+        return url
     }
 
     static func renderMissingThumbnails(in folder: URL) throws {

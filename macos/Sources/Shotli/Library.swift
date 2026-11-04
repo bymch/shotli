@@ -93,6 +93,8 @@ final class LibraryModel: ObservableObject {
     @Published var openedProject: ProjectRecord?
     @Published var compositions: [CompositionRecord] = []
     @Published var visibleCompositions: [CompositionRecord] = []
+    @Published var batchRunning = false
+    @Published var batchStatus: String?
 
     private var cache: [LibrarySource: [LibraryShot]] = [:]
     private var notes: [LibrarySource: String] = [:]
@@ -140,6 +142,71 @@ final class LibraryModel: ObservableObject {
         apply()
         warmCompositions(refreshToken)
         fillThumbnails(in: project.folder)
+    }
+
+    func applyStyleToProject(_ preset: Preset) {
+        guard !batchRunning, let project = openedProject else { return }
+        let alert = NSAlert()
+        alert.messageText = "Apply \(preset.name) to all of \(project.name)?"
+        alert.informativeText = "This replaces the background, padding, shadow, and frame on every composition. Crops and marks stay. It can't be undone."
+        alert.addButton(withTitle: "Apply")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        runBatch(on: project, working: "Applying") { folder, progress in
+            let count = try ProjectStore.applyStyle(preset.style, to: folder, progress: progress)
+            return count == 1 ? "Applied \(preset.name) to 1 composition." : "Applied \(preset.name) to \(count) compositions."
+        }
+    }
+
+    func exportProject() {
+        guard !batchRunning, let project = openedProject else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Export All"
+        panel.message = "Choose where to save every composition in \(project.name)."
+        let exports = project.folder.appendingPathComponent("Exports", isDirectory: true)
+        try? FileManager.default.createDirectory(at: exports, withIntermediateDirectories: true)
+        panel.directoryURL = exports
+        let form = NSHostingView(rootView: ExportOptionsForm())
+        form.frame.size = form.fittingSize
+        panel.accessoryView = form
+        panel.isAccessoryViewDisclosed = true
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        let format = ExportSettings.shared.format
+        let size = ExportSettings.shared.size
+        runBatch(on: project, working: "Exporting") { folder, progress in
+            let result = try ProjectStore.exportAll(in: folder, to: destination, format: format, size: size, progress: progress)
+            let saved = result.saved == 1 ? "Exported 1 file" : "Exported \(result.saved) files"
+            let failed = result.failed == 0 ? "" : " \(result.failed) couldn't be exported."
+            return "\(saved) to \(destination.lastPathComponent).\(failed)"
+        }
+    }
+
+    private func runBatch(on project: ProjectRecord, working: String, _ work: @escaping (URL, (Int, Int) -> Void) throws -> String) {
+        batchRunning = true
+        batchStatus = "\(working)…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let outcome: String
+            do {
+                outcome = try work(project.folder) { done, total in
+                    DispatchQueue.main.async { self.batchStatus = "\(working) \(done) of \(total)…" }
+                }
+            } catch {
+                outcome = error.localizedDescription
+            }
+            DispatchQueue.main.async {
+                self.batchRunning = false
+                self.batchStatus = outcome
+                if self.openedProject?.folder.path == project.folder.path {
+                    self.openContents(project)
+                }
+                self.refresh()
+            }
+        }
     }
 
     func closeContents() {
@@ -864,6 +931,7 @@ private extension Array where Element == LibraryShot {
 }
 
 struct LibraryHome: View {
+    @ObservedObject private var savedStyles = StyleStore.shared
     @ObservedObject private var library = LibraryModel.shared
     @Namespace private var selection
     @State private var layout: LibraryLayout = .grid
@@ -1091,6 +1159,9 @@ struct LibraryHome: View {
                 sortMenu
                 layoutToggle
                 Spacer(minLength: 8)
+                if library.openedProject != nil && library.showingProjects && library.kindFilter == nil {
+                    projectBatchControls
+                }
                 if !library.selected.isEmpty {
                     headerButton("Deselect") { library.clearSelection() }
                     if library.openedProject == nil {
@@ -1102,6 +1173,39 @@ struct LibraryHome: View {
         .padding(.horizontal, 22)
         .padding(.top, 18)
         .padding(.bottom, 14)
+    }
+
+    @ViewBuilder
+    private var projectBatchControls: some View {
+        if let status = library.batchStatus {
+            Text(status)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        if !library.compositions.isEmpty {
+            Menu("Apply Style") {
+                if !savedStyles.styles.isEmpty {
+                    Section("My styles") {
+                        ForEach(savedStyles.styles) { saved in
+                            Button(saved.name) { library.applyStyleToProject(saved.preset) }
+                        }
+                    }
+                }
+                Section("Presets") {
+                    ForEach(Presets.all) { preset in
+                        Button(preset.name) { library.applyStyleToProject(preset) }
+                    }
+                }
+            }
+            .fixedSize()
+            .disabled(library.batchRunning)
+            .help("Apply one style to every composition in this project")
+            headerButton("Export All") { library.exportProject() }
+                .disabled(library.batchRunning)
+                .help("Export every composition in this project")
+        }
     }
 
     private var libraryTitle: String {
