@@ -42,8 +42,14 @@ func composition(picture: LoadedPicture?, crop: CGRect?, style: ShotliStyle, lay
     let extraY = max(0, compH - contentH)
     let nx = min(1, max(0, 0.5 + style.shiftX * 0.42))
     let ny = min(1, max(0, 0.5 + style.shiftY * 0.42))
-    let originX = pad + extraX * nx
-    let originY = pad + extraY * ny
+    var originX = pad + extraX * nx
+    var originY = pad + extraY * ny
+    if style.offsetX != 0 || style.offsetY != 0 {
+        let windowW = width + rim * 2
+        let windowH = height + chrome + rim * 2
+        originX = min(max(0, originX + style.offsetX * compW), max(0, compW - windowW))
+        originY = min(max(0, originY + style.offsetY * compH), max(0, compH - windowH))
+    }
     return Composition(
         image: CGRect(x: originX + rim, y: originY + chrome + rim, width: width, height: height),
         window: CGRect(x: originX, y: originY, width: width + rim * 2, height: height + chrome + rim * 2),

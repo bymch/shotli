@@ -17,6 +17,7 @@ enum ToolsVerify {
             try checkWebP()
             try checkExportSizes()
             try checkStyles()
+            try checkDragPosition()
             try checkBatch(in: root)
             try checkGIF(in: root)
             print("tools verified")
@@ -184,6 +185,40 @@ enum ToolsVerify {
         let layout = composition(picture: picture, crop: nil, style: fitted)
         guard abs(layout.image.width / layout.image.height - picture.width / picture.height) < 0.001 else { throw Failure("the picture stretched") }
         guard abs(layout.size.width / layout.size.height - 1320.0 / 2868.0) < 0.002 else { throw Failure("wrong canvas shape \(layout.size)") }
+    }
+
+    private static func checkDragPosition() throws {
+        let picture = LoadedPicture(image: sampleScreenshot(), name: "Sample.png", scaled: false)
+        var style = Presets.all[0].style
+        style.canvas = .auto
+        style.canvasWidth = 0
+        style.canvasHeight = 0
+        style.hideMockup = false
+        style.padding = max(style.padding, 64)
+        let still = composition(picture: picture, crop: nil, style: style)
+        guard still.size.width > still.window.width else { throw Failure("no room to drag on a fitted canvas") }
+        style.offsetX = 0.02
+        style.offsetY = -0.01
+        let moved = composition(picture: picture, crop: nil, style: style)
+        guard moved.size == still.size else { throw Failure("dragging resized the canvas") }
+        guard abs(moved.window.minX - (still.window.minX + 0.02 * still.size.width)) < 0.5,
+              abs(moved.window.minY - (still.window.minY - 0.01 * still.size.height)) < 0.5 else {
+            throw Failure("drag landed at \(moved.window.origin), started at \(still.window.origin)")
+        }
+        guard moved.image.minX - moved.window.minX == still.image.minX - still.window.minX else { throw Failure("the picture left its card") }
+        style.offsetX = 5
+        style.offsetY = -5
+        let pinned = composition(picture: picture, crop: nil, style: style)
+        guard abs(pinned.window.maxX - pinned.size.width) < 0.5, pinned.window.minY == 0 else { throw Failure("drag left the canvas: \(pinned.window)") }
+        style.offsetX = 0.02
+        style.offsetY = -0.01
+        let data = try JSONEncoder().encode(StyleFile(style))
+        let back = try JSONDecoder().decode(StyleFile.self, from: data).style
+        guard back.offsetX == style.offsetX, back.offsetY == style.offsetY else { throw Failure("the position wasn't saved") }
+        style.offsetX = 0
+        style.offsetY = 0
+        let plain = String(decoding: try JSONEncoder().encode(StyleFile(style)), as: UTF8.self)
+        guard !plain.contains("offset") else { throw Failure("an unmoved picture wrote a position") }
     }
 
     private static func checkStyles() throws {
