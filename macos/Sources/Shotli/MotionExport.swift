@@ -48,7 +48,7 @@ enum MotionExport {
         if let music = settings.music {
             let accessing = music.startAccessingSecurityScopedResource()
             defer { if accessing { music.stopAccessingSecurityScopedResource() } }
-            try mix(video: silent, music: music, to: mixed)
+            try mix(video: silent, music: music, volume: settings.musicVolume, to: mixed)
             finished = mixed
         } else {
             finished = silent
@@ -106,7 +106,7 @@ enum MotionExport {
         try FileManager.default.copyItem(at: temp, to: destination)
     }
 
-    private static func mix(video: URL, music: URL, to destination: URL) throws {
+    private static func mix(video: URL, music: URL, volume: Double, to destination: URL) throws {
         let videoAsset = AVURLAsset(url: video)
         let musicAsset = AVURLAsset(url: music)
         try load(videoAsset)
@@ -129,6 +129,14 @@ enum MotionExport {
         guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
             throw MotionExportError.writer("Couldn't mix the music.")
         }
+        let level = Float(min(1, max(0, volume)))
+        let fade = CMTime(seconds: min(MotionSettings.musicFade, CMTimeGetSeconds(audioDuration) / 2), preferredTimescale: 600)
+        let mixing = AVMutableAudioMixInputParameters(track: composedAudio)
+        mixing.setVolume(level, at: .zero)
+        mixing.setVolumeRamp(fromStartVolume: level, toEndVolume: 0, timeRange: CMTimeRange(start: audioDuration - fade, duration: fade))
+        let audioMix = AVMutableAudioMix()
+        audioMix.inputParameters = [mixing]
+        exporter.audioMix = audioMix
         exporter.outputURL = destination
         exporter.outputFileType = .mp4
         let group = DispatchGroup()

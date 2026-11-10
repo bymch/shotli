@@ -11,6 +11,7 @@ final class MotionSession: ObservableObject {
     @Published var exporting = false
     @Published var progress: Double = 0
     @Published var status: String?
+    @Published var preparingTrack: Soundtrack?
 
     private var plate: MotionCompose.Plate?
     private var backdrop: CGImage?
@@ -87,6 +88,27 @@ final class MotionSession: ObservableObject {
         panel.prompt = "Use"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         setMusic(url)
+    }
+
+    func useTrack(_ track: Soundtrack) {
+        guard preparingTrack == nil else { return }
+        preparingTrack = track
+        DispatchQueue.global(qos: .userInitiated).async {
+            let url = try? track.url()
+            DispatchQueue.main.async {
+                self.preparingTrack = nil
+                guard let url else {
+                    self.status = "Couldn't make \(track.title)."
+                    return
+                }
+                self.setMusic(url)
+            }
+        }
+    }
+
+    func setMusicVolume(_ value: Double) {
+        settings.musicVolume = value
+        syncAudio(force: false)
     }
 
     func clearMusic() {
@@ -214,7 +236,13 @@ final class MotionSession: ObservableObject {
         settings.music = url
         musicAccess = url.startAccessingSecurityScopedResource()
         prepareAudio()
+        // Start playing so the track is heard straight away.
+        if !playing, !exporting {
+            if !settings.loops, time >= settings.outputDuration - 0.02 { time = 0 }
+            playing = true
+        }
         syncAudio(force: true)
+        publish()
     }
 
     private func prepareAudio() {
@@ -237,6 +265,7 @@ final class MotionSession: ObservableObject {
 
     private func syncAudio(force: Bool) {
         guard let player else { return }
+        player.volume = Float(settings.musicLevel(at: time))
         if !playing || time >= player.duration - 0.05 {
             if player.isPlaying { player.pause() }
             if force { player.currentTime = min(time, max(0, player.duration - 0.01)) }
@@ -609,7 +638,7 @@ struct MotionStudio: View {
     }
 
     private var music: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Music")
                     .font(.system(size: 11, weight: .semibold))
@@ -617,7 +646,7 @@ struct MotionStudio: View {
                 Spacer()
                 if session.settings.music != nil {
                     Button(action: session.clearMusic) {
-                        Text("Clear")
+                        Text("None")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(ink)
                     }
@@ -625,12 +654,17 @@ struct MotionStudio: View {
                     .help("Remove the music")
                 }
             }
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+                ForEach(Soundtrack.allCases) { track in
+                    trackButton(track)
+                }
+            }
             Button(action: session.chooseMusic) {
                 HStack(spacing: 6) {
                     Image(systemName: "music.note")
                         .font(.system(size: 11, weight: .semibold))
-                    Text(session.settings.music?.lastPathComponent ?? "Add music")
-                        .font(.system(size: 12, weight: .medium))
+                    Text(ownTrackName ?? "Your own track…")
+                        .font(.system(size: 12, weight: ownTrackName == nil ? .medium : .semibold))
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer(minLength: 0)
@@ -639,12 +673,79 @@ struct MotionStudio: View {
                 .padding(.horizontal, 10)
                 .frame(height: 30)
                 .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(ownTrackName != nil ? ShotliGlass.accent : Color.clear, lineWidth: 1.5)
+                )
                 .shotliRoundedChip(radius: 10)
             }
             .buttonStyle(PressFadeButtonStyle())
-            .help("Play a track under the animation. It is trimmed to the video.")
-            .accessibilityLabel(session.settings.music == nil ? "Add music" : "Change music")
+            .help("Play an MP3, M4A, WAV, or AIFF under the animation. It is trimmed to the video.")
+            .accessibilityLabel(ownTrackName == nil ? "Use your own track" : "Change your track, \(ownTrackName ?? "")")
+            if session.settings.music != nil {
+                slider("Volume", value: musicVolumeBinding, range: 0.0...1.0, label: percent(session.settings.musicVolume))
+            }
+            Text("Shotli makes these tracks itself. Use them anywhere, no credit needed. The music fades out at the end.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var ownTrackName: String? {
+        guard let url = session.settings.music, session.settings.soundtrack == nil else { return nil }
+        return url.lastPathComponent
+    }
+
+    private func trackButton(_ track: Soundtrack) -> some View {
+        let on = session.settings.soundtrack == track
+        return Button(action: { session.useTrack(track) }) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    if session.preparingTrack == track {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.6)
+                            .frame(width: 12, height: 12)
+                    } else {
+                        Image(systemName: track.symbol)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(on ? ShotliGlass.accent : .secondary)
+                            .frame(width: 12, height: 12)
+                    }
+                    Text(track.title)
+                        .font(.system(size: 12, weight: on ? .semibold : .medium))
+                        .foregroundColor(ink)
+                }
+                Text(track.detail)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(on ? ShotliGlass.segment(colorScheme) : Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(on ? ShotliGlass.accent : Color.primary.opacity(0.08), lineWidth: on ? 1.5 : 1)
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .help("\(track.title): \(track.detail.lowercased())")
+        .accessibilityLabel("\(track.title) music. \(track.detail)")
+        .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
+    }
+
+    private var musicVolumeBinding: Binding<Double> {
+        Binding(
+            get: { session.settings.musicVolume },
+            set: { session.setMusicVolume($0) }
+        )
     }
 
     private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, label: String) -> some View {

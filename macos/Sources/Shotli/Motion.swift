@@ -43,11 +43,21 @@ struct MotionSettings: Equatable {
     var entrance: Bool = true
     var exit: Bool = true
     var music: URL?
+    var musicVolume: Double = 0.8
 
     var clampedDuration: Double { min(8, max(2, duration)) }
     var clampedSpeed: Double { min(2, max(0.5, speed)) }
     /// One full cycle. Speed shortens or lengthens the file without changing the path.
     var outputDuration: Double { clampedDuration / clampedSpeed }
+    var soundtrack: Soundtrack? { music.flatMap(Soundtrack.init(file:)) }
+    /// How long the music takes to fade at the end of the video.
+    static let musicFade = 0.6
+
+    /// Music level at a moment, fading out as the video ends.
+    func musicLevel(at time: Double) -> Double {
+        let left = outputDuration - time
+        return min(1, max(0, musicVolume)) * min(1, max(0, left / MotionSettings.musicFade))
+    }
 }
 
 struct MotionSample: Equatable {

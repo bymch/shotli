@@ -9,6 +9,10 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.70", notes: [
+            "Motion has four music tracks built in: Glow, Pulse, Lo-fi, and Bright. Shotli makes them itself, so they are free to use anywhere.",
+            "Pick a track and the preview plays with it. Volume sets how loud it is, and the music fades out at the end of the video.",
+        ]),
         ChangelogEntry(version: "0.2.69", notes: [
             "No more line around the picture on the stage. The edge shows only while you drag the screenshot.",
         ]),
