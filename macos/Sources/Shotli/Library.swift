@@ -989,9 +989,6 @@ struct LibraryHome: View {
                     sidebarRow("Projects", symbol: "folder", count: library.projects.count, selected: library.showingProjects && !library.showingSettings && library.kindFilter == nil) {
                         library.showProjects()
                     }
-                    sidebarRow("Script Video", symbol: "film", count: nil, selected: false) {
-                        ScriptStudioWindow.shared.show()
-                    }
                     Text("Screenshots")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)

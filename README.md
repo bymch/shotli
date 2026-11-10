@@ -64,7 +64,6 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - In an open project, **Apply Style** restyles every composition and keeps crops and marks. It asks first and can't be undone. **Export All** writes every composition to a folder and never replaces a file.
 - The arrow beside Export picks PNG, JPEG, or WebP, and a size for X, LinkedIn, Open Graph, Instagram, or the App Store. The background fills the new shape, so the picture doesn't stretch. JPEG and App Store sizes have no transparency. Copy is always the original size as a PNG.
 - **GIF**, in Motion Studio, writes an 800px loop without the music.
-- **Script Video**, in File, the menu bar, and the Library sidebar, builds a narrated screen video in parts. For each part, write the script, record your voice with the script as a teleprompter, then record the screen (Shotli hides itself and can play your voice back so you can follow along). Build video joins the parts into one MP4; when a voice runs longer than its screen recording, the last frame holds. Recordings live in Movies/Shotli Scripts. Needs macOS 12.3 or later to record the screen, and microphone access.
 
 Images larger than 25 MB are refused. Images longer than 4096px on the long edge are scaled down before editing, and export uses that scaled size.
 

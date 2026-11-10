@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.72", notes: [
+            "Script Video is gone for now while it gets reworked. Recordings you made are still in Movies/Shotli Scripts.",
+        ]),
         ChangelogEntry(version: "0.2.71", notes: [
             "Script Video: write a script in parts, record your voice reading each part, then record the screen to go with it. Build video joins every part into one MP4.",
             "Your script shows as a teleprompter while you record your voice. While you record the screen, Shotli can play your voice back and stop when it ends.",

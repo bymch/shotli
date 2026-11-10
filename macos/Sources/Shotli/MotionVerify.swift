@@ -9,7 +9,6 @@ enum MotionVerify {
             try checkAspects()
             try checkPlayback()
             try checkSoundtracks()
-            try checkScriptBuild()
             print("motion verified")
             return 0
         } catch {
@@ -170,60 +169,6 @@ enum MotionVerify {
         guard let audio = asset.tracks(withMediaType: .audio).first else { throw Failure("no music in the video") }
         if abs(CMTimeGetSeconds(audio.timeRange.duration) - 2) > 0.2 { throw Failure("music length \(CMTimeGetSeconds(audio.timeRange.duration))") }
         if settings.musicLevel(at: 2) > 0.001 || abs(settings.musicLevel(at: 0) - 0.8) > 0.001 { throw Failure("music fade") }
-    }
-
-    /// Two parts: the first has a 2s screen and a 3s voice, so its last frame holds; the second is a
-    /// smaller 1.5s screen with no voice. The video should run 4.5s at the first part's size.
-    private static func checkScriptBuild() throws {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("shotli-script-verify-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let picture = LoadedPicture(image: sampleScreenshot(), name: "Sample.png", scaled: false)
-        func screen(_ name: String, seconds: Double, size: CGSize) throws -> URL {
-            var settings = MotionSettings()
-            settings.duration = seconds
-            let url = folder.appendingPathComponent(name)
-            try MotionExport.write(picture: picture, crop: nil, style: pictureStyle(), annotations: [], settings: settings,
-                                   to: url, output: size, fps: 30, progress: { _ in })
-            return url
-        }
-        let first = try screen("one.mp4", seconds: 2, size: CGSize(width: 320, height: 180))
-        let second = try screen("two.mp4", seconds: 2, size: CGSize(width: 240, height: 180))
-        let voice = folder.appendingPathComponent("voice.wav")
-        let rate = Soundtrack.sampleRate
-        let tone = (0..<Int(3 * rate)).map { Float(sin(2 * Double.pi * 220 * Double($0) / rate) * 0.3) }
-        try Soundtrack.write((tone, tone), to: voice)
-        var part = ScriptPart()
-        part.text = "Hello"
-        if abs(ScriptBuild.seconds(of: voice) - 3) > 0.05 { throw Failure("voice length \(ScriptBuild.seconds(of: voice))") }
-        let plan = try ScriptBuild.plan([
-            ScriptBuild.Clip(screen: first, voice: voice),
-            ScriptBuild.Clip(screen: second, voice: nil),
-        ])
-        if abs(plan.length - 5) > 0.1 { throw Failure("script plan length \(plan.length)") }
-        if plan.size != CGSize(width: 320, height: 180) { throw Failure("script size \(plan.size)") }
-        let out = folder.appendingPathComponent("built.mp4")
-        try ScriptBuild.export(plan, to: out, progress: { _ in })
-        let asset = AVURLAsset(url: out)
-        let ready = DispatchSemaphore(value: 0)
-        asset.loadValuesAsynchronously(forKeys: ["tracks", "duration"]) { ready.signal() }
-        _ = ready.wait(timeout: .now() + 8)
-        let seconds = CMTimeGetSeconds(asset.duration)
-        if abs(seconds - 5) > 0.15 { throw Failure("built script video is \(seconds)s") }
-        guard let audio = asset.tracks(withMediaType: .audio).first else { throw Failure("built script video has no voice") }
-        if abs(CMTimeGetSeconds(audio.timeRange.duration) - 3) > 0.15 { throw Failure("voice runs \(CMTimeGetSeconds(audio.timeRange.duration))s") }
-        guard let video = asset.tracks(withMediaType: .video).first else { throw Failure("built script video has no picture") }
-        if abs(video.naturalSize.width - 320) > 1 || abs(video.naturalSize.height - 180) > 1 {
-            throw Failure("built size \(video.naturalSize)")
-        }
-        // A frame inside the held stretch (2s to 3s) must be real picture, not black.
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
-        let held = try generator.copyCGImage(at: CMTime(seconds: 2.6, preferredTimescale: 600), actualTime: nil)
-        let (r, g, b) = try pixel(held, x: held.width / 2, y: held.height / 2)
-        if Int(r) + Int(g) + Int(b) < 30 { throw Failure("held frame is black") }
-        print("  script build: \(String(format: "%.2f", seconds))s with a held frame")
     }
 
     private static func render(_ plate: MotionCompose.Plate, _ settings: MotionSettings, time: Double, output: CGSize = CGSize(width: 480, height: 270)) throws -> CGImage {

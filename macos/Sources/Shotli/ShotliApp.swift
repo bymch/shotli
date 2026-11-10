@@ -59,8 +59,6 @@ struct ShotliCommands: Commands {
             Button("Capture Window") { ScreenCapture.shared.capture(.window) }
             Button("Capture Area") { ScreenCapture.shared.capture(.area) }
             Divider()
-            Button("Script Video") { ScriptStudioWindow.shared.show() }
-            Divider()
             Button("Open…") { model.openPanel() }
                 .keyboardShortcut("o", modifiers: .command)
             Button("Export…") { model.exportImage() }
@@ -224,7 +222,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem("Capture Full Screen", #selector(captureFull)))
         menu.addItem(menuItem("Capture Window", #selector(captureWindow)))
         menu.addItem(menuItem("Capture Area", #selector(captureArea)))
-        menu.addItem(menuItem("Script Video", #selector(openScriptVideo)))
         menu.addItem(.separator())
         menu.addItem(menuItem("Open Shotli", #selector(openEditor)))
         menu.addItem(menuItem("Open Screenshot…", #selector(openScreenshot)))
@@ -254,8 +251,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func captureFull() { ScreenCapture.shared.capture(.full) }
     @objc private func captureWindow() { ScreenCapture.shared.capture(.window) }
     @objc private func captureArea() { ScreenCapture.shared.capture(.area) }
-
-    @objc private func openScriptVideo() { ScriptStudioWindow.shared.show() }
 
     @objc private func openEditor() {
         ScreenCapture.shared.revealEditor()
