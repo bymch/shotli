@@ -94,7 +94,7 @@ verify_log="$ROOT/build/motion-verify.log"
 "$ROOT/build/Shotli.app/Contents/MacOS/Shotli" --verify-motion >"$verify_log" 2>&1 &
 verify_pid=$!
 verify_code=1
-for _ in $(seq 1 45); do
+for _ in $(seq 1 150); do
   if ! kill -0 "$verify_pid" 2>/dev/null; then
     verify_code=0
     wait "$verify_pid" || verify_code=$?

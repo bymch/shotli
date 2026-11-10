@@ -9,6 +9,11 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.71", notes: [
+            "Script Video: write a script in parts, record your voice reading each part, then record the screen to go with it. Build video joins every part into one MP4.",
+            "Your script shows as a teleprompter while you record your voice. While you record the screen, Shotli can play your voice back and stop when it ends.",
+            "Open it from File, the menu bar icon, or the Library sidebar. Recordings are kept in Movies/Shotli Scripts.",
+        ]),
         ChangelogEntry(version: "0.2.70", notes: [
             "Motion has four music tracks built in: Glow, Pulse, Lo-fi, and Bright. Shotli makes them itself, so they are free to use anywhere.",
             "Pick a track and the preview plays with it. Volume sets how loud it is, and the music fades out at the end of the video.",
