@@ -9,6 +9,12 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.66", notes: [
+            "Canvas sets the picture to Fit, 16:9, 4:3, or 1:1, so the screenshot has room to move.",
+            "Position puts the screenshot in a corner, on an edge, or in the middle. Dragging snaps to the middle.",
+            "The canvas edge shows on the stage, and stands out while you drag.",
+            "This picture is gone from the right side. Fit sits beside Zoom.",
+        ]),
         ChangelogEntry(version: "0.2.65", notes: [
             "Drag the screenshot anywhere on the canvas, into the padding and up to the edges. Undo puts it back. Projects keep the spot.",
         ]),

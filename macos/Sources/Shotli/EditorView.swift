@@ -485,6 +485,10 @@ struct EditorView: View {
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Padding")
                 }
+                canvasPicker
+                if model.canPosition {
+                    positionPicker
+                }
                 VStack(alignment: .leading, spacing: 8) {
                     zoomRow
                     tiltRow
@@ -494,24 +498,6 @@ struct EditorView: View {
 
             Divider()
                 .padding(.horizontal, railInset)
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("This picture")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(ink)
-                    Spacer(minLength: 8)
-                    Button("Fit") { model.fit() }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(accent)
-                        .help("Fit the picture in the window (⌘0)")
-                        .accessibilityLabel("Fit the picture in the window")
-                }
-                layoutCard(model.style)
-            }
-            .padding(.horizontal, railInset)
-            .padding(.top, 14)
 
             ScrollView(.vertical) {
                 VStack(spacing: 12) {
@@ -592,6 +578,12 @@ struct EditorView: View {
                 .foregroundColor(.secondary)
                 .frame(width: 40, alignment: .trailing)
                 .accessibilityHidden(true)
+            Button("Fit") { model.fit() }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(accent)
+                .help("Fit the picture in the window (⌘0)")
+                .accessibilityLabel("Fit the picture in the window")
         }
     }
 
@@ -734,6 +726,93 @@ struct EditorView: View {
                 )
         }
         .buttonStyle(PressFadeButtonStyle())
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
+    }
+
+    private var canvasPicker: some View {
+        let fixed = model.style.canvasWidth > 0 && model.style.canvasHeight > 0
+        return VStack(alignment: .leading, spacing: 8) {
+            caption("Canvas")
+            HStack(spacing: 2) {
+                ForEach([CanvasRatio.auto, .sixteenNine, .fourThree, .square]) { ratio in
+                    segment(
+                        ratio == .auto ? "Fit" : ratio.label,
+                        on: !fixed && model.style.canvas == ratio,
+                        help: ratio == .auto ? "The canvas hugs the screenshot" : "A \(ratio.label) canvas with room to place the screenshot"
+                    ) {
+                        model.setCanvas(ratio)
+                    }
+                }
+            }
+            .padding(3)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Canvas")
+        }
+    }
+
+    private var positionPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Position")
+            HStack(alignment: .center, spacing: 12) {
+                VStack(spacing: 3) {
+                    ForEach(-1...1, id: \.self) { row in
+                        HStack(spacing: 3) {
+                            ForEach(-1...1, id: \.self) { column in
+                                positionCell(column: column, row: row)
+                            }
+                        }
+                    }
+                }
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+                Text("Drag the screenshot on the canvas, or pick a spot.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func positionCell(column: Int, row: Int) -> some View {
+        let on = model.isAligned(column: column, row: row)
+        let names = ["Top", "Middle", "Bottom"]
+        let sides = ["Left", "Center", "Right"]
+        let name = row == 0 && column == 0 ? "Center" : "\(names[row + 1]) \(sides[column + 1])"
+        return Button(action: { model.align(column: column, row: row) }) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(on ? accent : ShotliGlass.segment(colorScheme))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(Color.black.opacity(on ? 0 : 0.08), lineWidth: 0.5)
+                )
+                .frame(width: 18, height: 12)
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .help(name)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
+    }
+
+    private func segment(_ title: String, on: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: on ? .semibold : .medium))
+                .foregroundColor(on ? ink : .secondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(on ? ShotliGlass.segment(colorScheme) : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color.black.opacity(on ? 0.06 : 0), lineWidth: 0.5)
+                        )
+                )
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .help(help)
         .accessibilityLabel(title)
         .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
     }

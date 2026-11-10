@@ -76,6 +76,8 @@ final class EditorCanvas: NSView {
 
     private var drag: Drag = .none
     private var sharingOut = false
+    private var slideGuides: (vertical: Bool, horizontal: Bool) = (false, false)
+    private var slideHinted = false
     private var stageBackdrop: CGImage?
     private var stageBackdropKey = ""
 
@@ -186,6 +188,42 @@ final class EditorCanvas: NSView {
             NSImage(cgImage: backdrop, size: NSSize(width: bounds.width, height: bounds.height)).draw(in: bounds)
         }
         NSImage(cgImage: image, size: NSSize(width: pixel.width, height: pixel.height)).draw(in: dest)
+        if !dest.insetBy(dx: -1, dy: -1).contains(bounds) {
+            drawCanvasEdge(dest)
+        }
+    }
+
+    /// The background runs past the export edge, so the edge is marked: faintly at rest, clearly while a screenshot is dragged.
+    private func drawCanvasEdge(_ canvas: CGRect) {
+        var sliding = false
+        if case .slide = drag { sliding = true }
+        let outside = NSBezierPath(rect: bounds)
+        outside.append(NSBezierPath(rect: canvas))
+        outside.windingRule = .evenOdd
+        NSColor.black.withAlphaComponent(sliding ? 0.28 : 0.06).setFill()
+        outside.fill()
+        let edge = NSBezierPath(rect: canvas.insetBy(dx: 0.5, dy: 0.5))
+        edge.lineWidth = 1
+        if sliding {
+            edge.setLineDash([5, 4], count: 2, phase: 0)
+            NSColor.controlAccentColor.setStroke()
+        } else {
+            NSColor.black.withAlphaComponent(0.12).setStroke()
+        }
+        edge.stroke()
+        guard sliding else { return }
+        let guide = NSBezierPath()
+        if slideGuides.vertical {
+            guide.move(to: CGPoint(x: canvas.midX, y: canvas.minY))
+            guide.line(to: CGPoint(x: canvas.midX, y: canvas.maxY))
+        }
+        if slideGuides.horizontal {
+            guide.move(to: CGPoint(x: canvas.minX, y: canvas.midY))
+            guide.line(to: CGPoint(x: canvas.maxX, y: canvas.midY))
+        }
+        guide.lineWidth = 1
+        NSColor.systemPink.setStroke()
+        guide.stroke()
     }
 
     private func cachedStageBackdrop(background: Background, canvas: CGSize, dest: CGRect) -> CGImage? {
@@ -304,12 +342,30 @@ final class EditorCanvas: NSView {
             guard let point = compositionPoint(from: viewPoint) else { return }
             var x = range.origin.x + (point.x - start.x) / range.canvas.width
             var y = range.origin.y + (point.y - start.y) / range.canvas.height
+            let pinned = x < range.limits.minX || x > range.limits.maxX || y < range.limits.minY || y > range.limits.maxY
             x = min(range.limits.maxX, max(range.limits.minX, x))
             y = min(range.limits.maxY, max(range.limits.minY, y))
+            // Snap to the middle within a few screen points, and show a guide while it holds.
+            let scale = max(currentScale(), 0.05)
+            let snapX = 6 / scale / range.canvas.width
+            let snapY = 6 / scale / range.canvas.height
+            slideGuides = (false, false)
+            if range.limits.width > 0, abs(x - range.center.x) < snapX {
+                x = range.center.x
+                slideGuides.vertical = true
+            }
+            if range.limits.height > 0, abs(y - range.center.y) < snapY {
+                y = range.center.y
+                slideGuides.horizontal = true
+            }
             if abs(x) < 0.0005 { x = 0 }
             if abs(y) < 0.0005 { y = 0 }
             model.style.offsetX = x
             model.style.offsetY = y
+            if pinned, model.style.canvas == .auto, model.style.canvasWidth == 0, !slideHinted {
+                slideHinted = true
+                model.notice = "The canvas hugs the screenshot. Choose a Canvas size on the right for more room to move it."
+            }
         case .moveLayer(let id, let originX, let originY, let start):
             guard let point = compositionPoint(from: viewPoint) else { return }
             let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
@@ -348,7 +404,11 @@ final class EditorCanvas: NSView {
             self.cropDraft = nil
             model.endGesture()
             model.tool = .select
-        case .move, .resize, .moveLayer, .resizeLayer, .slide:
+        case .slide:
+            slideGuides = (false, false)
+            slideHinted = false
+            model.endGesture()
+        case .move, .resize, .moveLayer, .resizeLayer:
             model.endGesture()
         case .share, .pan, .none:
             break
@@ -650,6 +710,7 @@ final class EditorCanvas: NSView {
         var origin: CGPoint
         var limits: CGRect
         var canvas: CGSize
+        var center: CGPoint
     }
 
     /// How far a single screenshot can be dragged before it leaves the canvas.
@@ -674,7 +735,8 @@ final class EditorCanvas: NSView {
         return SlideRange(
             origin: current,
             limits: CGRect(x: low.x, y: low.y, width: max(0, high.x - low.x), height: max(0, high.y - low.y)),
-            canvas: size
+            canvas: size,
+            center: CGPoint(x: (low.x + high.x) / 2, y: (low.y + high.y) / 2)
         )
     }
 
