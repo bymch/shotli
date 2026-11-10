@@ -190,15 +190,7 @@ final class EditorCanvas: NSView {
             NSImage(cgImage: backdrop, size: NSSize(width: bounds.width, height: bounds.height)).draw(in: bounds)
         }
         NSImage(cgImage: image, size: NSSize(width: pixel.width, height: pixel.height)).draw(in: dest)
-        if case .slide = drag {
-            drawCanvasEdge(dest)
-        } else if !filled {
-            // A hairline marks where the export ends, since the background runs past it.
-            let edge = NSBezierPath(rect: dest.insetBy(dx: -0.5, dy: -0.5))
-            edge.lineWidth = 1
-            NSColor.black.withAlphaComponent(0.10).setStroke()
-            edge.stroke()
-        }
+        if case .slide = drag { drawCanvasEdge(dest) }
     }
 
     private func cachedStageBackdrop(background: Background, canvas: CGSize, dest: CGRect) -> CGImage? {
