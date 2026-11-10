@@ -69,7 +69,7 @@ final class EditorCanvas: NSView {
         case crop(CGPoint)
         case pan(CGPoint, CGPoint)
         case share(CGPoint)
-        case slide(CGFloat, CGFloat, CGSize, CGPoint)
+        case slide(SlideRange, CGPoint)
         case moveLayer(String, CGFloat, CGFloat, CGPoint)
         case resizeLayer(String, CGFloat, CGFloat, CGPoint)
     }
@@ -244,9 +244,9 @@ final class EditorCanvas: NSView {
                 model.selectedID = nil
                 if model.layers.count >= 2 { model.selectedLayerID = nil }
                 if pictureFrame()?.contains(viewPoint) == true {
-                    if !event.modifierFlags.contains(.option), let point = compositionPoint(from: viewPoint), let room = slideRoom(at: point) {
+                    if !event.modifierFlags.contains(.option), let point = compositionPoint(from: viewPoint), let range = slideRange(at: point) {
                         model.beginGesture()
-                        drag = .slide(model.style.shiftX, model.style.shiftY, room, point)
+                        drag = .slide(range, point)
                     } else {
                         drag = .share(viewPoint)
                     }
@@ -300,15 +300,16 @@ final class EditorCanvas: NSView {
                 drag = .none
                 beginShare(event)
             }
-        case .slide(let originX, let originY, let room, let start):
+        case .slide(let range, let start):
             guard let point = compositionPoint(from: viewPoint) else { return }
-            let limit: CGFloat = 0.5 / 0.42
-            if room.width > 0 {
-                model.style.shiftX = min(limit, max(-limit, originX + (point.x - start.x) / (room.width * 0.42)))
-            }
-            if room.height > 0 {
-                model.style.shiftY = min(limit, max(-limit, originY + (point.y - start.y) / (room.height * 0.42)))
-            }
+            var x = range.origin.x + (point.x - start.x) / range.canvas.width
+            var y = range.origin.y + (point.y - start.y) / range.canvas.height
+            x = min(range.limits.maxX, max(range.limits.minX, x))
+            y = min(range.limits.maxY, max(range.limits.minY, y))
+            if abs(x) < 0.0005 { x = 0 }
+            if abs(y) < 0.0005 { y = 0 }
+            model.style.offsetX = x
+            model.style.offsetY = y
         case .moveLayer(let id, let originX, let originY, let start):
             guard let point = compositionPoint(from: viewPoint) else { return }
             let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
@@ -645,21 +646,36 @@ final class EditorCanvas: NSView {
         return CGPoint(x: (viewPoint.x - place.origin.x) / place.scale, y: (viewPoint.y - place.origin.y) / place.scale)
     }
 
-    /// Free space around a single screenshot, when the canvas is larger than it.
-    private func slideRoom(at point: CGPoint) -> CGSize? {
+    struct SlideRange {
+        var origin: CGPoint
+        var limits: CGRect
+        var canvas: CGSize
+    }
+
+    /// How far a single screenshot can be dragged before it leaves the canvas.
+    private func slideRange(at point: CGPoint) -> SlideRange? {
         guard model.layers.count < 2, DeviceLibrary.active(model.style) == nil else { return nil }
         let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
         guard layout.window.contains(point) else { return nil }
-        var low = model.style
-        var high = model.style
-        low.shiftX = -2
-        low.shiftY = -2
-        high.shiftX = 2
-        high.shiftY = 2
-        let start = composition(picture: model.picture, crop: model.crop, style: low).window.origin
-        let end = composition(picture: model.picture, crop: model.crop, style: high).window.origin
-        let room = CGSize(width: max(0, end.x - start.x), height: max(0, end.y - start.y))
-        return room.width > 0.5 || room.height > 0.5 ? room : nil
+        var still = model.style
+        still.offsetX = 0
+        still.offsetY = 0
+        let base = composition(picture: model.picture, crop: model.crop, style: still)
+        let size = base.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        let free = CGSize(width: size.width - base.window.width, height: size.height - base.window.height)
+        guard free.width > 0.5 || free.height > 0.5 else { return nil }
+        let low = CGPoint(x: -base.window.minX / size.width, y: -base.window.minY / size.height)
+        let high = CGPoint(x: (free.width - base.window.minX) / size.width, y: (free.height - base.window.minY) / size.height)
+        let current = CGPoint(
+            x: min(high.x, max(low.x, model.style.offsetX)),
+            y: min(high.y, max(low.y, model.style.offsetY))
+        )
+        return SlideRange(
+            origin: current,
+            limits: CGRect(x: low.x, y: low.y, width: max(0, high.x - low.x), height: max(0, high.y - low.y)),
+            canvas: size
+        )
     }
 
     private func hitLayer(_ point: CGPoint) -> LayerHit? {

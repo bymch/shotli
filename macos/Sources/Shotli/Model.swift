@@ -210,6 +210,9 @@ struct ShotliStyle: Equatable {
     var tiltY: CGFloat = 0
     var shiftX: CGFloat = 0
     var shiftY: CGFloat = 0
+    /// Where the screenshot was dragged to, as a fraction of the canvas size.
+    var offsetX: CGFloat = 0
+    var offsetY: CGFloat = 0
     var deviceID: String? = nil
     var deviceFinish: String? = nil
     var deviceFit: DeviceFit = .fit

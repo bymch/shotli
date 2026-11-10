@@ -53,6 +53,7 @@ macOS may ask you to Control-click and Open again after an update, because the a
 - Templates, at the top left, opens a gallery. Each one sets a background, a position, and an angle. Product shots use studio sweeps. Abstract colour uses bloom, tide, citrus, and the rest. Angled ones lean the screenshot so the background stays in frame.
 - Fit keeps the whole screenshot in the window. Zooming out makes the picture smaller, and the background colour still fills the stage. Canvas width and height are in the panel.
 - Pixelate and blur paint into the exported image. They are not a separate overlay.
+- Drag the screenshot to move it anywhere on the canvas. Option-drag drags the finished picture out to another app.
 - Crop from the toolbar, then drag on the screenshot. Reset crop is in Layout.
 - **Export PNG** asks where to save and does not replace a file unless you confirm it in the save panel. The file is the composition only: background, frame, shadow, annotations and redactions. The glass toolbar and panels are not included. A project remembers the same edits in `project.json`, so reopening it restores the composition rather than only a flattened PNG.
 - **Motion**, under the picture, opens Motion Studio. Float, Perspective, Focus, Drift, Orbit, and Reveal move that screenshot on its background. Duration, speed, and loop sit in the inspector. Adjust holds movement, rotation, zoom, perspective, shadow, and background travel. Export video writes a 1080p H.264 MP4, and an optional music file is trimmed into it. The still PNG export stays where it was.

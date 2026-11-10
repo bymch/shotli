@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.65", notes: [
+            "Drag the screenshot anywhere on the canvas, into the padding and up to the edges. Undo puts it back. Projects keep the spot.",
+        ]),
         ChangelogEntry(version: "0.2.64", notes: [
             "While you draw a capture area, hold Space to move the box. Let go to keep sizing it.",
             "Drag a screenshot to move it on the canvas. Option-drag still drags the picture out to another app.",

@@ -126,6 +126,8 @@ struct StyleFile: Equatable {
     var tiltY: Double
     var shiftX: Double
     var shiftY: Double
+    var offsetX: Double?
+    var offsetY: Double?
     var device: String?
     var deviceFinish: String?
     var deviceFit: String?
@@ -149,6 +151,8 @@ struct StyleFile: Equatable {
         tiltY = Double(style.tiltY)
         shiftX = Double(style.shiftX)
         shiftY = Double(style.shiftY)
+        offsetX = style.offsetX == 0 ? nil : Double(style.offsetX)
+        offsetY = style.offsetY == 0 ? nil : Double(style.offsetY)
         device = style.deviceID
         deviceFinish = style.deviceID == nil ? nil : style.deviceFinish
         deviceFit = style.deviceID == nil ? nil : style.deviceFit.rawValue
@@ -175,6 +179,8 @@ struct StyleFile: Equatable {
         next.tiltY = CGFloat(tiltY)
         next.shiftX = CGFloat(shiftX)
         next.shiftY = CGFloat(shiftY)
+        next.offsetX = CGFloat(offsetX ?? 0)
+        next.offsetY = CGFloat(offsetY ?? 0)
         next.deviceID = device
         next.deviceFinish = deviceFinish
         next.deviceFit = DeviceFit(rawValue: deviceFit ?? "") ?? .fit
@@ -186,7 +192,7 @@ struct StyleFile: Equatable {
 extension StyleFile: Codable {
     enum CodingKeys: String, CodingKey {
         case padding, radius, shadow, frame, canvas, canvasWidth, canvasHeight, background, card
-        case shadowKind, shadowOpacity, light, hideMockup, tiltX, tiltY, shiftX, shiftY
+        case shadowKind, shadowOpacity, light, hideMockup, tiltX, tiltY, shiftX, shiftY, offsetX, offsetY
         case device, deviceFinish, deviceFit, deviceScale
     }
 
@@ -209,6 +215,8 @@ extension StyleFile: Codable {
         tiltY = try container.decode(Double.self, forKey: .tiltY)
         shiftX = try container.decode(Double.self, forKey: .shiftX)
         shiftY = try container.decode(Double.self, forKey: .shiftY)
+        offsetX = try container.decodeIfPresent(Double.self, forKey: .offsetX)
+        offsetY = try container.decodeIfPresent(Double.self, forKey: .offsetY)
         device = try container.decodeIfPresent(String.self, forKey: .device)
         deviceFinish = try container.decodeIfPresent(String.self, forKey: .deviceFinish)
         deviceFit = try container.decodeIfPresent(String.self, forKey: .deviceFit)
@@ -234,6 +242,8 @@ extension StyleFile: Codable {
         try container.encode(tiltY, forKey: .tiltY)
         try container.encode(shiftX, forKey: .shiftX)
         try container.encode(shiftY, forKey: .shiftY)
+        try container.encodeIfPresent(offsetX, forKey: .offsetX)
+        try container.encodeIfPresent(offsetY, forKey: .offsetY)
         try container.encodeIfPresent(device, forKey: .device)
         try container.encodeIfPresent(deviceFinish, forKey: .deviceFinish)
         try container.encodeIfPresent(deviceFit, forKey: .deviceFit)
