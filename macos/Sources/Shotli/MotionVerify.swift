@@ -8,6 +8,7 @@ enum MotionVerify {
             try checkSeam()
             try checkAspects()
             try checkPlayback()
+            try checkSoundtracks()
             print("motion verified")
             return 0
         } catch {
@@ -126,6 +127,48 @@ enum MotionVerify {
         guard reader.startReading(), output.copyNextSampleBuffer() != nil else {
             throw Failure("could not read a frame")
         }
+    }
+
+    private static func checkSoundtracks() throws {
+        for track in Soundtrack.allCases {
+            let started = Date()
+            let audio = track.render()
+            let rate = Soundtrack.sampleRate
+            let seconds = Double(audio.left.count) / rate
+            if seconds < Soundtrack.minimumLength { throw Failure("\(track.title) is \(seconds)s") }
+            var peak: Float = 0
+            for i in 0..<audio.left.count {
+                let l = audio.left[i], r = audio.right[i]
+                if !l.isFinite || !r.isFinite { throw Failure("\(track.title) has a bad sample") }
+                peak = max(peak, abs(l), abs(r))
+            }
+            if peak > 0.95 || peak < 0.5 { throw Failure("\(track.title) peak \(peak)") }
+            // Every second has sound, so no track goes quiet partway through a video.
+            let window = Int(rate)
+            for start in stride(from: 0, to: audio.left.count - window, by: window) {
+                var sum: Float = 0
+                for i in start..<(start + window) { sum += audio.left[i] * audio.left[i] + audio.right[i] * audio.right[i] }
+                let rms = (sum / Float(window * 2)).squareRoot()
+                if rms < 0.03 { throw Failure("\(track.title) quiet at \(start / window)s (\(rms))") }
+            }
+            print("  \(track.title): \(String(format: "%.1f", seconds))s, peak \(String(format: "%.2f", peak)), made in \(String(format: "%.2f", Date().timeIntervalSince(started)))s")
+        }
+        let picture = LoadedPicture(image: sampleScreenshot(), name: "Sample.png", scaled: false)
+        var settings = MotionSettings()
+        settings.duration = 2
+        settings.music = try Soundtrack.glow.url()
+        guard settings.soundtrack == .glow else { throw Failure("track not recognised from its file") }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("shotli-motion-music-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try MotionExport.write(picture: picture, crop: nil, style: pictureStyle(), annotations: [], settings: settings,
+                               to: url, output: CGSize(width: 320, height: 180), fps: 10, progress: { _ in })
+        let asset = AVURLAsset(url: url)
+        let ready = DispatchSemaphore(value: 0)
+        asset.loadValuesAsynchronously(forKeys: ["tracks", "duration"]) { ready.signal() }
+        _ = ready.wait(timeout: .now() + 8)
+        guard let audio = asset.tracks(withMediaType: .audio).first else { throw Failure("no music in the video") }
+        if abs(CMTimeGetSeconds(audio.timeRange.duration) - 2) > 0.2 { throw Failure("music length \(CMTimeGetSeconds(audio.timeRange.duration))") }
+        if settings.musicLevel(at: 2) > 0.001 || abs(settings.musicLevel(at: 0) - 0.8) > 0.001 { throw Failure("music fade") }
     }
 
     private static func render(_ plate: MotionCompose.Plate, _ settings: MotionSettings, time: Double, output: CGSize = CGSize(width: 480, height: 270)) throws -> CGImage {
