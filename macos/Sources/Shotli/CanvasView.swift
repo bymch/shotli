@@ -78,8 +78,6 @@ final class EditorCanvas: NSView {
     private var sharingOut = false
     private var slideGuides: (vertical: Bool, horizontal: Bool) = (false, false)
     private var slideHinted = false
-    private var stageBackdrop: CGImage?
-    private var stageBackdropKey = ""
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -183,35 +181,36 @@ final class EditorCanvas: NSView {
             width: fitted.width,
             height: fitted.height
         )
-        if place.scale > 0, !dest.insetBy(dx: -1, dy: -1).contains(bounds),
-           let backdrop = cachedStageBackdrop(background: model.style.background, canvas: layout.size, dest: dest) {
-            NSImage(cgImage: backdrop, size: NSSize(width: bounds.width, height: bounds.height)).draw(in: bounds)
+        // The canvas sits on the grey stage like a sheet, so its edge is always clear.
+        if place.scale > 0, !dest.insetBy(dx: -1, dy: -1).contains(bounds) {
+            NSGraphicsContext.saveGraphicsState()
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.16)
+            shadow.shadowBlurRadius = 22
+            shadow.shadowOffset = NSSize(width: 0, height: -6)
+            shadow.set()
+            NSColor.white.setFill()
+            dest.fill()
+            NSGraphicsContext.restoreGraphicsState()
         }
         NSImage(cgImage: image, size: NSSize(width: pixel.width, height: pixel.height)).draw(in: dest)
-        if !dest.insetBy(dx: -1, dy: -1).contains(bounds) {
+        if case .slide = drag {
             drawCanvasEdge(dest)
         }
     }
 
-    /// The background runs past the export edge, so the edge is marked: faintly at rest, clearly while a screenshot is dragged.
+    /// While a screenshot is dragged, the stage dims and the export edge and middle guides show.
     private func drawCanvasEdge(_ canvas: CGRect) {
-        var sliding = false
-        if case .slide = drag { sliding = true }
         let outside = NSBezierPath(rect: bounds)
         outside.append(NSBezierPath(rect: canvas))
         outside.windingRule = .evenOdd
-        NSColor.black.withAlphaComponent(sliding ? 0.28 : 0.06).setFill()
+        NSColor.black.withAlphaComponent(0.12).setFill()
         outside.fill()
         let edge = NSBezierPath(rect: canvas.insetBy(dx: 0.5, dy: 0.5))
         edge.lineWidth = 1
-        if sliding {
-            edge.setLineDash([5, 4], count: 2, phase: 0)
-            NSColor.controlAccentColor.setStroke()
-        } else {
-            NSColor.black.withAlphaComponent(0.12).setStroke()
-        }
+        edge.setLineDash([5, 4], count: 2, phase: 0)
+        NSColor.controlAccentColor.setStroke()
         edge.stroke()
-        guard sliding else { return }
         let guide = NSBezierPath()
         if slideGuides.vertical {
             guide.move(to: CGPoint(x: canvas.midX, y: canvas.minY))
@@ -224,16 +223,6 @@ final class EditorCanvas: NSView {
         guide.lineWidth = 1
         NSColor.systemPink.setStroke()
         guide.stroke()
-    }
-
-    private func cachedStageBackdrop(background: Background, canvas: CGSize, dest: CGRect) -> CGImage? {
-        let screen = window?.backingScaleFactor ?? 2
-        let key = "\(background)|\(canvas.width)x\(canvas.height)|\(dest.minX),\(dest.minY),\(dest.width)x\(dest.height)|\(bounds.width)x\(bounds.height)|\(screen)"
-        if key == stageBackdropKey, let stageBackdrop { return stageBackdrop }
-        guard let image = renderStageBackdrop(background: background, canvas: canvas, dest: dest, viewSize: bounds.size, screen: screen) else { return nil }
-        stageBackdrop = image
-        stageBackdropKey = key
-        return image
     }
 
     override func viewDidChangeEffectiveAppearance() {
