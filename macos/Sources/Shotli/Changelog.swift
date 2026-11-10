@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.68", notes: [
+            "The background fills the stage again when you zoom out. A thin line marks where the export ends.",
+        ]),
         ChangelogEntry(version: "0.2.67", notes: [
             "The canvas sits on a grey stage with a soft shadow, so you can see exactly what exports.",
             "Select an arrow, box, text, or blur and its settings open on the right. Done goes back to the picture.",
