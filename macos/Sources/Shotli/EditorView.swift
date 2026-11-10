@@ -84,6 +84,7 @@ struct EditorView: View {
     @ObservedObject private var savedStyles = StyleStore.shared
     @ObservedObject private var exportSettings = ExportSettings.shared
     @State private var showExportOptions = false
+    @State private var showStyles = false
     private let dockTools: [Tool] = [.select, .rect, .rectFill, .circle, .line, .arrow, .draw, .text, .marker, .pixelate, .blur, .crop]
     private let fontSizes: [CGFloat] = [18, 24, 32, 44]
     private let strokeWidths: [CGFloat] = [2, 4, 6, 8]
@@ -457,10 +458,6 @@ struct EditorView: View {
                     lightControl
                     visibilitySection
                     detailsSection
-                    if showsText || showsStroke || showsPixel || showsBlur || model.selected != nil {
-                        caption("Mark")
-                        markControls
-                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, railInset)
@@ -470,9 +467,86 @@ struct EditorView: View {
         .shotliGlass(.panel, radius: ShotliGlass.radiusPanel)
     }
 
+    private var editingMark: Bool {
+        showsText || showsStroke || showsPixel || showsBlur || model.selected != nil
+    }
+
+    /// The right side follows the selection: a mark's settings while one is selected or being drawn, the picture's otherwise.
     private var rightRail: some View {
+        Group {
+            if editingMark {
+                markPanel
+            } else {
+                picturePanel
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .shotliGlass(.panel, radius: ShotliGlass.radiusPanel)
+    }
+
+    private var markPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(markTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(ink)
+                Spacer(minLength: 8)
+                Button("Done") {
+                    model.selectedID = nil
+                    model.tool = .select
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(accent)
+                .help("Back to the picture settings")
+            }
+            .padding(.horizontal, railInset)
+            .padding(.top, railInset)
+            .padding(.bottom, 12)
+            Divider()
+                .padding(.horizontal, railInset)
+            ScrollView(.vertical) {
+                markControls
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(railInset)
+            }
+        }
+    }
+
+    private var markTitle: String {
+        switch model.selected {
+        case .text: return "Text"
+        case .line(let mark): return mark.arrow ? "Arrow" : "Line"
+        case .draw: return "Drawing"
+        case .marker: return "Step"
+        case .shape(let mark):
+            switch mark.kind {
+            case .rect: return "Box"
+            case .rectFill: return "Filled box"
+            case .circle: return "Circle"
+            case .pixelate: return "Pixelate"
+            case .blur: return "Blur"
+            }
+        case nil: break
+        }
+        switch model.tool {
+        case .text: return "Text"
+        case .arrow: return "Arrow"
+        case .line: return "Line"
+        case .draw: return "Drawing"
+        case .rect: return "Box"
+        case .rectFill: return "Filled box"
+        case .circle: return "Circle"
+        case .pixelate: return "Pixelate"
+        case .blur: return "Blur"
+        default: return "Mark"
+        }
+    }
+
+    private var picturePanel: some View {
+        ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 16) {
+                styleButton
                 VStack(alignment: .leading, spacing: 8) {
                     caption("Padding")
                     HStack(spacing: 2) {
@@ -493,15 +567,8 @@ struct EditorView: View {
                     zoomRow
                     tiltRow
                 }
-            }
-            .padding(railInset)
-
-            Divider()
-                .padding(.horizontal, railInset)
-
-            ScrollView(.vertical) {
-                VStack(spacing: 12) {
-                    myStyles
+                if model.screenshotCount >= 2 {
+                    Divider()
                     VStack(alignment: .leading, spacing: 4) {
                         caption(model.layoutHeadline)
                         if let note = model.layoutNote {
@@ -511,26 +578,72 @@ struct EditorView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    if model.screenshotCount >= 2 {
-                        layerStrip
-                    }
-                    if model.screenshotCount <= 1 {
-                        ForEach(Presets.all) { preset in
-                            presetCard(preset)
-                        }
-                    } else {
-                        ForEach(ShotLayouts.choices(for: model.screenshotCount)) { preset in
-                            layoutPresetCard(preset)
-                        }
+                    layerStrip
+                    ForEach(ShotLayouts.choices(for: model.screenshotCount)) { preset in
+                        layoutPresetCard(preset)
                     }
                 }
-                .padding(.horizontal, railInset)
-                .padding(.top, 18)
-                .padding(.bottom, 14)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(railInset)
         }
-        .shotliGlass(.panel, radius: ShotliGlass.radiusPanel)
+    }
+
+    private var styleName: String {
+        if let saved = savedStyles.styles.first(where: { $0.style.style == model.style }) { return saved.name }
+        if let preset = Presets.all.first(where: { $0.style == model.style }) { return preset.name }
+        return "Custom"
+    }
+
+    private var styleButton: some View {
+        Button(action: { showStyles.toggle() }) {
+            HStack(spacing: 10) {
+                layoutCard(model.style)
+                    .frame(width: 56)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Style")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Text(styleName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(ink)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(ShotliGlass.surface(colorScheme))
+                    .shadow(color: Color.black.opacity(0.06), radius: 8, y: 2)
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Choose a style")
+        .accessibilityLabel("Style, \(styleName)")
+        .popover(isPresented: $showStyles, arrowEdge: .leading) {
+            stylePicker
+        }
+    }
+
+    private var stylePicker: some View {
+        let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+        return ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 14) {
+                myStyles
+                caption("Presets")
+                LazyVGrid(columns: columns, spacing: 10) {
+                    ForEach(Presets.all) { preset in
+                        presetCard(preset)
+                    }
+                }
+            }
+            .padding(16)
+        }
+        .frame(width: 420, height: 540)
     }
 
     private var myStyles: some View {
@@ -541,6 +654,13 @@ struct EditorView: View {
                 iconButton("plus", help: "Save this look as a style") { model.saveCurrentStyle() }
                     .frame(height: 20)
             }
+            if savedStyles.styles.isEmpty {
+                Text("Save the current look with +. Right-click a saved style to open new screenshots with it.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
             ForEach(savedStyles.styles) { saved in
                 presetCard(saved.preset)
                     .overlay(alignment: .topTrailing) {
@@ -560,6 +680,7 @@ struct EditorView: View {
                         Divider()
                         Button("Delete") { savedStyles.delete(saved.id) }
                     }
+            }
             }
         }
     }
@@ -1442,15 +1563,18 @@ struct EditorView: View {
                     set: { model.replaceSelectedText($0) }
                 ))
                 .textFieldStyle(.roundedBorder)
+                caption("Size")
                 choiceRow(fontSizes.map { ("\(Int($0))", $0) }, selected: text.fontSize) { size in
                     model.setSelectedFontSize(size)
                 }
             } else if model.tool == .text {
+                caption("Size")
                 choiceRow(fontSizes.map { ("\(Int($0))", $0) }, selected: model.brush.fontSize) { size in
                     model.brush.fontSize = size
                 }
             }
             if showsStroke {
+                caption("Thickness")
                 choiceRow(strokeWidths.map { ("\(Int($0))", $0) }, selected: currentStroke) { width in
                     model.setSelectedStroke(width)
                 }
@@ -1461,14 +1585,17 @@ struct EditorView: View {
             if showsBlur {
                 labelledSlider("Blur radius", value: blurBinding, range: 2...40)
             }
+            caption("Colour")
             swatchRow(Presets.inks, selected: currentInk) { color in
                 model.updateSelectedColor(color)
             }
-            Button(action: { model.deleteSelected() }) {
-                Text("Delete selected")
-                    .frame(maxWidth: .infinity)
+            if model.selectedID != nil {
+                Button(action: { model.deleteSelected() }) {
+                    Text("Delete")
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.top, 4)
             }
-            .disabled(model.selectedID == nil)
         }
     }
 
