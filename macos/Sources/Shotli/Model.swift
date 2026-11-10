@@ -1023,8 +1023,56 @@ final class EditorModel: ObservableObject {
             next.canvas = canvas
             next.canvasWidth = 0
             next.canvasHeight = 0
+            next.offsetX = 0
+            next.offsetY = 0
             style = next
         }
+    }
+
+    /// Single screenshots without a device frame can be placed on the canvas.
+    var canPosition: Bool {
+        picture != nil && layers.count < 2 && DeviceLibrary.active(style) == nil
+    }
+
+    /// Offsets that put the screenshot at a column and row: -1 start, 0 middle, 1 end.
+    func alignmentOffset(column: Int, row: Int) -> CGPoint? {
+        guard canPosition else { return nil }
+        var still = style
+        still.offsetX = 0
+        still.offsetY = 0
+        let base = composition(picture: picture, crop: crop, style: still)
+        let size = base.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        func spot(_ step: Int, free: CGFloat, start: CGFloat, span: CGFloat) -> CGFloat {
+            guard free > 0.5 else { return 0 }
+            let margin = min(style.padding, free / 2) * 0.5
+            let target: CGFloat
+            switch step {
+            case ..<0: target = margin
+            case 0: target = free / 2
+            default: target = free - margin
+            }
+            return (target - start) / span
+        }
+        return CGPoint(
+            x: spot(column, free: size.width - base.window.width, start: base.window.minX, span: size.width),
+            y: spot(row, free: size.height - base.window.height, start: base.window.minY, span: size.height)
+        )
+    }
+
+    func align(column: Int, row: Int) {
+        guard let offset = alignmentOffset(column: column, row: row) else { return }
+        edit {
+            var next = style
+            next.offsetX = abs(offset.x) < 0.0005 ? 0 : offset.x
+            next.offsetY = abs(offset.y) < 0.0005 ? 0 : offset.y
+            style = next
+        }
+    }
+
+    func isAligned(column: Int, row: Int) -> Bool {
+        guard let offset = alignmentOffset(column: column, row: row) else { return false }
+        return abs(offset.x - style.offsetX) < 0.002 && abs(offset.y - style.offsetY) < 0.002
     }
 
     func setCanvasSize(width: CGFloat, height: CGFloat) {

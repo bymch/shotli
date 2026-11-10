@@ -16,8 +16,9 @@ enum ToolsVerify {
             try checkRecognition()
             try checkWebP()
             try checkExportSizes()
-            try checkStyles()
             try checkDragPosition()
+            try checkStyles()
+            try checkAlignment()
             try checkBatch(in: root)
             try checkGIF(in: root)
             print("tools verified")
@@ -219,6 +220,34 @@ enum ToolsVerify {
         style.offsetY = 0
         let plain = String(decoding: try JSONEncoder().encode(StyleFile(style)), as: UTF8.self)
         guard !plain.contains("offset") else { throw Failure("an unmoved picture wrote a position") }
+    }
+
+    private static func checkAlignment() throws {
+        let model = EditorModel.shared
+        model.useSample()
+        model.style = Presets.all[0].style
+        guard model.canPosition else { throw Failure("a single screenshot can't be positioned") }
+        model.setCanvas(.sixteenNine)
+        let size = composition(picture: model.picture, crop: model.crop, style: model.style).size
+        guard abs(size.width / size.height - 16.0 / 9.0) < 0.01 else { throw Failure("16:9 canvas came out \(size)") }
+        model.align(column: -1, row: 1)
+        let corner = composition(picture: model.picture, crop: model.crop, style: model.style)
+        let margin = min(model.style.padding, (corner.size.width - corner.window.width) / 2) * 0.5
+        guard abs(corner.window.minX - margin) < 0.5 else { throw Failure("left edge at \(corner.window.minX), wanted \(margin)") }
+        guard corner.window.maxY > corner.size.height / 2 else { throw Failure("bottom row isn't at the bottom") }
+        guard model.isAligned(column: -1, row: 1), !model.isAligned(column: 0, row: 0) else { throw Failure("the grid shows the wrong spot") }
+        model.align(column: 0, row: 0)
+        let middle = composition(picture: model.picture, crop: model.crop, style: model.style)
+        guard abs(middle.window.midX - middle.size.width / 2) < 0.5, abs(middle.window.midY - middle.size.height / 2) < 0.5 else {
+            throw Failure("center isn't centered: \(middle.window) in \(middle.size)")
+        }
+        model.align(column: 1, row: -1)
+        model.undo()
+        guard model.isAligned(column: 0, row: 0) else { throw Failure("undo didn't put the screenshot back") }
+        model.align(column: 1, row: -1)
+        model.setCanvas(.square)
+        guard model.style.offsetX == 0, model.style.offsetY == 0 else { throw Failure("a new canvas kept the old spot") }
+        model.setCanvas(.auto)
     }
 
     private static func checkStyles() throws {
