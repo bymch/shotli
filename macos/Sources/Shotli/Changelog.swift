@@ -9,6 +9,12 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.64", notes: [
+            "While you draw a capture area, hold Space to move the box. Let go to keep sizing it.",
+            "Drag a screenshot to move it on the canvas. Option-drag still drags the picture out to another app.",
+            "Dragging the picture back onto Shotli no longer adds a copy.",
+            "Check for Updates answers in a dialog, including when you're already up to date.",
+        ]),
         ChangelogEntry(version: "0.2.63", notes: [
             "Hide Sensitive Info finds emails, phone numbers, card numbers, and keys in the picture. Choose which ones to pixelate.",
             "Copy Text puts the words in the picture on the clipboard, without anything cropped out or redacted.",

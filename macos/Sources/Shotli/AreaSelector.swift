@@ -16,6 +16,8 @@ final class AreaSelector {
     private var host: NSScreen?
     private var rect: CGRect = .zero
     private var adjusting = false
+    /// Space held while drawing moves the box instead of sizing it, as in the system screenshot tool.
+    private(set) var spaceHeld = false
     private var monitor: Any?
 
     func begin() {
@@ -52,8 +54,13 @@ final class AreaSelector {
         }
         keyWindow?.makeKeyAndOrderFront(nil)
         keyWindow?.makeFirstResponder(keyWindow?.contentView)
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self, self.isActive else { return event }
+            if event.type == .keyUp {
+                guard event.keyCode == 49 else { return event }
+                self.spaceHeld = false
+                return nil
+            }
             return self.handleKey(event) ? nil : event
         }
         NSCursor.crosshair.set()
@@ -183,6 +190,9 @@ final class AreaSelector {
         case 53:
             cancel()
             return true
+        case 49:
+            spaceHeld = true
+            return true
         case 36, 76:
             commit()
             return true
@@ -208,6 +218,7 @@ final class AreaSelector {
     }
 
     private func hideChrome() {
+        spaceHeld = false
         isActive = false
         adjusting = false
         let tracked = monitor
@@ -270,6 +281,7 @@ private final class AreaOverlay: NSView {
     private var anchor = CGPoint.zero
     private var dragStart = CGRect.zero
     private var handle: AreaHandle = .none
+    private var lastPoint = CGPoint.zero
 
     init(selector: AreaSelector, screen: NSScreen) {
         self.selector = selector
@@ -340,13 +352,19 @@ private final class AreaOverlay: NSView {
         }
         handle = .none
         anchor = point
+        lastPoint = point
         selector.mouseDown(on: screen, at: point)
     }
 
     override func mouseDragged(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        defer { lastPoint = point }
         switch handle {
         case .none:
+            if selector.spaceHeld {
+                anchor.x += point.x - lastPoint.x
+                anchor.y += point.y - lastPoint.y
+            }
             selector.mouseDragged(to: point, anchor: anchor)
         case .move:
             selector.move(dragStart, by: CGPoint(x: point.x - anchor.x, y: point.y - anchor.y), bounds: bounds)
@@ -385,7 +403,7 @@ private final class AreaOverlay: NSView {
         let scale = screen.backingScaleFactor
         let width = Int((hole.width * scale).rounded())
         let height = Int((hole.height * scale).rounded())
-        let text = selector.isAdjusting(on: screen) ? "\(width) × \(height)   Return to capture · Esc to cancel" : "\(width) × \(height)"
+        let text = selector.isAdjusting(on: screen) ? "\(width) × \(height)   Return to capture · Esc to cancel" : "\(width) × \(height)   Hold Space to move"
         let font = NSFont.systemFont(ofSize: 12, weight: .medium)
         let size = (text as NSString).size(withAttributes: [.font: font])
         var origin = CGPoint(x: hole.minX, y: hole.maxY + 8)
