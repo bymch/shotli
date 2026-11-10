@@ -69,6 +69,7 @@ final class EditorCanvas: NSView {
         case crop(CGPoint)
         case pan(CGPoint, CGPoint)
         case share(CGPoint)
+        case slide(CGFloat, CGFloat, CGSize, CGPoint)
         case moveLayer(String, CGFloat, CGFloat, CGPoint)
         case resizeLayer(String, CGFloat, CGFloat, CGPoint)
     }
@@ -118,6 +119,7 @@ final class EditorCanvas: NSView {
 
     private func beginShare(_ event: NSEvent) {
         guard let file = model.shareFile() else { return }
+        model.draggingOut = true
         let writer = ShareWriter(url: file.url, png: file.png)
         let item = NSDraggingItem(pasteboardWriter: writer)
         let frame = pictureFrame() ?? bounds
@@ -242,7 +244,12 @@ final class EditorCanvas: NSView {
                 model.selectedID = nil
                 if model.layers.count >= 2 { model.selectedLayerID = nil }
                 if pictureFrame()?.contains(viewPoint) == true {
-                    drag = .share(viewPoint)
+                    if !event.modifierFlags.contains(.option), let point = compositionPoint(from: viewPoint), let room = slideRoom(at: point) {
+                        model.beginGesture()
+                        drag = .slide(model.style.shiftX, model.style.shiftY, room, point)
+                    } else {
+                        drag = .share(viewPoint)
+                    }
                 }
             }
         case .crop:
@@ -293,6 +300,15 @@ final class EditorCanvas: NSView {
                 drag = .none
                 beginShare(event)
             }
+        case .slide(let originX, let originY, let room, let start):
+            guard let point = compositionPoint(from: viewPoint) else { return }
+            let limit: CGFloat = 0.5 / 0.42
+            if room.width > 0 {
+                model.style.shiftX = min(limit, max(-limit, originX + (point.x - start.x) / (room.width * 0.42)))
+            }
+            if room.height > 0 {
+                model.style.shiftY = min(limit, max(-limit, originY + (point.y - start.y) / (room.height * 0.42)))
+            }
         case .moveLayer(let id, let originX, let originY, let start):
             guard let point = compositionPoint(from: viewPoint) else { return }
             let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
@@ -331,7 +347,7 @@ final class EditorCanvas: NSView {
             self.cropDraft = nil
             model.endGesture()
             model.tool = .select
-        case .move, .resize, .moveLayer, .resizeLayer:
+        case .move, .resize, .moveLayer, .resizeLayer, .slide:
             model.endGesture()
         case .share, .pan, .none:
             break
@@ -405,9 +421,17 @@ final class EditorCanvas: NSView {
         if case .pan = drag { drag = .none }
     }
 
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+    /// A share drag that lands back on the canvas is not a new screenshot.
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        sender.draggingSource as? EditorCanvas === self ? [] : .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        draggingEntered(sender)
+    }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard sender.draggingSource as? EditorCanvas !== self else { return false }
         guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], let url = urls.first else { return false }
         model.load(url: url)
         return true
@@ -621,6 +645,23 @@ final class EditorCanvas: NSView {
         return CGPoint(x: (viewPoint.x - place.origin.x) / place.scale, y: (viewPoint.y - place.origin.y) / place.scale)
     }
 
+    /// Free space around a single screenshot, when the canvas is larger than it.
+    private func slideRoom(at point: CGPoint) -> CGSize? {
+        guard model.layers.count < 2, DeviceLibrary.active(model.style) == nil else { return nil }
+        let layout = composition(picture: model.picture, crop: model.crop, style: model.style)
+        guard layout.window.contains(point) else { return nil }
+        var low = model.style
+        var high = model.style
+        low.shiftX = -2
+        low.shiftY = -2
+        high.shiftX = 2
+        high.shiftY = 2
+        let start = composition(picture: model.picture, crop: model.crop, style: low).window.origin
+        let end = composition(picture: model.picture, crop: model.crop, style: high).window.origin
+        let room = CGSize(width: max(0, end.x - start.x), height: max(0, end.y - start.y))
+        return room.width > 0.5 || room.height > 0.5 ? room : nil
+    }
+
     private func hitLayer(_ point: CGPoint) -> LayerHit? {
         let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
         let slots = layerSlots(layers: model.layers, canvas: layout.size, style: model.style, picture: model.picture, crop: model.crop)
@@ -667,6 +708,7 @@ extension EditorCanvas: NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         sharingOut = false
+        model.draggingOut = false
     }
 }
 

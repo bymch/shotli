@@ -26,13 +26,17 @@ final class AppUpdate {
             DispatchQueue.main.async {
                 guard let data, error == nil, let release = Self.parse(data) else {
                     self.busy = false
-                    if interactive { EditorModel.shared.notice = "Couldn't check for an update." }
+                    if interactive {
+                        Self.tell("Couldn't check for an update", "Shotli couldn't reach GitHub. Check your connection and try again.")
+                    }
                     return
                 }
                 let local = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
                 guard Self.isNewer(release.version, than: local) else {
                     self.busy = false
-                    if interactive { EditorModel.shared.notice = "You're on the latest Shotli." }
+                    if interactive {
+                        Self.tell("You're on the latest Shotli", "Version \(local) is the newest release.")
+                    }
                     return
                 }
                 self.offer(release)
@@ -40,7 +44,17 @@ final class AppUpdate {
         }.resume()
     }
 
+    /// A banner is easy to miss after choosing the menu item, so a manual check answers in a dialog.
+    private static func tell(_ title: String, _ detail: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = detail
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
     private func offer(_ release: Release) {
+        NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "Shotli \(release.version) is ready"
         alert.informativeText = "Download it and replace this copy? Shotli quits, puts the new version in place, and opens again. You don't delete the old one first."
@@ -59,7 +73,7 @@ final class AppUpdate {
             guard let location, error == nil else {
                 DispatchQueue.main.async {
                     self.busy = false
-                    EditorModel.shared.notice = "Couldn't download the update."
+                    Self.tell("Couldn't download the update", "Try Check for Updates again in a moment.")
                 }
                 return
             }
@@ -82,7 +96,7 @@ final class AppUpdate {
             } catch {
                 DispatchQueue.main.async {
                     self.busy = false
-                    EditorModel.shared.notice = "Couldn't install the update."
+                    Self.tell("Couldn't install the update", "Download Shotli.dmg from github.com/bymch/shotli/releases and drag Shotli to Applications.")
                 }
             }
         }.resume()
