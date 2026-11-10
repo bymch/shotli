@@ -128,7 +128,7 @@ final class ScreenCapture {
     private func presentPermissionAlert() {
         let alert = NSAlert()
         alert.messageText = "Turn on Screen Recording for Shotli"
-        alert.informativeText = "macOS is blocking the capture. Shotli never records audio. The Open System Settings button in Apple's dialog often does nothing, so use the button here.\n\nIn Screen & System Audio Recording, turn Shotli on. Then quit Shotli and open it again. If the switch does nothing, select Shotli, click the minus button, and try the capture once more."
+        alert.informativeText = "macOS is blocking the capture. Shotli never records your Mac's sound. The Open System Settings button in Apple's dialog often does nothing, so use the button here.\n\nIn Screen & System Audio Recording, turn Shotli on. Then quit Shotli and open it again. If the switch does nothing, select Shotli, click the minus button, and try the capture once more."
         alert.addButton(withTitle: "Open Screen Recording Settings")
         alert.addButton(withTitle: "Not Now")
         NSApp.activate(ignoringOtherApps: true)
