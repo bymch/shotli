@@ -468,6 +468,8 @@ final class EditorModel: ObservableObject {
     @Published var tool: Tool = .select
     @Published var brush = Brush()
     @Published var notice: String?
+    /// True while the canvas drags its own export out, so the window ignores it coming back.
+    var draggingOut = false
     @Published var canUndo = false
     @Published var canRedo = false
     @Published var fitRequest = 0

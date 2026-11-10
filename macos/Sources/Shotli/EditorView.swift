@@ -2081,6 +2081,7 @@ struct EditorView: View {
     }
 
     private func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard !model.draggingOut else { return false }
         if let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) {
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
                 let url: URL?
