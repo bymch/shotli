@@ -188,6 +188,12 @@ final class EditorCanvas: NSView {
         if place.scale > 0, !filled,
            let backdrop = cachedStageBackdrop(background: model.style.background, canvas: layout.size, dest: dest) {
             NSImage(cgImage: backdrop, size: NSSize(width: bounds.width, height: bounds.height)).draw(in: bounds)
+            // Shade what lies outside the export, so the padding you see is the padding you get.
+            let outside = NSBezierPath(rect: bounds)
+            outside.append(NSBezierPath(rect: dest))
+            outside.windingRule = .evenOdd
+            NSColor.black.withAlphaComponent(0.45).setFill()
+            outside.fill()
         }
         NSImage(cgImage: image, size: NSSize(width: pixel.width, height: pixel.height)).draw(in: dest)
         if case .slide = drag { drawCanvasEdge(dest) }
