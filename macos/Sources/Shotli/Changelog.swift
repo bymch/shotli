@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.73", notes: [
+            "The editor now shades everything outside the export, so the padding you see is the padding you get.",
+        ]),
         ChangelogEntry(version: "0.2.72", notes: [
             "Script Video is gone for now while it gets reworked. Recordings you made are still in Movies/Shotli Scripts.",
         ]),
