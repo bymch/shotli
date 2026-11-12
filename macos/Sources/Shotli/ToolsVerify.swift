@@ -19,6 +19,7 @@ enum ToolsVerify {
             try checkDragPosition()
             try checkStyles()
             try checkAlignment()
+            try checkLayerEdges()
             try checkBatch(in: root)
             try checkGIF(in: root)
             print("tools verified")
@@ -220,6 +221,29 @@ enum ToolsVerify {
         style.offsetY = 0
         let plain = String(decoding: try JSONEncoder().encode(StyleFile(style)), as: UTF8.self)
         guard !plain.contains("offset") else { throw Failure("an unmoved picture wrote a position") }
+    }
+
+    /// Dragging a picture toward an edge stops it at the edge instead of cutting it off.
+    private static func checkLayerEdges() throws {
+        let model = EditorModel.shared
+        model.useSample()
+        model.style = Presets.all[0].style
+        model.setCanvas(.fourThree)
+        guard let image = model.picture?.image else { throw Failure("no sample") }
+        func layer(_ x: CGFloat) -> ShotLayer {
+            ShotLayer(id: UUID().uuidString, image: image, name: "Sample.png", x: x, y: 0.3, width: 0.45, height: 0.45,
+                      radius: 0, shadow: 0, order: 0, sourceRelative: nil, sourceSHA: nil, sourceData: nil, sourceFileName: nil)
+        }
+        model.layers = [layer(0.02), layer(0.53)]
+        model.moveLayer(id: model.layers[0].id, x: -0.15, y: 0.92)
+        model.moveLayer(id: model.layers[1].id, x: 0.92, y: -0.15)
+        let canvas = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: 2).size
+        let bounds = CGRect(origin: .zero, size: canvas).insetBy(dx: -0.5, dy: -0.5)
+        for slot in layerSlots(layers: model.layers, canvas: canvas, style: model.style, picture: model.picture, crop: model.crop) {
+            guard bounds.contains(slot.fitted) else { throw Failure("a picture left the canvas: \(slot.fitted) in \(canvas)") }
+        }
+        model.layers = []
+        model.setCanvas(.auto)
     }
 
     private static func checkAlignment() throws {

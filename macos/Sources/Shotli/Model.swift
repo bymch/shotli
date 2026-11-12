@@ -878,12 +878,31 @@ final class EditorModel: ObservableObject {
         guard let index = layers.firstIndex(where: { $0.id == id }) else { return }
         layers[index].x = min(0.92, max(-0.15, x))
         layers[index].y = min(0.92, max(-0.15, y))
+        keepLayerInside(index)
+    }
+
+    /// Anything past the canvas edge is cut from the export, so a picture stops at the edge.
+    private func keepLayerInside(_ index: Int) {
+        let canvas = composition(picture: picture, crop: crop, style: style, layerCount: layers.count).size
+        let box = layerContentBox(canvas: canvas, style: style, picture: picture)
+        guard box.width > 1, box.height > 1,
+              let fitted = layerSlots(layers: layers, canvas: canvas, style: style, picture: picture, crop: crop)
+                .first(where: { $0.id == layers[index].id })?.fitted else { return }
+        func shift(_ low: CGFloat, _ high: CGFloat, _ limit: CGFloat) -> CGFloat {
+            if high - low >= limit { return (limit - low - high) / 2 }
+            if low < 0 { return -low }
+            if high > limit { return limit - high }
+            return 0
+        }
+        layers[index].x += shift(fitted.minX, fitted.maxX, canvas.width) / box.width
+        layers[index].y += shift(fitted.minY, fitted.maxY, canvas.height) / box.height
     }
 
     func resizeLayer(id: String, width: CGFloat, height: CGFloat) {
         guard let index = layers.firstIndex(where: { $0.id == id }) else { return }
         layers[index].width = min(1.05, max(0.12, width))
         layers[index].height = min(1.05, max(0.12, height))
+        keepLayerInside(index)
     }
 
     func pixelSize(for id: String) -> CGSize {
