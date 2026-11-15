@@ -1,17 +1,47 @@
 import AppKit
 
+extension Notification.Name {
+    static let shotliUpdateAvailable = Notification.Name("ShotliUpdateAvailable")
+}
+
 final class AppUpdate {
     static let shared = AppUpdate()
     private var busy = false
+    private var timer: Timer?
+    /// The newer version found on GitHub, shown in the menu bar until it is installed.
+    private(set) var availableVersion: String?
     private init() {}
 
-    func checkOnLaunch() {
+    /// Shotli lives in the menu bar for days, so it keeps looking while it runs, not only when it opens.
+    func startChecking() {
+        checkIfDue()
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
+            self?.checkIfDue()
+        }
+    }
+
+    private func checkIfDue() {
         guard ShotliSettings.shared.checkForUpdates else { return }
         let key = "shotli.lastUpdateCheck"
         let last = UserDefaults.standard.double(forKey: key)
-        if last > 0, Date().timeIntervalSince1970 - last < 60 * 60 * 12 { return }
+        if last > 0, Date().timeIntervalSince1970 - last < 60 * 60 * 6 { return }
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: key)
         check(interactive: false)
+    }
+
+    /// After Not now, the same version asks again a day later.
+    private static let snoozeKey = "shotli.updateSnooze"
+
+    private static func snoozed(_ version: String) -> Bool {
+        guard let saved = UserDefaults.standard.dictionary(forKey: snoozeKey),
+              saved["version"] as? String == version,
+              let at = saved["at"] as? Double else { return false }
+        return Date().timeIntervalSince1970 - at < 60 * 60 * 24
+    }
+
+    private static func snooze(_ version: String) {
+        UserDefaults.standard.set(["version": version, "at": Date().timeIntervalSince1970], forKey: snoozeKey)
     }
 
     func check(interactive: Bool) {
@@ -39,6 +69,14 @@ final class AppUpdate {
                     }
                     return
                 }
+                if self.availableVersion != release.version {
+                    self.availableVersion = release.version
+                    NotificationCenter.default.post(name: .shotliUpdateAvailable, object: nil)
+                }
+                if !interactive, Self.snoozed(release.version) {
+                    self.busy = false
+                    return
+                }
                 self.offer(release)
             }
         }.resume()
@@ -61,6 +99,7 @@ final class AppUpdate {
         alert.addButton(withTitle: "Download and replace")
         alert.addButton(withTitle: "Not now")
         guard alert.runModal() == .alertFirstButtonReturn else {
+            Self.snooze(release.version)
             busy = false
             return
         }

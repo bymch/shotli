@@ -108,6 +108,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: Any?
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu?
+    private var updateItem: NSMenuItem?
+    private var updateGap: NSMenuItem?
 
     override init() {
         super.init()
@@ -147,8 +149,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ShotliSettings.shared.appearance.apply()
         ShotShortcuts.shared.install()
         setMenuBarVisible(ShotliSettings.shared.showMenuBar)
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshUpdateItem), name: .shotliUpdateAvailable, object: nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            AppUpdate.shared.checkOnLaunch()
+            AppUpdate.shared.startChecking()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             for window in NSApp.windows where window.canBecomeMain {
@@ -212,10 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            let image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Shotli")
-            image?.isTemplate = true
-            image?.size = NSSize(width: 16, height: 16)
-            button.image = image
+            button.image = Self.statusImage(badged: false)
             button.toolTip = "Shotli"
         }
         let menu = NSMenu()
@@ -234,6 +234,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
         statusMenu = menu
         refreshCaptureShortcuts()
+        refreshUpdateItem()
+    }
+
+    /// A ready update puts a dot on the menu bar icon and an install item at the top of its menu.
+    @objc func refreshUpdateItem() {
+        guard let statusItem, let statusMenu else { return }
+        let version = AppUpdate.shared.availableVersion
+        if let old = updateItem {
+            statusMenu.removeItem(old)
+            if let gap = updateGap { statusMenu.removeItem(gap) }
+            updateItem = nil
+            updateGap = nil
+        }
+        if let version {
+            let item = menuItem("Update to Shotli \(version)…", #selector(checkForUpdates))
+            let gap = NSMenuItem.separator()
+            statusMenu.insertItem(item, at: 0)
+            statusMenu.insertItem(gap, at: 1)
+            updateItem = item
+            updateGap = gap
+        }
+        statusItem.button?.image = Self.statusImage(badged: version != nil)
+    }
+
+    private static func statusImage(badged: Bool) -> NSImage? {
+        guard let symbol = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Shotli") else { return nil }
+        let size = NSSize(width: 16, height: 16)
+        guard badged else {
+            symbol.isTemplate = true
+            symbol.size = size
+            return symbol
+        }
+        let image = NSImage(size: size, flipped: false) { rect in
+            symbol.draw(in: rect)
+            let dot = NSRect(x: rect.maxX - 6, y: rect.maxY - 6, width: 6, height: 6)
+            NSGraphicsContext.current?.compositingOperation = .clear
+            NSBezierPath(ovalIn: dot.insetBy(dx: -1.5, dy: -1.5)).fill()
+            NSGraphicsContext.current?.compositingOperation = .sourceOver
+            NSColor.black.setFill()
+            NSBezierPath(ovalIn: dot).fill()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Shotli, update available"
+        return image
     }
 
     func refreshCaptureShortcuts() {

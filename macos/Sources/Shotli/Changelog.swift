@@ -9,6 +9,10 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.76", notes: [
+            "Shotli looks for updates while it runs, not only when it opens. A new version puts a dot on the menu bar icon and an Update item at the top of its menu.",
+            "Not now asks again a day later.",
+        ]),
         ChangelogEntry(version: "0.2.75", notes: [
             "The background stops at the edge of the export, so there is no dark border around it in the editor.",
         ]),
