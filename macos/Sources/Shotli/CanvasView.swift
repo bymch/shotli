@@ -76,8 +76,6 @@ final class EditorCanvas: NSView {
 
     private var drag: Drag = .none
     private var sharingOut = false
-    private var stageBackdrop: CGImage?
-    private var stageBackdropKey = ""
     private var slideGuides: (vertical: Bool, horizontal: Bool) = (false, false)
     private var slideHinted = false
 
@@ -183,30 +181,8 @@ final class EditorCanvas: NSView {
             width: fitted.width,
             height: fitted.height
         )
-        // The background keeps filling the stage when the picture is zoomed out.
-        let filled = dest.insetBy(dx: -1, dy: -1).contains(bounds)
-        if place.scale > 0, !filled,
-           let backdrop = cachedStageBackdrop(background: model.style.background, canvas: layout.size, dest: dest) {
-            NSImage(cgImage: backdrop, size: NSSize(width: bounds.width, height: bounds.height)).draw(in: bounds)
-            // Shade what lies outside the export, so the padding you see is the padding you get.
-            let outside = NSBezierPath(rect: bounds)
-            outside.append(NSBezierPath(rect: dest))
-            outside.windingRule = .evenOdd
-            NSColor.black.withAlphaComponent(0.45).setFill()
-            outside.fill()
-        }
         NSImage(cgImage: image, size: NSSize(width: pixel.width, height: pixel.height)).draw(in: dest)
         if case .slide = drag { drawCanvasEdge(dest) }
-    }
-
-    private func cachedStageBackdrop(background: Background, canvas: CGSize, dest: CGRect) -> CGImage? {
-        let screen = window?.backingScaleFactor ?? 2
-        let key = "\(background)|\(canvas.width)x\(canvas.height)|\(dest.minX),\(dest.minY),\(dest.width)x\(dest.height)|\(bounds.width)x\(bounds.height)|\(screen)"
-        if key == stageBackdropKey, let stageBackdrop { return stageBackdrop }
-        guard let image = renderStageBackdrop(background: background, canvas: canvas, dest: dest, viewSize: bounds.size, screen: screen) else { return nil }
-        stageBackdrop = image
-        stageBackdropKey = key
-        return image
     }
 
     /// While a screenshot is dragged, the background past the export edge dims and the edge and middle guides show.

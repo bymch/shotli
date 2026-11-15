@@ -9,6 +9,9 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.75", notes: [
+            "The background stops at the edge of the export, so there is no dark border around it in the editor.",
+        ]),
         ChangelogEntry(version: "0.2.74", notes: [
             "With two or more screenshots, dragging one toward the edge stops it at the edge, so it is never cut off.",
         ]),

@@ -321,28 +321,6 @@ func renderBackdrop(_ background: Background, size: CGSize) -> CGImage? {
     return context.makeImage()
 }
 
-/// Background for the editor stage. The picture can shrink, and this keeps the same colour filling the view.
-func renderStageBackdrop(background: Background, canvas: CGSize, dest: CGRect, viewSize: CGSize, screen: CGFloat) -> CGImage? {
-    guard canvas.width > 1, canvas.height > 1, viewSize.width > 1, viewSize.height > 1, dest.width > 1, dest.height > 1 else { return nil }
-    let scaleX = dest.width / canvas.width
-    let scaleY = dest.height / canvas.height
-    guard scaleX > 0, scaleY > 0, scaleX.isFinite, scaleY.isFinite else { return nil }
-    let pixelScale = max(1, screen)
-    let pixels = CGSize(width: max(1, viewSize.width * pixelScale), height: max(1, viewSize.height * pixelScale))
-    guard let context = bitmapContext(pixels) else { return nil }
-    let region = CGRect(
-        x: -dest.minX / scaleX,
-        y: -dest.minY / scaleY,
-        width: viewSize.width / scaleX,
-        height: viewSize.height / scaleY
-    )
-    context.scaleBy(x: pixelScale, y: pixelScale)
-    context.translateBy(x: dest.minX, y: viewSize.height - dest.maxY)
-    context.scaleBy(x: scaleX, y: scaleY)
-    Painter(context: context, height: canvas.height).drawBackground(background, canvas, cover: region)
-    return context.makeImage()
-}
-
 func warpMotionCard(_ image: CGImage, tiltX: CGFloat, tiltY: CGFloat) -> CGImage {
     if abs(tiltX) < 0.15, abs(tiltY) < 0.15 { return image }
     return warpCard(image, tiltX: tiltX, tiltY: tiltY)
