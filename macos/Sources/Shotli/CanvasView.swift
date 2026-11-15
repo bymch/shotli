@@ -159,10 +159,13 @@ final class EditorCanvas: NSView {
     override func draw(_ dirtyRect: NSRect) {
         drawStage()
         guard model.picture != nil else { return }
+        // A background the pointer rests on in the library shows here before it is chosen.
+        var shown = model.style
+        if let preview = model.previewBackground { shown.background = preview }
         guard let image = renderShot(
             picture: model.picture,
             crop: model.crop,
-            style: model.style,
+            style: shown,
             annotations: model.annotations,
             layers: model.layers,
             draft: draft,
@@ -186,7 +189,7 @@ final class EditorCanvas: NSView {
         // The background keeps filling the stage when the picture is zoomed out.
         let filled = dest.insetBy(dx: -1, dy: -1).contains(bounds)
         if place.scale > 0, !filled,
-           let backdrop = cachedStageBackdrop(background: model.style.background, canvas: layout.size, dest: dest) {
+           let backdrop = cachedStageBackdrop(background: shown.background, canvas: layout.size, dest: dest) {
             NSImage(cgImage: backdrop, size: NSSize(width: bounds.width, height: bounds.height)).draw(in: bounds)
         }
         NSImage(cgImage: image, size: NSSize(width: pixel.width, height: pixel.height)).draw(in: dest)

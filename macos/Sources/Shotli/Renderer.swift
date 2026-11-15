@@ -567,6 +567,21 @@ private struct Painter {
                 context.fill(cg(area))
             }
             drawWallpaper(id, size)
+        case .image(let name):
+            guard let picture = CustomBackgrounds.image(name) else {
+                drawChecker(area)
+                return
+            }
+            // Fill the canvas the way a desktop picture fills a screen, then keep filling past it on the stage.
+            let pixel = CGSize(width: picture.width, height: picture.height)
+            let scale = max(area.width / max(pixel.width, 1), area.height / max(pixel.height, 1))
+            let drawn = CGSize(width: pixel.width * scale, height: pixel.height * scale)
+            let rect = CGRect(x: area.midX - drawn.width / 2, y: area.midY - drawn.height / 2, width: drawn.width, height: drawn.height)
+            context.saveGState()
+            context.clip(to: cg(area))
+            context.interpolationQuality = .high
+            context.draw(picture, in: cg(rect))
+            context.restoreGState()
         }
     }
 
@@ -578,6 +593,11 @@ private struct Painter {
         case .stripes: return "#F4F1EC"
         case .mesh: return "#F6F7F8"
         case .cross: return "#F4F7FB"
+        case .paper: return "#F4F1EC"
+        case .grain: return "#F78529"
+        case .noise: return "#1C1E24"
+        case .marble: return "#F6F7F8"
+        case .fabric: return "#EBE4D8"
         default: return nil
         }
     }
@@ -683,9 +703,99 @@ private struct Painter {
                 x += 18
             }
             context.strokePath()
+        case .paper, .grain, .noise, .marble, .fabric:
+            drawTexture(id, size)
         default:
             drawScene(id, size)
         }
+    }
+
+    /// Material backgrounds. Colours come from the app's existing palette and pattern tones.
+    func drawTexture(_ id: WallpaperID, _ size: CGSize) {
+        switch id {
+        case .paper:
+            vertical(size, [(0, "#F7F5F0"), (1, "#EFEAE1")])
+            glow(size, 0.24, 0.18, 0.6, "#FFFFFF", 0.7)
+            fibres(size, "#C9C5BF", count: 140, alpha: 0.18)
+            grainLayer(size, amount: 0.05)
+        case .grain:
+            vertical(size, [(0, "#F78529"), (0.55, "#F03B47"), (1, "#7A42E8")])
+            glow(size, 0.2, 0.2, 0.55, "#F5BA3B", 0.55)
+            glow(size, 0.82, 0.86, 0.5, "#7A42E8", 0.6)
+            grainLayer(size, amount: 0.16)
+        case .noise:
+            vertical(size, [(0, "#2B2E36"), (1, "#1C1E24")])
+            glow(size, 0.78, 0.2, 0.55, "#1278B4", 0.45)
+            glow(size, 0.18, 0.86, 0.45, "#7A42E8", 0.28)
+            grainLayer(size, amount: 0.12)
+        case .marble:
+            vertical(size, [(0, "#F8F8F7"), (1, "#ECEAE6")])
+            glow(size, 0.7, 0.3, 0.5, "#FFFFFF", 0.8)
+            band(size, 0.32, 0.12, 0.8, 0.6, "#BDB8B0", 0.004, 0.55)
+            band(size, 0.36, 0.1, 0.9, 1.1, "#D6D3CE", 0.012, 0.35)
+            band(size, 0.62, 0.14, 0.7, 2.4, "#C9C5BF", 0.003, 0.5)
+            band(size, 0.78, 0.08, 1.2, 4.2, "#D6D3CE", 0.009, 0.3)
+            grainLayer(size, amount: 0.03)
+        case .fabric:
+            context.setFillColor(paint("#EBE4D8"))
+            context.fill(CGRect(origin: .zero, size: size))
+            let step = max(3, min(size.width, size.height) / 160)
+            context.setLineWidth(step * 0.45)
+            context.setStrokeColor(paint("#D8CFBF", alpha: 0.7))
+            var y: CGFloat = 0
+            while y < size.height {
+                context.move(to: cg(CGPoint(x: 0, y: y)))
+                context.addLine(to: cg(CGPoint(x: size.width, y: y)))
+                y += step
+            }
+            context.strokePath()
+            context.setStrokeColor(paint("#F7F3EA", alpha: 0.55))
+            var x: CGFloat = 0
+            while x < size.width {
+                context.move(to: cg(CGPoint(x: x, y: 0)))
+                context.addLine(to: cg(CGPoint(x: x, y: size.height)))
+                x += step
+            }
+            context.strokePath()
+            vignette(size, "#8A7F6D", 0.18)
+            grainLayer(size, amount: 0.05)
+        default:
+            break
+        }
+    }
+
+    /// Fine speckle laid over a texture. The tile is fixed, so every export of the same picture matches.
+    func grainLayer(_ size: CGSize, amount: CGFloat) {
+        guard let tile = GrainTile.image else { return }
+        context.saveGState()
+        context.clip(to: CGRect(origin: .zero, size: size))
+        context.setAlpha(amount)
+        context.setBlendMode(.overlay)
+        let side = CGFloat(tile.width) / 2
+        context.draw(tile, in: CGRect(x: 0, y: 0, width: side, height: side), byTiling: true)
+        context.restoreGState()
+    }
+
+    func fibres(_ size: CGSize, _ hex: String, count: Int, alpha: CGFloat) {
+        var seed: UInt64 = 0x5EED
+        func next() -> CGFloat {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return CGFloat((seed >> 33) % 10_000) / 10_000
+        }
+        context.saveGState()
+        context.setStrokeColor(paint(hex, alpha: alpha))
+        context.setLineCap(.round)
+        let unit = max(size.width, size.height)
+        for _ in 0..<count {
+            let start = CGPoint(x: next() * size.width, y: next() * size.height)
+            let angle = next() * .pi * 2
+            let length = unit * (0.006 + next() * 0.02)
+            context.setLineWidth(max(0.5, unit * 0.0007))
+            context.move(to: cg(start))
+            context.addLine(to: cg(CGPoint(x: start.x + cos(angle) * length, y: start.y + sin(angle) * length)))
+            context.strokePath()
+        }
+        context.restoreGState()
     }
 
     func drawScene(_ id: WallpaperID, _ size: CGSize) {
@@ -1342,25 +1452,31 @@ private struct Painter {
         context.restoreGState()
     }
 
+    /// Editor only: a quiet accent outline with round knobs, in the app's accent colour.
     func drawSelection(_ annotation: Annotation, layout: Composition, crop: CGRect) {
+        let accent = paint("#1278B4")
         context.saveGState()
-        context.setStrokeColor(paint("#3478F6"))
-        context.setLineWidth(1)
-        context.setLineDash(phase: 0, lengths: [4, 3])
+        context.setStrokeColor(paint("#1278B4", alpha: 0.9))
+        context.setLineWidth(1.5)
         if case .marker(let mark) = annotation {
             let center = visual(CGPoint(x: mark.x, y: mark.y), layout: layout, crop: crop)
-            context.strokeEllipse(in: cg(CGRect(x: center.x - 18, y: center.y - 18, width: 36, height: 36)))
+            context.strokeEllipse(in: cg(CGRect(x: center.x - 19, y: center.y - 19, width: 38, height: 38)))
         } else {
-            let box = visual(bounds(of: annotation).insetBy(dx: -2, dy: -2), layout: layout, crop: crop)
-            context.stroke(cg(box))
+            let box = visual(bounds(of: annotation).insetBy(dx: -3, dy: -3), layout: layout, crop: crop)
+            context.addPath(CGPath(roundedRect: cg(box), cornerWidth: 3, cornerHeight: 3, transform: nil))
+            context.strokePath()
         }
-        context.setLineDash(phase: 0, lengths: [])
-        context.setFillColor(NSColor.white.cgColor)
         for handle in handles(of: annotation) {
             let point = visual(handle.1, layout: layout, crop: crop)
-            let square = CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)
-            context.fill(cg(square))
-            context.stroke(cg(square))
+            let knob = cg(CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
+            context.saveGState()
+            context.setShadow(offset: CGSize(width: 0, height: -1), blur: 3, color: NSColor.black.withAlphaComponent(0.25).cgColor)
+            context.setFillColor(NSColor.white.cgColor)
+            context.fillEllipse(in: knob)
+            context.restoreGState()
+            context.setStrokeColor(accent)
+            context.setLineWidth(1.5)
+            context.strokeEllipse(in: knob.insetBy(dx: 0.75, dy: 0.75))
         }
         context.restoreGState()
     }
@@ -1708,4 +1824,28 @@ extension NSColor {
             alpha: 1
         )
     }
+}
+
+private enum GrainTile {
+    static let image: CGImage? = {
+        let side = 128
+        var bytes = [UInt8](repeating: 0, count: side * side * 4)
+        var seed: UInt32 = 0x9E3779B9
+        for index in 0..<(side * side) {
+            seed ^= seed << 13
+            seed ^= seed >> 17
+            seed ^= seed << 5
+            let value = UInt8(truncatingIfNeeded: seed >> 24)
+            bytes[index * 4] = value
+            bytes[index * 4 + 1] = value
+            bytes[index * 4 + 2] = value
+            bytes[index * 4 + 3] = 255
+        }
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData) else { return nil }
+        return CGImage(
+            width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        )
+    }()
 }

@@ -77,6 +77,7 @@ struct BackgroundFile: Codable, Equatable {
     var to: String?
     var angle: Double?
     var wallpaper: String?
+    var image: String?
 
     init(_ background: Background) {
         switch background {
@@ -92,6 +93,9 @@ struct BackgroundFile: Codable, Equatable {
         case .wallpaper(let id):
             kind = "wallpaper"
             wallpaper = id.rawValue
+        case .image(let name):
+            kind = "image"
+            image = name
         }
     }
 
@@ -101,6 +105,9 @@ struct BackgroundFile: Codable, Equatable {
             return .gradient(from: from ?? "#FFFFFF", mid: mid, to: to ?? "#000000", angle: CGFloat(angle ?? 135))
         case "wallpaper":
             if let wallpaper, let id = WallpaperID(rawValue: wallpaper) { return .wallpaper(id) }
+            return .color("#FFFFFF")
+        case "image":
+            if let image { return .image(image) }
             return .color("#FFFFFF")
         default:
             return .color(color ?? "#FFFFFF")

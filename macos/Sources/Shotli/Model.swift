@@ -89,6 +89,7 @@ enum WallpaperID: String, CaseIterable, Identifiable {
     case peaks, coast, shore, ridge
     case fold, swell, dune, petal
     case canyon, canopy, mesa, basin
+    case paper, grain, noise, marble, fabric
     static let patterns: [WallpaperID] = [.dots, .grid, .diagonal, .stripes, .mesh, .cross]
     static let scenes: [WallpaperID] = [.dusk, .night, .harbour, .hills, .aurora, .sorbet]
     static let backdrops: [WallpaperID] = [.studio, .porcelain, .bloom, .tide, .sand, .ink, .citrus, .glacier, .clay, .moss]
@@ -99,8 +100,9 @@ enum WallpaperID: String, CaseIterable, Identifiable {
     static let desktop: [WallpaperID] = [.peaks, .coast, .shore, .ridge]
     static let abstract: [WallpaperID] = [.fold, .swell, .dune, .petal]
     static let earth: [WallpaperID] = [.canyon, .canopy, .mesa, .basin]
+    static let textures: [WallpaperID] = [.paper, .grain, .noise, .marble, .fabric]
     var id: String { rawValue }
-    var isScene: Bool { !Self.patterns.contains(self) }
+    var isScene: Bool { !Self.patterns.contains(self) && !Self.textures.contains(self) }
     var label: String {
         switch self {
         case .dots: return "Dots"
@@ -153,6 +155,11 @@ enum WallpaperID: String, CaseIterable, Identifiable {
         case .canopy: return "Canopy"
         case .mesa: return "Mesa"
         case .basin: return "Basin"
+        case .paper: return "Paper"
+        case .grain: return "Grain"
+        case .noise: return "Noise"
+        case .marble: return "Marble"
+        case .fabric: return "Fabric"
         }
     }
 }
@@ -161,6 +168,8 @@ enum Background: Equatable {
     case color(String)
     case gradient(from: String, mid: String?, to: String, angle: CGFloat)
     case wallpaper(WallpaperID)
+    /// A picture the person added, stored by file name in the custom backgrounds folder.
+    case image(String)
 }
 
 enum CardStyle: String, Equatable, Hashable, CaseIterable {
@@ -466,6 +475,8 @@ final class EditorModel: ObservableObject {
     @Published var layerGap: CGFloat = 0.04
     @Published var crop: CGRect?
     @Published var style = Presets.all[0].style
+    /// A background shown on the stage while the pointer rests on it in the library. Never saved or exported.
+    @Published var previewBackground: Background?
     @Published var annotations: [Annotation] = []
     @Published var selectedID: String?
     @Published var tool: Tool = .select
