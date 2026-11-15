@@ -89,6 +89,7 @@ enum WallpaperID: String, CaseIterable, Identifiable {
     case peaks, coast, shore, ridge
     case fold, swell, dune, petal
     case canyon, canopy, mesa, basin
+    case paper, grain, noise, marble, fabric
     static let patterns: [WallpaperID] = [.dots, .grid, .diagonal, .stripes, .mesh, .cross]
     static let scenes: [WallpaperID] = [.dusk, .night, .harbour, .hills, .aurora, .sorbet]
     static let backdrops: [WallpaperID] = [.studio, .porcelain, .bloom, .tide, .sand, .ink, .citrus, .glacier, .clay, .moss]
@@ -99,8 +100,9 @@ enum WallpaperID: String, CaseIterable, Identifiable {
     static let desktop: [WallpaperID] = [.peaks, .coast, .shore, .ridge]
     static let abstract: [WallpaperID] = [.fold, .swell, .dune, .petal]
     static let earth: [WallpaperID] = [.canyon, .canopy, .mesa, .basin]
+    static let textures: [WallpaperID] = [.paper, .grain, .noise, .marble, .fabric]
     var id: String { rawValue }
-    var isScene: Bool { !Self.patterns.contains(self) }
+    var isScene: Bool { !Self.patterns.contains(self) && !Self.textures.contains(self) }
     var label: String {
         switch self {
         case .dots: return "Dots"
@@ -153,6 +155,11 @@ enum WallpaperID: String, CaseIterable, Identifiable {
         case .canopy: return "Canopy"
         case .mesa: return "Mesa"
         case .basin: return "Basin"
+        case .paper: return "Paper"
+        case .grain: return "Grain"
+        case .noise: return "Noise"
+        case .marble: return "Marble"
+        case .fabric: return "Fabric"
         }
     }
 }
@@ -161,6 +168,8 @@ enum Background: Equatable {
     case color(String)
     case gradient(from: String, mid: String?, to: String, angle: CGFloat)
     case wallpaper(WallpaperID)
+    /// A picture the person added, stored by file name in the custom backgrounds folder.
+    case image(String)
 }
 
 enum CardStyle: String, Equatable, Hashable, CaseIterable {
@@ -192,6 +201,19 @@ enum ShadowKind: String, Equatable, Hashable, CaseIterable {
     }
 }
 
+/// Optional shapes drawn between the background and the screenshot.
+enum Decor: String, Equatable, CaseIterable {
+    case none, spotlight, plate, stack
+    var title: String {
+        switch self {
+        case .none: return "None"
+        case .spotlight: return "Spotlight"
+        case .plate: return "Plate"
+        case .stack: return "Stack"
+        }
+    }
+}
+
 struct ShotliStyle: Equatable {
     var padding: CGFloat
     var radius: CGFloat
@@ -217,6 +239,7 @@ struct ShotliStyle: Equatable {
     var deviceFinish: String? = nil
     var deviceFit: DeviceFit = .fit
     var deviceScale: CGFloat = 1
+    var decor: Decor = .none
 }
 
 struct Brush: Equatable {
@@ -365,82 +388,6 @@ enum Presets {
     }
 }
 
-enum TemplateKind: String {
-    case image, angled
-}
-
-struct ShotTemplate: Identifiable, Equatable {
-    var id: String
-    var name: String
-    var group: String
-    var kind: TemplateKind
-    var style: ShotliStyle
-}
-
-enum TemplateLibrary {
-    static let groups = ["Product promotion", "Abstract colour", "Colour"]
-
-    static let all: [ShotTemplate] = [
-        shot("stage", "Studio", "Product promotion", .image, 72, 18, 40, .none, .wallpaper(.studio), .sixteenNine, 0, 0, 0.22, 0),
-        shot("lean", "Lean", "Product promotion", .angled, 64, 22, 48, .none, .wallpaper(.porcelain), .sixteenNine, 14, -26, -0.06, 0),
-        shot("hero", "Sand", "Product promotion", .angled, 72, 16, 36, .none, .wallpaper(.sand), .threeTwo, 10, 22, -0.16, 0),
-        shot("quiet", "Glass", "Product promotion", .image, 80, 26, 28, .none, .wallpaper(.glacier), .sixteenNine, 0, 0, 0, 0, card: .glassLight),
-        shot("spotlight", "Spotlight", "Product promotion", .image, 68, 20, 48, .none, .wallpaper(.ink), .sixteenNine, 0, 0, 0, -0.06),
-        shot("bloom", "Bloom", "Abstract colour", .image, 72, 24, 34, .none, .wallpaper(.bloom), .sixteenNine, 0, 0, 0.16, 0),
-        shot("bloom-lean", "Bloom tilt", "Abstract colour", .angled, 64, 22, 42, .none, .wallpaper(.bloom), .sixteenNine, 12, 24, 0.08, 0),
-        shot("tide", "Browser", "Abstract colour", .image, 64, 14, 32, .browser, .wallpaper(.tide), .sixteenNine, 0, 0, 0, 0),
-        shot("tide-lean", "Browser tilt", "Abstract colour", .angled, 60, 14, 36, .browser, .wallpaper(.tide), .sixteenNine, 8, 20, 0.08, 0),
-        shot("citrus", "Citrus", "Abstract colour", .angled, 68, 22, 34, .none, .wallpaper(.citrus), .sixteenNine, 8, -22, -0.1, 0),
-        shot("clay", "Clay", "Abstract colour", .image, 76, 18, 30, .none, .wallpaper(.clay), .threeTwo, 0, 0, -0.18, 0),
-        shot("moss", "Moss", "Abstract colour", .angled, 64, 20, 40, .none, .wallpaper(.moss), .sixteenNine, 10, 20, 0.1, 0),
-        shot("ripple", "Ripple", "Colour", .image, 76, 22, 32, .none, .wallpaper(.ripple), .sixteenNine, 0, 0, 0, 0),
-        shot("nebula", "Nebula", "Colour", .image, 72, 20, 44, .none, .wallpaper(.nebula), .sixteenNine, 0, 0, 0.08, 0),
-        shot("peaks", "Peaks", "Colour", .image, 68, 16, 36, .none, .wallpaper(.peaks), .sixteenNine, 0, 0, 0, 0),
-        shot("canyon", "Canyon", "Colour", .angled, 64, 18, 40, .none, .wallpaper(.canyon), .sixteenNine, 10, 18, 0.08, 0),
-    ]
-
-    static func inGroup(_ group: String, kind: TemplateKind?) -> [ShotTemplate] {
-        all.filter { $0.group == group && (kind == nil || $0.kind == kind) }
-    }
-
-    private static func shot(
-        _ id: String,
-        _ name: String,
-        _ group: String,
-        _ kind: TemplateKind,
-        _ padding: CGFloat,
-        _ radius: CGFloat,
-        _ shadow: CGFloat,
-        _ frame: FrameStyle,
-        _ background: Background,
-        _ canvas: CanvasRatio,
-        _ tiltX: CGFloat,
-        _ tiltY: CGFloat,
-        _ shiftX: CGFloat,
-        _ shiftY: CGFloat,
-        card: CardStyle = .default
-    ) -> ShotTemplate {
-        var style = ShotliStyle(
-            padding: padding,
-            radius: radius,
-            shadow: shadow,
-            frame: frame,
-            canvas: canvas,
-            canvasWidth: 0,
-            canvasHeight: 0,
-            background: background
-        )
-        style.card = card
-        style.shadowKind = shadow > 0 ? .spread : .none
-        style.shadowOpacity = 46
-        style.tiltX = tiltX
-        style.tiltY = tiltY
-        style.shiftX = shiftX
-        style.shiftY = shiftY
-        return ShotTemplate(id: id, name: name, group: group, kind: kind, style: style)
-    }
-}
-
 struct Snapshot: Equatable {
     var crop: CGRect?
     var style: ShotliStyle
@@ -450,6 +397,7 @@ struct Snapshot: Equatable {
     var selectedLayerID: String?
     var activeLayoutID: String?
     var layerGap: CGFloat
+    var recipeID: String?
 }
 
 let chromeHeight: CGFloat = 46
@@ -466,6 +414,14 @@ final class EditorModel: ObservableObject {
     @Published var layerGap: CGFloat = 0.04
     @Published var crop: CGRect?
     @Published var style = Presets.all[0].style
+    /// A background shown on the stage while the pointer rests on it in the library. Never saved or exported.
+    @Published var previewBackground: Background?
+    /// A whole recipe shown on the stage while the pointer rests on it. Never saved or exported.
+    @Published var previewStyle: ShotliStyle?
+    /// The recipe the composition came from. It stays after edits, so the library can say it was customised.
+    @Published var activeRecipeID: String?
+    /// The composition from before the first recipe, so Original can bring it back.
+    @Published private(set) var recipeOrigin: ShotliStyle?
     @Published var annotations: [Annotation] = []
     @Published var selectedID: String?
     @Published var tool: Tool = .select
@@ -925,15 +881,68 @@ final class EditorModel: ObservableObject {
         )
     }
 
-    func applyTemplate(_ template: ShotTemplate) {
-        var next = template.style
-        next.deviceID = style.deviceID
-        next.deviceFinish = style.deviceFinish
-        next.deviceFit = style.deviceFit
-        next.deviceScale = style.deviceScale
-        guard next != style else { return }
+    /// The recipe's style for this screenshot, keeping any device the person picked.
+    func recipeStyle(_ recipe: Recipe) -> ShotliStyle {
+        recipe.style(for: activeCrop(picture: picture, crop: crop)?.size).keepingDevice(of: style)
+    }
+
+    func applyRecipe(_ recipe: Recipe) {
+        previewStyle = nil
+        previewBackground = nil
+        let next = recipeStyle(recipe)
+        guard next != style || activeRecipeID != recipe.id else { return }
+        if recipeOrigin == nil { recipeOrigin = style }
         pushUndo()
         style = next
+        activeRecipeID = recipe.id
+        RecipeStore.shared.noteUsed(recipe.id)
+    }
+
+    /// True when a recipe was applied and something in the composition has changed since.
+    var recipeCustomised: Bool {
+        guard let id = activeRecipeID, let recipe = RecipeLibrary.recipe(id) else { return false }
+        return recipeStyle(recipe) != style
+    }
+
+    func restoreOriginal() {
+        guard let origin = recipeOrigin else { return }
+        previewStyle = nil
+        edit {
+            style = origin.keepingDevice(of: style)
+            activeRecipeID = nil
+        }
+        recipeOrigin = nil
+    }
+
+    /// How much of the composition's width the screenshot takes, from its padding.
+    var screenshotFill: CGFloat {
+        guard let size = activeCrop(picture: picture, crop: crop)?.size else { return 1 }
+        let span = max(size.width, size.height, 1)
+        return span / (span + 2 * style.padding)
+    }
+
+    func setScreenshotFill(_ fill: CGFloat) {
+        guard let size = activeCrop(picture: picture, crop: crop)?.size else { return }
+        let span = max(size.width, size.height, 1)
+        let clamped = min(0.98, max(0.4, fill))
+        setPadding((span * (1 - clamped) / (2 * clamped)).rounded())
+    }
+
+    /// For sliders: changes tilt without its own undo step. Pair with beginGesture and endGesture.
+    func setTiltAngles(x: CGFloat, y: CGFloat) {
+        var next = style
+        next.tiltX = x
+        next.tiltY = y
+        style = next
+    }
+
+    func setDecor(_ decor: Decor) {
+        guard style.decor != decor else { return }
+        edit {
+            var next = style
+            next.decor = decor
+            style = next
+        }
     }
 
     func setTilt(x: CGFloat, y: CGFloat) {
@@ -1854,11 +1863,16 @@ final class EditorModel: ObservableObject {
         sourceRelative = nil
     }
 
+    /// Runs whenever a different picture takes over the editor, so recipe and preview state start fresh too.
     private func resetLayers() {
         layers = []
         selectedLayerID = nil
         activeLayoutID = nil
         layerGap = 0.04
+        activeRecipeID = nil
+        recipeOrigin = nil
+        previewStyle = nil
+        previewBackground = nil
     }
 
     private func appendImages(_ urls: [URL]) {
@@ -2079,7 +2093,8 @@ final class EditorModel: ObservableObject {
             layers: layers,
             selectedLayerID: selectedLayerID,
             activeLayoutID: activeLayoutID,
-            layerGap: layerGap
+            layerGap: layerGap,
+            recipeID: activeRecipeID
         )
     }
 
@@ -2092,6 +2107,7 @@ final class EditorModel: ObservableObject {
         selectedLayerID = snap.selectedLayerID
         activeLayoutID = snap.activeLayoutID
         layerGap = snap.layerGap
+        activeRecipeID = snap.recipeID
         if let first = layers.first { adoptLayerSource(first) }
         textUndoID = nil
         refreshHistory()

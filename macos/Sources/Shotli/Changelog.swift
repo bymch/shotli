@@ -9,6 +9,18 @@ struct ChangelogEntry: Identifiable {
 
 enum Changelog {
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.2.77", notes: [
+            "Screenshot Recipes replace Templates: 32 complete looks in eight collections, previewed with your own screenshot. One click sets the background, size, position, depth, corners, angle, and canvas shape.",
+            "Rest the pointer on a recipe to see it on the canvas first. Heart the ones you like, and recent recipes show at the top.",
+            "After a recipe, change anything. Original brings back the composition from before, and Undo steps back one recipe at a time.",
+            "New controls: Size for how much of the canvas the screenshot fills, Turn and Lean for angled shots, shadow Depth, and Decoration.",
+            "Backgrounds are a library now: search, categories, and large previews. Rest the pointer on one to see it on the canvas before you choose it.",
+            "New textures: Paper, Grain, Noise, Marble, and Fabric.",
+            "Heart a background to keep it in Favourites. Recent backgrounds show at the top.",
+            "Custom backgrounds: drop in your own picture. It stays on this Mac.",
+            "The inspector on the right splits into Layout and Style, and the frame, border, shadow, and light settings moved there.",
+            "Selected marks show round handles in the Shotli blue.",
+        ]),
         ChangelogEntry(version: "0.2.76", notes: [
             "Shotli looks for updates while it runs, not only when it opens. A new version puts a dot on the menu bar icon and an Update item at the top of its menu.",
             "Not now asks again a day later.",

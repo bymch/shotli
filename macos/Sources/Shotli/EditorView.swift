@@ -9,45 +9,19 @@ private let leftRailIdeal: CGFloat = 280
 private let rightRailMin: CGFloat = 248
 private let rightRailIdeal: CGFloat = 292
 private let railInset: CGFloat = 14
-private let thumbGap: CGFloat = 8
-private let thumbHeight: CGFloat = 58
 
-private enum BackgroundShelf: String, Identifiable {
-    case gradient, glass, cosmic, mystic, desktop, abstract, earth, studio, scenes, linear, pattern
-
-    var id: String { rawValue }
-
+private enum LeftRailMode: String, CaseIterable {
+    case recipes, backgrounds
     var title: String {
         switch self {
-        case .gradient: return "Gradient"
-        case .glass: return "Glass"
-        case .cosmic: return "Cosmic"
-        case .mystic: return "Mystic"
-        case .desktop: return "Desktop"
-        case .abstract: return "Abstract"
-        case .earth: return "Earth"
-        case .studio: return "Studio"
-        case .scenes: return "Scenes"
-        case .linear: return "Linear"
-        case .pattern: return "Pattern"
+        case .recipes: return "Recipes"
+        case .backgrounds: return "Backgrounds"
         }
     }
+}
 
-    var wallpapers: [WallpaperID] {
-        switch self {
-        case .gradient: return WallpaperID.fields
-        case .glass: return WallpaperID.glass
-        case .cosmic: return WallpaperID.cosmic
-        case .mystic: return WallpaperID.mystic
-        case .desktop: return WallpaperID.desktop
-        case .abstract: return WallpaperID.abstract
-        case .earth: return WallpaperID.earth
-        case .studio: return WallpaperID.backdrops
-        case .scenes: return WallpaperID.scenes
-        case .pattern: return WallpaperID.patterns
-        case .linear: return []
-        }
-    }
+private enum InspectorTab {
+    case layout, style
 }
 
 private enum SceneThumbs {
@@ -66,11 +40,9 @@ struct EditorView: View {
     @State private var didConfigure = false
     @State private var showMotion = false
     @State private var adjustingLight = false
-    @State private var showTemplates = false
-    @State private var backgroundShelf: BackgroundShelf?
-    @State private var gradientPopover: String?
-    @State private var expandedShelves: Set<String> = []
-    @State private var didSeedLibrary = false
+    @AppStorage("shotli.leftRail") private var railMode = LeftRailMode.recipes.rawValue
+    @State private var showLibrary = false
+    @State private var inspectorTab: InspectorTab = .layout
     @State private var hoveredPreset: String?
     @State private var showMagic = false
     @State private var magicColors: [MagicColor] = []
@@ -122,6 +94,7 @@ struct EditorView: View {
                                 .stroke(ShotliGlass.hairline(colorScheme), lineWidth: 1)
                                 .allowsHitTesting(false)
                         )
+                        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.07), radius: 22, y: 10)
                         if model.picture != nil {
                         HStack(spacing: 8) {
                             stageChip("move.3d", "Motion", help: "Open Motion Studio") { showMotion = true }
@@ -146,25 +119,21 @@ struct EditorView: View {
         .background(ShotliWorkspaceWash().ignoresSafeArea())
         .shotliAppearance()
         .overlay {
-            if showTemplates {
-                TemplatesPanel(model: model, shot: shotImage) { showTemplates = false }
-            }
-            if let backgroundShelf {
-                backgroundBrowser(backgroundShelf)
+            if showLibrary {
+                libraryBrowser
             }
         }
         .onAppear {
             refreshMagic()
             configureWindow()
-            seedLibrary()
         }
         .onChange(of: pictureKey) { _ in
             refreshMagic()
             if model.picture == nil {
-                showTemplates = false
+                model.previewStyle = nil
                 showMotion = false
-                backgroundShelf = nil
-                gradientPopover = nil
+                showLibrary = false
+                model.previewBackground = nil
             }
         }
         .onChange(of: model.style) { _ in model.scheduleProjectSave() }
@@ -198,18 +167,15 @@ struct EditorView: View {
                     projectTitle
                         .frame(minWidth: 72, idealWidth: 160, maxWidth: 240, alignment: .leading)
                     if model.picture != nil {
-                    Button(action: { showTemplates = true }) {
+                    Button(action: { railMode = LeftRailMode.recipes.rawValue }) {
                         HStack(spacing: 6) {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .fill(LinearGradient(colors: [Color(nsColor: NSColor(hex: "#F78529")!), Color(nsColor: NSColor(hex: "#7A42E8")!)], startPoint: .topLeading, endPoint: .bottomTrailing))
                                 .frame(width: 16, height: 16)
-                            Text("Templates")
+                            Text("Recipes")
                                 .font(.system(size: 13, weight: .medium))
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.secondary)
                         }
                         .foregroundColor(ink)
                         .padding(.horizontal, 4)
@@ -220,7 +186,7 @@ struct EditorView: View {
                     .buttonStyle(.plain)
                     .fixedSize(horizontal: true, vertical: false)
                     .layoutPriority(2)
-                    .help("Templates")
+                    .help("Screenshot Recipes: complete looks in one click")
                     }
                 }
             }
@@ -419,8 +385,64 @@ struct EditorView: View {
         .shotliCapsuleChip()
     }
 
+    /// The left side is the creative library: the screenshots in this composition, then backgrounds to put behind them.
+    /// Recipes are whole compositions; Backgrounds are single assets. Each has its own tab so they stay distinct.
     private var leftRail: some View {
         VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 4) {
+                ForEach(LeftRailMode.allCases, id: \.self) { mode in
+                    tabButton(mode.title, on: railMode == mode.rawValue) { railMode = mode.rawValue }
+                }
+            }
+            .padding(3)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+            .padding(.horizontal, railInset)
+            .padding(.top, railInset)
+            .padding(.bottom, 12)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Library")
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        screenshotRow
+                        if model.picture != nil {
+                            addScreenshotButton
+                        }
+                    }
+                    if railMode == LeftRailMode.recipes.rawValue {
+                        RecipeLibraryView(model: model, onChangeBackground: { railMode = LeftRailMode.backgrounds.rawValue })
+                    } else {
+                        BackgroundLibraryView(model: model, onExpand: { showLibrary = true })
+                        magicPresetRow
+                        mediaWell
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, railInset)
+                .padding(.bottom, 18)
+            }
+        }
+        .shotliGlass(.panel, radius: ShotliGlass.radiusPanel)
+    }
+
+    private var libraryBrowser: some View {
+        ZStack {
+            Color.black.opacity(0.18)
+                .ignoresSafeArea()
+                .onTapGesture { showLibrary = false }
+            ScrollView(.vertical) {
+                BackgroundLibraryView(model: model, wide: true, onClose: { showLibrary = false })
+                    .padding(22)
+            }
+            .frame(width: 760, height: 580)
+            .shotliGlass(.panel, radius: ShotliGlass.radiusOverlay)
+        }
+        .onExitCommand { showLibrary = false }
+    }
+
+    private var frameSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Frame")
             HStack(spacing: 4) {
                 tabButton("Mockup", on: model.style.frame == .none) {
                     model.setFrame(.none)
@@ -431,8 +453,6 @@ struct EditorView: View {
             }
             .padding(3)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
-            .padding(.horizontal, railInset)
-            .padding(.vertical, 10)
             if model.style.frame != .none {
                 HStack(spacing: 4) {
                     tabButton("Browser", on: model.style.frame == .browser) { model.setFrame(.browser) }
@@ -440,31 +460,8 @@ struct EditorView: View {
                 }
                 .padding(3)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
-                .padding(.horizontal, railInset)
-                .padding(.bottom, 8)
-            }
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 16) {
-                    screenshotRow
-                    if model.picture != nil {
-                        addScreenshotButton
-                    }
-                    backgroundGallery
-                    magicPresetRow
-                    mediaWell
-                    styleGrid
-                    borderSection
-                    shadowSection
-                    lightControl
-                    visibilitySection
-                    detailsSection
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, railInset)
-                .padding(.bottom, 18)
             }
         }
-        .shotliGlass(.panel, radius: ShotliGlass.radiusPanel)
     }
 
     private var editingMark: Bool {
@@ -543,50 +540,98 @@ struct EditorView: View {
         }
     }
 
+    /// With nothing marked, the inspector shows the picture: how it sits on the canvas, or how it looks.
     private var picturePanel: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
                 styleButton
-                VStack(alignment: .leading, spacing: 8) {
-                    caption("Padding")
-                    HStack(spacing: 2) {
-                        densityButton("Tight", padding: 28)
-                        densityButton("Even", padding: 72)
-                        densityButton("Airy", padding: 120)
-                    }
-                    .padding(3)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
-                    .accessibilityElement(children: .contain)
-                    .accessibilityLabel("Padding")
+                HStack(spacing: 4) {
+                    tabButton("Layout", on: inspectorTab == .layout) { inspectorTab = .layout }
+                    tabButton("Style", on: inspectorTab == .style) { inspectorTab = .style }
                 }
-                canvasPicker
-                if model.canPosition {
-                    positionPicker
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    zoomRow
-                    tiltRow
-                }
-                if model.screenshotCount >= 2 {
-                    Divider()
-                    VStack(alignment: .leading, spacing: 4) {
-                        caption(model.layoutHeadline)
-                        if let note = model.layoutNote {
-                            Text(note)
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                .padding(3)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Inspector")
+            }
+            .padding(.horizontal, railInset)
+            .padding(.top, railInset)
+            .padding(.bottom, 12)
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 18) {
+                    if inspectorTab == .layout {
+                        layoutInspector
+                    } else {
+                        styleInspector
                     }
-                    layerStrip
-                    ForEach(ShotLayouts.choices(for: model.screenshotCount)) { preset in
-                        layoutPresetCard(preset)
-                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, railInset)
+                .padding(.bottom, railInset)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var layoutInspector: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Padding")
+            HStack(spacing: 2) {
+                densityButton("Tight", padding: 28)
+                densityButton("Even", padding: 72)
+                densityButton("Airy", padding: 120)
+            }
+            .padding(3)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Padding")
+            percentSlider(
+                "Size",
+                value: Binding(get: { model.screenshotFill }, set: { model.beginGesture(); model.setScreenshotFill($0) }),
+                range: 0.4...0.98,
+                help: "How much of the canvas the screenshot fills"
+            )
+        }
+        canvasPicker
+        if model.canPosition {
+            positionPicker
+        }
+        VStack(alignment: .leading, spacing: 8) {
+            zoomRow
+            tiltRow
+            if abs(model.style.tiltX) + abs(model.style.tiltY) > 0.5 {
+                metricSlider("Turn", value: Binding(get: { model.style.tiltY }, set: { model.beginGesture(); model.setTiltAngles(x: model.style.tiltX, y: $0) }), range: -40...40)
+                metricSlider("Lean", value: Binding(get: { model.style.tiltX }, set: { model.beginGesture(); model.setTiltAngles(x: $0, y: model.style.tiltY) }), range: -30...30)
+            }
+        }
+        if model.screenshotCount >= 2 {
+            Divider()
+            VStack(alignment: .leading, spacing: 4) {
+                caption(model.layoutHeadline)
+                if let note = model.layoutNote {
+                    Text(note)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(railInset)
+            layerStrip
+            ForEach(ShotLayouts.choices(for: model.screenshotCount)) { preset in
+                layoutPresetCard(preset)
+            }
         }
+    }
+
+    @ViewBuilder
+    private var styleInspector: some View {
+        frameSection
+        styleGrid
+        borderSection
+        shadowSection
+        decorSection
+        lightControl
+        visibilitySection
+        detailsSection
     }
 
     private var styleName: String {
@@ -1433,6 +1478,7 @@ struct EditorView: View {
                     .buttonStyle(.plain)
                 }
             }
+            metricSlider("Depth", value: Binding(get: { model.style.shadow }, set: { model.beginGesture(); model.setShadow($0) }), range: 0...100)
             metricSlider("Opacity", value: Binding(get: { model.style.shadowOpacity }, set: { model.beginGesture(); model.setShadowOpacity($0) }), range: 0...100)
         }
     }
@@ -1506,6 +1552,48 @@ struct EditorView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(ink)
         }
+    }
+
+    private var decorSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Decoration")
+            HStack(spacing: 2) {
+                ForEach(Decor.allCases, id: \.self) { decor in
+                    segment(decor.title, on: model.style.decor == decor, help: "Decoration: \(decor.title)") {
+                        model.setDecor(decor)
+                    }
+                }
+            }
+            .padding(3)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Decoration")
+        }
+    }
+
+    private func percentSlider(_ title: String, value: Binding<CGFloat>, range: ClosedRange<CGFloat>, help: String) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .shotliRoundedChip(radius: 8)
+            Slider(value: value, in: range, onEditingChanged: { editing in
+                if !editing { model.endGesture() }
+            })
+            .accessibilityLabel(title)
+            Text("\(Int((value.wrappedValue * 100).rounded()))%")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(ink)
+                .monospacedDigit()
+                .frame(width: 38, alignment: .trailing)
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 8)
+        .padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ShotliGlass.quiet(colorScheme)))
+        .help(help)
     }
 
     private func metricSlider(_ title: String, value: Binding<CGFloat>, range: ClosedRange<CGFloat>) -> some View {
@@ -1597,299 +1685,6 @@ struct EditorView: View {
                 .padding(.top, 4)
             }
         }
-    }
-
-    private var backgroundGallery: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Backgrounds")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(ink)
-            wallpaperShelf("Gradient", WallpaperID.fields, .gradient)
-            wallpaperShelf("Glass", WallpaperID.glass, .glass)
-            wallpaperShelf("Cosmic", WallpaperID.cosmic, .cosmic)
-            wallpaperShelf("Mystic", WallpaperID.mystic, .mystic)
-            wallpaperShelf("Desktop", WallpaperID.desktop, .desktop)
-            wallpaperShelf("Abstract", WallpaperID.abstract, .abstract)
-            wallpaperShelf("Earth", WallpaperID.earth, .earth)
-            wallpaperShelf("Studio", WallpaperID.backdrops, .studio)
-            wallpaperShelf("Scenes", WallpaperID.scenes, .scenes)
-            gradientShelf
-            wallpaperShelf("Pattern", WallpaperID.patterns, .pattern)
-        }
-        .onAppear(perform: seedLibrary)
-    }
-
-    private var activeBackgroundShelf: BackgroundShelf? {
-        switch model.style.background {
-        case .wallpaper(let id):
-            if WallpaperID.fields.contains(id) { return .gradient }
-            if WallpaperID.glass.contains(id) { return .glass }
-            if WallpaperID.cosmic.contains(id) { return .cosmic }
-            if WallpaperID.mystic.contains(id) { return .mystic }
-            if WallpaperID.desktop.contains(id) { return .desktop }
-            if WallpaperID.abstract.contains(id) { return .abstract }
-            if WallpaperID.earth.contains(id) { return .earth }
-            if WallpaperID.backdrops.contains(id) { return .studio }
-            if WallpaperID.scenes.contains(id) { return .scenes }
-            if WallpaperID.patterns.contains(id) { return .pattern }
-            return nil
-        case .gradient:
-            return .linear
-        case .color:
-            return nil
-        }
-    }
-
-    private func seedLibrary() {
-        guard !didSeedLibrary else { return }
-        didSeedLibrary = true
-        expandedShelves = [activeBackgroundShelf?.rawValue ?? BackgroundShelf.gradient.rawValue]
-    }
-
-    private func shelfIsOpen(_ shelf: BackgroundShelf) -> Bool {
-        expandedShelves.contains(shelf.rawValue)
-    }
-
-    private func toggleShelf(_ shelf: BackgroundShelf) {
-        if expandedShelves.contains(shelf.rawValue) {
-            expandedShelves.remove(shelf.rawValue)
-        } else {
-            expandedShelves.insert(shelf.rawValue)
-        }
-    }
-
-    private func categoryHeading(_ title: String, _ shelf: BackgroundShelf) -> some View {
-        let open = shelfIsOpen(shelf)
-        return Button(action: { toggleShelf(shelf) }) {
-            HStack(spacing: 6) {
-                Image(systemName: open ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.secondary)
-                    .frame(width: 10, alignment: .center)
-                Text(title.uppercased())
-                    .font(.system(size: 10, weight: .semibold))
-                    .kerning(0.6)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityValue(open ? "Expanded" : "Collapsed")
-        .help(open ? "Collapse \(title)" : "Expand \(title)")
-    }
-
-    @ViewBuilder
-    private func wallpaperShelf(_ title: String, _ items: [WallpaperID], _ shelf: BackgroundShelf) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            categoryHeading(title, shelf)
-            if shelfIsOpen(shelf) {
-                HStack(spacing: thumbGap) {
-                    ForEach(rowWallpapers(items)) { wallpaper in
-                        wallpaperSwatch(wallpaper, height: thumbHeight)
-                    }
-                    if items.count > 3 {
-                        moreSwatch(title) {
-                            gradientPopover = nil
-                            backgroundShelf = shelf
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var gradientShelf: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            categoryHeading("Linear", .linear)
-            if shelfIsOpen(.linear) {
-                HStack(spacing: thumbGap) {
-                    ForEach(rowGradients(Presets.gradients), id: \.name) { gradient in
-                        gradientSwatch(gradient, height: thumbHeight, showsColours: true)
-                    }
-                    if Presets.gradients.count > 3 {
-                        moreSwatch("Linear") {
-                            gradientPopover = nil
-                            backgroundShelf = .linear
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func rowWallpapers(_ items: [WallpaperID]) -> [WallpaperID] {
-        let head = Array(items.prefix(3))
-        guard case .wallpaper(let selected) = model.style.background,
-              let index = items.firstIndex(of: selected),
-              index >= 3 else { return head }
-        return Array(items.prefix(2)) + [selected]
-    }
-
-    private func rowGradients(_ items: [(name: String, from: String, mid: String, to: String, angle: CGFloat)]) -> [(name: String, from: String, mid: String, to: String, angle: CGFloat)] {
-        let head = Array(items.prefix(3))
-        guard case .gradient(let from, let mid, let to, _) = model.style.background,
-              let match = items.first(where: { $0.from == from && $0.mid == mid && $0.to == to }),
-              !head.contains(where: { $0.name == match.name }) else { return head }
-        return Array(items.prefix(2)) + [match]
-    }
-
-    private func wallpaperSwatch(_ wallpaper: WallpaperID, height: CGFloat) -> some View {
-        wallpaperChoice(wallpaper, height: height)
-    }
-
-    private func wallpaperChoice(_ wallpaper: WallpaperID, height: CGFloat) -> some View {
-        let active: Bool = {
-            if case .wallpaper(let selected) = model.style.background { return selected == wallpaper }
-            return false
-        }()
-        return SelectWell(height: height, active: active, help: wallpaper.label, label: "Use \(wallpaper.label) background", action: {
-            model.setBackground(.wallpaper(wallpaper))
-            gradientPopover = nil
-        }) {
-            wallpaperPreview(wallpaper)
-        }
-    }
-
-    private func gradientSwatch(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat), height: CGFloat, showsColours: Bool = false) -> some View {
-        ZStack(alignment: .topTrailing) {
-            gradientChoice(gradient, height: height)
-            if showsColours {
-                PlusButton(label: "Flat colours from \(gradient.name)", presented: gradientPresented(gradient.name)) {
-                    gradientColourPopover(gradient)
-                }
-            }
-        }
-    }
-
-    private func gradientChoice(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat), height: CGFloat) -> some View {
-        let active: Bool = {
-            if case .gradient(let from, let mid, let to, _) = model.style.background {
-                return gradient.from == from && gradient.mid == mid && gradient.to == to
-            }
-            return false
-        }()
-        return SelectWell(height: height, active: active, help: gradient.name, label: "Use \(gradient.name) background", action: {
-            model.setBackground(.gradient(from: gradient.from, mid: gradient.mid, to: gradient.to, angle: gradient.angle))
-            gradientPopover = nil
-        }) {
-            LinearGradient(
-                colors: [Color(nsColor: NSColor(hex: gradient.from)!), Color(nsColor: NSColor(hex: gradient.mid)!), Color(nsColor: NSColor(hex: gradient.to)!)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-
-    private func gradientPresented(_ name: String) -> Binding<Bool> {
-        Binding(
-            get: { gradientPopover == name },
-            set: { on in
-                gradientPopover = on ? name : (gradientPopover == name ? nil : gradientPopover)
-            }
-        )
-    }
-
-    private func gradientColourPopover(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat)) -> some View {
-        let selected: String? = {
-            if case .color(let hex) = model.style.background { return hex }
-            return nil
-        }()
-        return VStack(alignment: .leading, spacing: 8) {
-            Text(gradient.name)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(ink)
-            Text("FLAT COLOUR")
-                .font(.system(size: 10, weight: .semibold))
-                .kerning(0.6)
-                .foregroundColor(.secondary)
-            swatchRow(gradientStops(gradient), selected: selected) { hex in
-                model.setBackground(.color(hex))
-                gradientPopover = nil
-            }
-        }
-        .padding(12)
-        .frame(width: 180, alignment: .leading)
-        .shotliGlass(.compact, radius: 14, shadow: false)
-        .onExitCommand { gradientPopover = nil }
-    }
-
-    private func gradientStops(_ gradient: (name: String, from: String, mid: String, to: String, angle: CGFloat)) -> [String] {
-        var stops: [String] = []
-        for hex in [gradient.from, gradient.mid, gradient.to] where !stops.contains(hex) {
-            stops.append(hex)
-        }
-        return stops
-    }
-
-    private func moreSwatch(_ title: String, action: @escaping () -> Void) -> some View {
-        LibraryMoreTile(title: title, action: action)
-    }
-
-    private func swatchStroke(_ active: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .stroke(active ? accent : Color.black.opacity(0.08), lineWidth: active ? 2 : 1)
-    }
-
-    private func backgroundBrowser(_ shelf: BackgroundShelf) -> some View {
-        ZStack {
-            Color.black.opacity(0.22)
-                .ignoresSafeArea()
-                .onTapGesture { backgroundShelf = nil }
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(shelf.title)
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(ink)
-                    Spacer()
-                    Button(action: { backgroundShelf = nil }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(ink)
-                            .frame(width: 28, height: 28)
-                            .background(Circle().fill(ShotliGlass.quiet(colorScheme)))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Close")
-                }
-                .padding(.horizontal, 22)
-                .padding(.top, 20)
-                .padding(.bottom, 14)
-                ScrollView {
-                    if shelf == .linear {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
-                            ForEach(Presets.gradients, id: \.name) { gradient in
-                                VStack(spacing: 6) {
-                                    gradientSwatch(gradient, height: 92)
-                                    Text(gradient.name)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(ink)
-                                }
-                            }
-                        }
-                    } else {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
-                            ForEach(shelf.wallpapers) { wallpaper in
-                                VStack(spacing: 6) {
-                                    wallpaperSwatch(wallpaper, height: 92)
-                                    Text(wallpaper.label)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(ink)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 22)
-                .padding(.bottom, 22)
-            }
-            .frame(width: 680, height: 520)
-            .shotliGlass(.panel, radius: ShotliGlass.radiusOverlay)
-        }
-        .onExitCommand { backgroundShelf = nil }
     }
 
     private var backgroundControls: some View {
@@ -2163,6 +1958,8 @@ struct EditorView: View {
             )
         case .wallpaper(let id):
             wallpaperPreview(id)
+        case .image:
+            BackgroundSwatch(background: background)
         }
     }
 
@@ -2350,134 +2147,6 @@ struct PressFadeButtonStyle: ButtonStyle {
     }
 }
 
-private struct SelectWell<Content: View>: View {
-    var height: CGFloat
-    var active: Bool
-    var help: String
-    var label: String
-    var action: () -> Void
-    var content: Content
-    @State private var hovering = false
-    @FocusState private var focused: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
-
-    init(height: CGFloat, active: Bool, help: String, label: String, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
-        self.height = height
-        self.active = active
-        self.help = help
-        self.label = label
-        self.action = action
-        self.content = content()
-    }
-
-    var body: some View {
-        Button(action: action) {
-            Color.clear
-                .frame(height: height)
-                .frame(maxWidth: .infinity)
-                .overlay { content.allowsHitTesting(false) }
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(stroke)
-                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(PressFadeButtonStyle())
-        .help(help)
-        .accessibilityLabel(label)
-        .accessibilityAddTraits(active ? .isSelected : AccessibilityTraits())
-        .focused($focused)
-        .onHover { hovering = $0 }
-        .animation(reduceMotion ? nil : .easeOut(duration: ShotliGlass.duration), value: hovering)
-    }
-
-    private var stroke: some View {
-        ZStack {
-            if active || focused {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(ShotliGlass.focusRing(colorScheme), lineWidth: 1)
-                    .padding(2)
-            }
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(active || focused ? accent : (hovering ? ShotliGlass.line(colorScheme) : ShotliGlass.hairline(colorScheme)), lineWidth: active || focused ? 2 : 1)
-        }
-        .allowsHitTesting(false)
-    }
-}
-
-private struct PlusButton<Popover: View>: View {
-    var label: String
-    @Binding var presented: Bool
-    var popover: Popover
-    @State private var hovering = false
-    @FocusState private var focused: Bool
-    @Environment(\.colorScheme) private var colorScheme
-    private var ink: Color { ShotliGlass.ink(colorScheme) }
-
-    init(label: String, presented: Binding<Bool>, @ViewBuilder popover: () -> Popover) {
-        self.label = label
-        self._presented = presented
-        self.popover = popover()
-    }
-
-    var body: some View {
-        Button(action: { presented.toggle() }) {
-            Image(systemName: "plus")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(ink)
-                .frame(width: 16, height: 16)
-                .background(Circle().fill(hovering || focused || presented ? Color.white.opacity(0.92) : Color.white))
-                .overlay(Circle().stroke(focused || presented ? accent : Color.black.opacity(0.12), lineWidth: focused || presented ? 1.5 : 0.5))
-                .shadow(color: Color.black.opacity(0.14), radius: 1.5, y: 0.5)
-                .contentShape(Circle())
-        }
-        .buttonStyle(PressFadeButtonStyle())
-        .padding(4)
-        .accessibilityLabel(label)
-        .help(label)
-        .focused($focused)
-        .onHover { hovering = $0 }
-        .popover(isPresented: $presented, arrowEdge: .trailing) { popover }
-    }
-}
-
-private struct LibraryMoreTile: View {
-    var title: String
-    var action: () -> Void
-    @State private var hovering = false
-    @FocusState private var focused: Bool
-    @Environment(\.colorScheme) private var colorScheme
-    private var ink: Color { ShotliGlass.ink(colorScheme) }
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Color.clear
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(ink)
-            }
-            .frame(height: thumbHeight)
-            .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(hovering ? ShotliGlass.pressed(colorScheme) : ShotliGlass.quiet(colorScheme)))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(focused ? ShotliGlass.focusRing(colorScheme) : Color.clear, lineWidth: 1)
-                    .padding(2)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(focused ? accent : (hovering ? ShotliGlass.line(colorScheme) : ShotliGlass.hairline(colorScheme)), lineWidth: focused ? 2 : 1)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(PressFadeButtonStyle())
-        .help("More \(title.lowercased()) backgrounds")
-        .accessibilityLabel("More \(title.lowercased()) backgrounds")
-        .focused($focused)
-        .onHover { hovering = $0 }
-    }
-}
-
 private struct CornerMark: Shape {
     var radius: CGFloat
 
@@ -2648,246 +2317,6 @@ private struct ShadowStudy: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-}
-
-private enum TemplateFilter: String, CaseIterable {
-    case all, image, angled
-    var title: String {
-        switch self {
-        case .all: return "All"
-        case .image: return "Image"
-        case .angled: return "Angled"
-        }
-    }
-    var symbol: String {
-        switch self {
-        case .all: return "square.grid.2x2.fill"
-        case .image: return "photo"
-        case .angled: return "rotate.right"
-        }
-    }
-    var kind: TemplateKind? {
-        switch self {
-        case .all: return nil
-        case .image: return .image
-        case .angled: return .angled
-        }
-    }
-}
-
-private struct TemplatesPanel: View {
-    @ObservedObject var model: EditorModel
-    var shot: NSImage?
-    var onClose: () -> Void
-    @State private var filter: TemplateFilter = .all
-    @State private var group: String?
-    @Environment(\.colorScheme) private var colorScheme
-    private var ink: Color { ShotliGlass.ink(colorScheme) }
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.22)
-                .ignoresSafeArea()
-                .onTapGesture(perform: onClose)
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                filters
-                    .padding(.horizontal, 22)
-                    .padding(.bottom, 8)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        if let group {
-                            section(group, templates: TemplateLibrary.inGroup(group, kind: filter.kind), limit: nil)
-                        } else {
-                            ForEach(TemplateLibrary.groups, id: \.self) { name in
-                                let items = TemplateLibrary.inGroup(name, kind: filter.kind)
-                                if !items.isEmpty {
-                                    section(name, templates: items, limit: 2)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 22)
-                    .padding(.bottom, 22)
-                }
-            }
-            .frame(width: 720, height: 620)
-            .shotliGlass(.panel, radius: ShotliGlass.radiusOverlay)
-        }
-    }
-
-    private var header: some View {
-        HStack {
-            if group != nil {
-                Button(action: { group = nil }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(ink)
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-            }
-            Text(group ?? "Templates")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(ink)
-            Spacer()
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(ink)
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(ShotliGlass.quiet(colorScheme)))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 22)
-        .padding(.top, 20)
-        .padding(.bottom, 14)
-    }
-
-    private var filters: some View {
-        HStack(spacing: 8) {
-            ForEach(TemplateFilter.allCases, id: \.self) { item in
-                let on = filter == item
-                Button(action: { filter = item }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: item.symbol)
-                            .font(.system(size: 12, weight: .semibold))
-                        Text(item.title)
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .foregroundColor(on ? ShotliGlass.selectedControlInk(colorScheme) : ink)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(Capsule().fill(on ? ShotliGlass.selectedControl(colorScheme) : Color.clear))
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
-        }
-    }
-
-    private func section(_ name: String, templates: [ShotTemplate], limit: Int?) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(name)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(ink)
-                Spacer()
-                if limit != nil, templates.count > 2 {
-                    Button(action: { group = name }) {
-                        Text("See all")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(ink)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(ShotliGlass.quiet(colorScheme)))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            let shown = limit == nil ? templates : Array(templates.prefix(limit ?? templates.count))
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
-                ForEach(shown) { template in
-                    Button(action: {
-                        model.applyTemplate(template)
-                        onClose()
-                    }) {
-                        VStack(spacing: 8) {
-                            TemplateCard(template: template, shot: shot)
-                            Text(template.name)
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-}
-
-private struct TemplateCard: View {
-    let template: ShotTemplate
-    let shot: NSImage?
-
-    var body: some View {
-        ZStack {
-            TemplateBackground(background: template.style.background)
-            GeometryReader { geo in
-                let width = min(geo.size.width * 0.8, geo.size.height * 1.45)
-                shotFace
-                    .frame(width: width)
-                    .rotation3DEffect(.degrees(template.style.tiltX), axis: (x: 1, y: 0, z: 0), perspective: 0.4)
-                    .rotation3DEffect(.degrees(template.style.tiltY), axis: (x: 0, y: 1, z: 0), perspective: 0.4)
-                    .shadow(color: Color.black.opacity(0.28), radius: 18, y: 14)
-                    .shadow(color: Color.black.opacity(0.1), radius: 2, y: 1)
-                    .position(
-                        x: geo.size.width * (0.5 + template.style.shiftX * 0.18),
-                        y: geo.size.height * (0.5 + template.style.shiftY * 0.08)
-                    )
-            }
-        }
-        .frame(height: 196)
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private var shotFace: some View {
-        VStack(spacing: 0) {
-            if template.style.frame != .none {
-                HStack(spacing: 3) {
-                    Circle().fill(Color(nsColor: NSColor(hex: "#FF5F57")!)).frame(width: 6, height: 6)
-                    Circle().fill(Color(nsColor: NSColor(hex: "#FEBC2E")!)).frame(width: 6, height: 6)
-                    Circle().fill(Color(nsColor: NSColor(hex: "#28C840")!)).frame(width: 6, height: 6)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 8)
-                .frame(height: 18)
-                .frame(maxWidth: .infinity)
-                .background(template.style.frame == .browser ? Color(nsColor: NSColor(hex: "#F3F3F3")!) : Color(nsColor: NSColor(hex: "#ECECEC")!))
-            }
-            if let shot {
-                Image(nsImage: shot)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                Color.white
-                    .aspectRatio(16.0 / 10.0, contentMode: .fit)
-            }
-        }
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-}
-
-private struct TemplateBackground: View {
-    let background: Background
-
-    var body: some View {
-        switch background {
-        case .color(let hex):
-            Color(nsColor: NSColor(hex: hex) ?? .white)
-        case .gradient(let from, let mid, let to, _):
-            LinearGradient(
-                colors: [Color(nsColor: NSColor(hex: from)!), Color(nsColor: NSColor(hex: mid ?? to)!), Color(nsColor: NSColor(hex: to)!)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .wallpaper(let id):
-            Color.clear
-                .overlay {
-                    if let image = SceneThumbs.image(id) {
-                        Image(nsImage: image)
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        Color(nsColor: NSColor(srgbRed: 0.93, green: 0.93, blue: 0.94, alpha: 1))
-                    }
-                }
-                .clipped()
-        }
     }
 }
 
