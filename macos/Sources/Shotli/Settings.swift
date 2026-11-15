@@ -290,7 +290,7 @@ struct SettingsPane: View {
                         divider
                         toggleRow(
                             "Check for updates automatically",
-                            "Look for a new version when Shotli opens.",
+                            "Look for a new version while Shotli runs, and remind you when one is ready.",
                             isOn: Binding(get: { settings.checkForUpdates }, set: { settings.setCheckForUpdates($0) })
                         )
                     }
