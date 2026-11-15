@@ -319,7 +319,6 @@ struct BackgroundLibraryView: View {
     @State private var category: LibraryCategory = .all
     @State private var query = ""
     @State private var dropTarget = false
-    @FocusState private var searching: Bool
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -368,45 +367,7 @@ struct BackgroundLibraryView: View {
     }
 
     private var searchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.secondary)
-            TextField("Search backgrounds", text: $query)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .focused($searching)
-                .onExitCommand {
-                    query = ""
-                    searching = false
-                }
-            if !query.isEmpty {
-                Button(action: { query = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Clear search")
-                .accessibilityLabel("Clear search")
-            }
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(
-            RoundedRectangle(cornerRadius: ShotliGlass.radiusChip, style: .continuous)
-                .fill(ShotliGlass.search(colorScheme))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: ShotliGlass.radiusChip, style: .continuous)
-                .stroke(searching ? ShotliGlass.accent.opacity(0.6) : ShotliGlass.hairline(colorScheme), lineWidth: searching ? 1.5 : 1)
-        )
-        .background(
-            Button("") { searching = true }
-                .keyboardShortcut("f", modifiers: .command)
-                .opacity(0)
-                .accessibilityHidden(true)
-        )
+        LibrarySearchField(text: $query, prompt: "Search backgrounds")
     }
 
     private var categoryBar: some View {
@@ -424,28 +385,10 @@ struct BackgroundLibraryView: View {
 
     private func categoryChip(_ item: LibraryCategory) -> some View {
         let on = category == item && query.isEmpty
-        return Button(action: {
+        return LibraryChip(title: item.title, symbol: on && item == .favourites ? "heart.fill" : item.symbol, on: on) {
             query = ""
             withAnimation(reduceMotion ? nil : .easeOut(duration: ShotliGlass.duration)) { category = item }
-        }) {
-            HStack(spacing: 5) {
-                Image(systemName: on && item == .favourites ? "heart.fill" : item.symbol)
-                    .font(.system(size: 10, weight: .semibold))
-                Text(item.title)
-                    .font(.system(size: 11, weight: on ? .semibold : .medium))
-                    .lineLimit(1)
-            }
-            .foregroundColor(on ? ShotliGlass.selectedControlInk(colorScheme) : ink)
-            .padding(.horizontal, 10)
-            .frame(height: 26)
-            .background(
-                Capsule().fill(on ? ShotliGlass.selectedControl(colorScheme) : ShotliGlass.quiet(colorScheme))
-            )
-            .contentShape(Capsule())
         }
-        .buttonStyle(PressFadeButtonStyle())
-        .accessibilityLabel(item.title)
-        .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
     }
 
     @ViewBuilder
@@ -885,5 +828,86 @@ private struct LibraryTile: View {
                 .transition(.scale.combined(with: .opacity))
                 .allowsHitTesting(false)
         }
+    }
+}
+
+/// The search box shared by the background and recipe libraries. ⌘F focuses it.
+struct LibrarySearchField: View {
+    @Binding var text: String
+    var prompt: String
+    @FocusState private var searching: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+            TextField(prompt, text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .focused($searching)
+                .onExitCommand {
+                    text = ""
+                    searching = false
+                }
+            if !text.isEmpty {
+                Button(action: { text = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear search")
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(
+            RoundedRectangle(cornerRadius: ShotliGlass.radiusChip, style: .continuous)
+                .fill(ShotliGlass.search(colorScheme))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: ShotliGlass.radiusChip, style: .continuous)
+                .stroke(searching ? ShotliGlass.accent.opacity(0.6) : ShotliGlass.hairline(colorScheme), lineWidth: searching ? 1.5 : 1)
+        )
+        .background(
+            Button("") { searching = true }
+                .keyboardShortcut("f", modifiers: .command)
+                .opacity(0)
+                .accessibilityHidden(true)
+        )
+    }
+}
+
+/// A category filter in the background and recipe libraries.
+struct LibraryChip: View {
+    var title: String
+    var symbol: String
+    var on: Bool
+    var action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 11, weight: on ? .semibold : .medium))
+                    .lineLimit(1)
+            }
+            .foregroundColor(on ? ShotliGlass.selectedControlInk(colorScheme) : ShotliGlass.ink(colorScheme))
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .background(
+                Capsule().fill(on ? ShotliGlass.selectedControl(colorScheme) : ShotliGlass.quiet(colorScheme))
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressFadeButtonStyle())
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(on ? .isSelected : AccessibilityTraits())
     }
 }

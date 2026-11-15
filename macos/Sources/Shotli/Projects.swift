@@ -139,6 +139,7 @@ struct StyleFile: Equatable {
     var deviceFinish: String?
     var deviceFit: String?
     var deviceScale: Double?
+    var decor: String?
 
     init(_ style: ShotliStyle) {
         padding = Double(style.padding)
@@ -164,6 +165,7 @@ struct StyleFile: Equatable {
         deviceFinish = style.deviceID == nil ? nil : style.deviceFinish
         deviceFit = style.deviceID == nil ? nil : style.deviceFit.rawValue
         deviceScale = style.deviceID == nil ? nil : Double(style.deviceScale)
+        decor = style.decor == .none ? nil : style.decor.rawValue
     }
 
     var style: ShotliStyle {
@@ -192,6 +194,7 @@ struct StyleFile: Equatable {
         next.deviceFinish = deviceFinish
         next.deviceFit = DeviceFit(rawValue: deviceFit ?? "") ?? .fit
         next.deviceScale = CGFloat(deviceScale ?? 1)
+        next.decor = Decor(rawValue: decor ?? "") ?? .none
         return next
     }
 }
@@ -200,7 +203,7 @@ extension StyleFile: Codable {
     enum CodingKeys: String, CodingKey {
         case padding, radius, shadow, frame, canvas, canvasWidth, canvasHeight, background, card
         case shadowKind, shadowOpacity, light, hideMockup, tiltX, tiltY, shiftX, shiftY, offsetX, offsetY
-        case device, deviceFinish, deviceFit, deviceScale
+        case device, deviceFinish, deviceFit, deviceScale, decor
     }
 
     init(from decoder: Decoder) throws {
@@ -228,6 +231,7 @@ extension StyleFile: Codable {
         deviceFinish = try container.decodeIfPresent(String.self, forKey: .deviceFinish)
         deviceFit = try container.decodeIfPresent(String.self, forKey: .deviceFit)
         deviceScale = try container.decodeIfPresent(Double.self, forKey: .deviceScale)
+        decor = try container.decodeIfPresent(String.self, forKey: .decor)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -255,6 +259,7 @@ extension StyleFile: Codable {
         try container.encodeIfPresent(deviceFinish, forKey: .deviceFinish)
         try container.encodeIfPresent(deviceFit, forKey: .deviceFit)
         try container.encodeIfPresent(deviceScale, forKey: .deviceScale)
+        try container.encodeIfPresent(decor, forKey: .decor)
     }
 }
 

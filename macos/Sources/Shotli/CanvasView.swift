@@ -160,7 +160,7 @@ final class EditorCanvas: NSView {
         drawStage()
         guard model.picture != nil else { return }
         // A background the pointer rests on in the library shows here before it is chosen.
-        var shown = model.style
+        var shown = model.previewStyle ?? model.style
         if let preview = model.previewBackground { shown.background = preview }
         guard let image = renderShot(
             picture: model.picture,
@@ -174,7 +174,7 @@ final class EditorCanvas: NSView {
             selectedID: model.selectedID,
             selectedLayerID: model.selectedLayerID
         ) else { return }
-        let layout = composition(picture: model.picture, crop: model.crop, style: model.style, layerCount: model.layers.count)
+        let layout = composition(picture: model.picture, crop: model.crop, style: shown, layerCount: model.layers.count)
         let place = placement(for: layout.size)
         let pixel = CGSize(width: CGFloat(image.width), height: CGFloat(image.height))
         let aspect = pixel.width / max(pixel.height, 1)

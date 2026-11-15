@@ -27,6 +27,7 @@ func renderComposition(
         let painter = Painter(context: context, height: layout.size.height)
         if !omitBackground {
             painter.drawBackground(style.background, layout.size)
+            painter.drawDecor(style, window: layout.window, size: layout.size, tilted: true)
         }
         let placed = shiftedCardLayout(layout)
         if let layer = renderFlat(
@@ -396,6 +397,7 @@ private func renderFlat(
 
     if paintBackground {
         painter.drawBackground(style.background, layout.size)
+        painter.drawDecor(style, window: layout.window, size: layout.size, tilted: false)
     }
     context.saveGState()
     painter.applyStyledShadow(style, tint: adaptiveTint(picture.image))
@@ -707,6 +709,51 @@ private struct Painter {
             drawTexture(id, size)
         default:
             drawScene(id, size)
+        }
+    }
+
+    /// Recipe decorations sit on the background, behind the screenshot.
+    func drawDecor(_ style: ShotliStyle, window: CGRect, size: CGSize, tilted: Bool) {
+        guard style.decor != .none, window.width > 1, window.height > 1 else { return }
+        let span = min(window.width, window.height)
+        let radius = cornerRadius(style.radius, span: span) + span * 0.02
+        context.saveGState()
+        defer { context.restoreGState() }
+        switch style.decor {
+        case .none:
+            return
+        case .spotlight:
+            let center = CGPoint(x: window.midX, y: window.midY - window.height * 0.08)
+            let reach = max(window.width, window.height) * 0.85
+            let colors = [NSColor.white.withAlphaComponent(0.55).cgColor, NSColor.white.withAlphaComponent(0).cgColor] as CFArray
+            guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) else { return }
+            context.drawRadialGradient(gradient, startCenter: cg(center), startRadius: 0, endCenter: cg(center), endRadius: reach, options: [])
+        case .plate:
+            let plate = window.insetBy(dx: -window.width * 0.045, dy: -window.height * 0.07)
+            let path = CGPath(roundedRect: cg(plate), cornerWidth: radius * 1.4, cornerHeight: radius * 1.4, transform: nil)
+            context.addPath(path)
+            context.setFillColor(NSColor.white.withAlphaComponent(0.22).cgColor)
+            context.fillPath()
+            context.addPath(path)
+            context.setStrokeColor(NSColor.white.withAlphaComponent(0.5).cgColor)
+            context.setLineWidth(max(1, span * 0.003))
+            context.strokePath()
+        case .stack:
+            guard !tilted else { return }
+            // Two ghost cards peek out above the screenshot, like a pile of pages.
+            for (index, alpha) in [(2, 0.32), (1, 0.6)] {
+                let step = CGFloat(index)
+                let card = CGRect(
+                    x: window.minX + window.width * 0.05 * step,
+                    y: window.minY - window.height * 0.045 * step,
+                    width: window.width - window.width * 0.1 * step,
+                    height: window.height
+                )
+                context.setShadow(offset: CGSize(width: 0, height: -2), blur: span * 0.02, color: NSColor.black.withAlphaComponent(0.12).cgColor)
+                context.addPath(CGPath(roundedRect: cg(card), cornerWidth: radius, cornerHeight: radius, transform: nil))
+                context.setFillColor(NSColor.white.withAlphaComponent(alpha).cgColor)
+                context.fillPath()
+            }
         }
     }
 
